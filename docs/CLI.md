@@ -135,21 +135,35 @@ Alt+Left/Right resizes the rail, Ctrl+arrows resize inner splits. F8
 toggles mouse capture for this session; set `ui.mouse: never` (or
 `zg config set ui.mouse never`) to opt out persistently. Terminal text
 selection is emulator-owned (often Shift+drag, or disable capture first).
-Selection alone does not execute. The minimal action strip (at most three quick actions) and More… (F4) menu
-expose the original operations; secondary operations and appearance
-settings stay in More. Models show aligned human-readable sizes
-(B/KiB/MiB/GiB and larger units). Details… (D) opens the selected exact
-observation, full digest/revision, raw bytes and last action result
-without executing inspection or verification. Disabled buttons cannot activate,
-and changed observations require choosing again. Form and confirmation
-buttons use the same typed actions as Enter/Ctrl-S and y/n/Esc.
-F9 toggles response following. Existing keyboard shortcuts remain.
-In Config, the Edit button or **e** opens a finite setting picker when
-available; choose a row and apply explicitly. F2 opens its selected value
-in the original YAML form. Enter retains the existing direct YAML value
-editor; raw document repair remains available. Model search (**/**)
-filters only the current local shelf. In Logs, **l** and **f** open
-level/component pickers (uppercase L/F retain cycling).
+Selection alone does not execute. No action toolbar: the selected
+row's ellipsis, right-click or F4 opens contextual actions. Enter opens
+model/device/registration actions; profiles open their editor and Config
+retains direct YAML value editing. The relevant pane has one action menu
+when the selected row is not visible or a list is absent. The footer
+Menu (F10) holds Web, Appearance, Refresh and Quit.
+
+Type to focus inline search and filter the current local shelf or list
+immediately. Ctrl-F focuses search, Ctrl-U clears, Esc clears active
+search, Tab leaves the field. Arrow keys select/scroll results. In
+searchable views ordinary letters, digits and punctuation are input,
+not actions. Alt+1–9 switches views; Alt+letter invokes the indicated
+operation shortcut. F1/Alt+? shows help, Alt+: opens the destination
+palette, Ctrl-Q quits outside dialogs. Non-search views retain bare
+operation shortcuts. Models show aligned human-readable sizes
+(B/KiB/MiB/GiB and larger units). Details in the context menu (Alt-D)
+opens exact metadata, full digest/revision, raw bytes and last action
+result without executing inspection or verification. Disabled actions
+cannot activate; changed observations require choosing again.
+Form and confirmation buttons use the same typed actions as
+Enter/Ctrl-S and y/n/Esc. F9 toggles response following.
+
+In Config, Edit from the context menu or Alt+e opens a finite setting
+picker when available; choose a row and apply explicitly. F2 opens its
+selected value in the original YAML form. Enter retains direct YAML
+value editing; raw document repair remains available. Logs Level and
+Component choices are in the pane menu (Alt+l/f, uppercase Alt+L/F
+retain cycling). Filtering is client-local and does not trigger any
+provider acquisition or runtime action.
 
 Text forms and the raw editor accept click-to-place caret, drag selection,
 Shift+arrow selection, bounded paste/replacement, PageUp/PageDown and

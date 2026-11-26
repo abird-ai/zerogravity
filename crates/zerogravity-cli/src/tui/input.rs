@@ -16,7 +16,9 @@ pub(super) enum Target {
     Navigate(View),
     Navigation,
     Row(Kind, Key),
+    RowMenu(Kind, Key),
     Owner(Owner),
+    OwnerMenu(Owner),
     Shelf(Shelf),
     Split(Splitter),
     Scrollbar(Scrollbar),
@@ -24,8 +26,10 @@ pub(super) enum Target {
     Focus(Pane),
     Theme(ThemeMode),
     Help,
-    Palette,
     More,
+    SessionMenu,
+    SearchFocus,
+    SearchClear,
     Command(Bound),
     AcceptModal,
     DismissModal,
@@ -86,6 +90,7 @@ impl Hits {
 #[derive(Debug)]
 enum Capture {
     Press(Target),
+    Context(Target),
     Split(Splitter),
     Scroll(Scrollbar, u16),
     Editor,
@@ -95,6 +100,7 @@ enum Capture {
 pub(super) struct Pointer(Option<Capture>);
 pub(super) enum Intent {
     Click(Target),
+    Context(Target),
     Resize(Splitter, u16, u16),
     Scroll(Pane, Motion),
     ScrollModal(i16, u16),
@@ -114,8 +120,12 @@ impl Pointer {
         if matches!(
             self.0,
             Some(Capture::Press(
-                Target::Row(..) | Target::Owner(_) | Target::Command(_)
-            ))
+                Target::Row(..)
+                    | Target::RowMenu(..)
+                    | Target::Owner(_)
+                    | Target::OwnerMenu(_)
+                    | Target::Command(_)
+            )) | Some(Capture::Context(_))
         ) {
             self.cancel();
         }
@@ -123,6 +133,29 @@ impl Pointer {
     pub fn event(&mut self, event: MouseEvent, hits: &Hits) -> Option<Intent> {
         let pos = Position::new(event.column, event.row);
         match event.kind {
+            MouseEventKind::Down(MouseButton::Right) => {
+                self.cancel();
+                if let Some(
+                    target @ (Target::Row(..)
+                    | Target::RowMenu(..)
+                    | Target::Owner(_)
+                    | Target::OwnerMenu(_)),
+                ) = hits.at(pos)
+                {
+                    self.0 = Some(Capture::Context(target.clone()));
+                }
+                None
+            }
+            MouseEventKind::Drag(MouseButton::Right) => {
+                self.cancel();
+                None
+            }
+            MouseEventKind::Up(MouseButton::Right) => match self.0.take()? {
+                Capture::Context(target) if hits.at(pos) == Some(&target) => {
+                    Some(Intent::Context(target))
+                }
+                _ => None,
+            },
             MouseEventKind::Down(MouseButton::Left) => {
                 self.cancel();
                 match hits.at(pos)?.clone() {
@@ -224,6 +257,36 @@ mod tests {
             row,
             modifiers: KeyModifiers::NONE,
         }
+    }
+    #[test]
+    fn right_click_is_exact_visible_context_only() {
+        let mut hits = Hits::default();
+        let mut pointer = Pointer::default();
+        let a = Target::Row(Kind::Models, Key::Snapshot("a".into()));
+        let b = Target::Row(Kind::Models, Key::Snapshot("b".into()));
+        hits.add(Rect::new(0, 0, 10, 1), a.clone());
+        hits.add(Rect::new(0, 1, 10, 1), b.clone());
+        assert!(
+            pointer
+                .event(event(MouseEventKind::Down(MouseButton::Right), 1, 0), &hits)
+                .is_none()
+        );
+        assert!(
+            pointer
+                .event(event(MouseEventKind::Up(MouseButton::Right), 1, 1), &hits)
+                .is_none()
+        );
+        pointer.event(event(MouseEventKind::Down(MouseButton::Right), 1, 0), &hits);
+        assert!(
+            matches!(pointer.event(event(MouseEventKind::Up(MouseButton::Right),1,0),&hits),Some(Intent::Context(target)) if target==a)
+        );
+        pointer.event(event(MouseEventKind::Down(MouseButton::Right), 1, 0), &hits);
+        pointer.invalidate_selection();
+        assert!(
+            pointer
+                .event(event(MouseEventKind::Up(MouseButton::Right), 1, 0), &hits)
+                .is_none()
+        );
     }
     #[test]
     fn only_same_visible_target_can_click_and_wheel_does_not_select() {

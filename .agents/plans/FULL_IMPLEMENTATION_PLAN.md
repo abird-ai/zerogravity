@@ -736,7 +736,9 @@ UX-1–10 remains accepted; this is additional presentation work.
   simultaneous-client lifecycle acceptance; full isolated gate.
   P4A1 user screenshot-driven minimalism: at most three quick actions,
   one navigation rail, concise summaries, on-demand exact Details and
-  smart units. P4A2 stable scroll/response/log and compact/focus edges;
+  smart units. Follow-up removes toolbar entirely: selected exact-row
+  context menus and inline live local search, explicit Alt shortcuts.
+  P4A2 stable scroll/response/log and compact/focus edges;
   P4B final full gate.
 
 No new runtime, cache, configuration or execution owner. No inference

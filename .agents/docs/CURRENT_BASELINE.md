@@ -5,6 +5,18 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 26 Nov — UX-P4A1 follow-up toolbar-free contextual UI
+
+User-directed removal of permanent toolbar; selected-row contextual
+menus, exact right-click release, inline live local search and separate
+session menu. Strict feature lint, 15 focused native Rust tests,
+optimized 88/0/3, actual rendered cells and native PTY context/search/
+settings/mouse/theme/transfer regressions. Original execution/identity/
+configuration ownership retained; no new dependency or GPU claim.
+Actual approved cached CPU/browser/native/HTTP 1/0/0 (57.77s, five
+filtered) with original admission/exact output; previous memory blocker
+resolved. Shared native/Firefox transfer durable and cancelled pass.
+
 ## 26 Nov — UX-P4A1 screenshot-driven minimal presentation
 
 Curated quick actions + More, one navigation rail, concise summaries

@@ -198,7 +198,6 @@ pub(super) struct Library {
     config: Rows,
     pub editor: Target,
     observed: Option<Observed>,
-    pub query: String,
     pub raw: bool,
     profile_notice: Option<String>,
     config_notice: Option<String>,
@@ -246,7 +245,6 @@ impl Library {
             config: Rows::default(),
             editor,
             observed: None,
-            query: String::new(),
             raw: false,
             profile_notice: None,
             config_notice: None,
@@ -264,7 +262,7 @@ impl Library {
         self.observed = None;
         self.config.replace(Vec::new());
         self.config_notice = None;
-        self.query.clear();
+        self.config.set_query(String::new());
         self.raw = false;
     }
     pub fn invalidate_config(&mut self) {
@@ -289,25 +287,6 @@ impl Library {
             .effective_choices
             .get(key)
             .map(String::as_str)
-    }
-    pub fn filter_config(&mut self) {
-        let query = self.query.to_ascii_lowercase();
-        self.config
-            .replace(self.observed.as_ref().map_or_else(Vec::new, |observed| {
-                observed
-                    .rows
-                    .iter()
-                    .filter(|row| {
-                        query.is_empty()
-                            || row.title.to_ascii_lowercase().contains(&query)
-                            || row
-                                .details
-                                .iter()
-                                .any(|detail| detail.to_ascii_lowercase().contains(&query))
-                    })
-                    .cloned()
-                    .collect()
-            }));
     }
     pub fn rows(&self, kind: Kind) -> &Rows {
         match (kind, self.shelf) {
@@ -393,11 +372,11 @@ impl Library {
                 self.profiles.replace(rows);
                 self.profile_notice = None;
             }
-            Ok(Observation::Config(observed)) => {
+            Ok(Observation::Config(mut observed)) => {
                 if observed.snapshot.target == self.editor {
                     self.config_notice = observed.warning.clone();
+                    self.config.replace(std::mem::take(&mut observed.rows));
                     self.observed = Some(observed);
-                    self.filter_config();
                 }
             }
             Err(error) if reader.kind != Kind::Config || reader.target == self.editor => {

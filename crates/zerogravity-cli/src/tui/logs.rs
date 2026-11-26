@@ -60,7 +60,7 @@ impl Logs {
     }
     pub fn heading(&self) -> String {
         format!(
-            "{} · level {} · component {} · search {}",
+            "{} · level {} · component {}",
             if self.following() {
                 "Following"
             } else {
@@ -68,11 +68,6 @@ impl Logs {
             },
             self.level.map_or("all", Level::label),
             self.component.map_or("all", Component::label),
-            if self.query.is_empty() {
-                "all"
-            } else {
-                &self.query
-            }
         )
     }
     pub fn lines(&self) -> Vec<String> {

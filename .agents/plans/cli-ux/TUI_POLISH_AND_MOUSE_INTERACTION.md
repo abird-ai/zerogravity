@@ -4,7 +4,7 @@ Author: Project owner
 Co-authors: GPT-6.2
 Owner: @pvl
 Decision: 26 Nov 2026 — polish before public serving
-Status: UX-P1/P2/P3 implemented and focused-qualified (26 Nov); P4A1 minimal presentation revision landed, P4A remaining ergonomics and P4B acceptance next.
+Status: UX-P1/P2/P3 implemented and focused-qualified; P4A1 minimal presentation and its toolbar-free/context/live-search revision landed (26 Nov). Remaining ergonomics P4A2, full acceptance P4B.
 
 This is the follow-on to the accepted UX-1–10 iteration at `1b8de1cb`.
 It supersedes only the relevant interaction/presentation details of
@@ -17,20 +17,41 @@ Complete it before §2.3 public serving/ordinary benchmarks.
 
 ## 1. Intent
 
-**26 Nov screenshot review — user-directed minimalism correction.**
-Full accessibility is not exhaustive visibility. Wide terminals must
-not fill available columns with redundant actions. The left rail owns
-visible destinations; global actions and secondary operations belong
-in More/F4, not another toolbar. The app header owns only brand and
-active profile; theme remains in Config/More/T. Default surfaces show
-meaningful current state and concise summaries, not policy slogans,
-repeated shortcuts, long exact IDs or raw bytes. Empty space is allowed.
-Retain one or two primary operations plus search where useful; at most
-three quick actions and More, independent of terminal width. No new
-dashboard/cards/extra UI layer. Render a compact Details action for
-selected observations; exact identity, full revisions, provenance,
-raw byte counts and last diagnostic results are on demand. Preserve
-all original keyboard and effect authorization paths.
+**26 Nov user-directed minimalism — toolbar-free, object-first.**
+Full accessibility is not exhaustive visibility. The left rail owns
+visible destinations; the header owns brand and active profile. No
+permanent action toolbar at any width. Searchable views have one inline
+search field at the top; ordinary printable characters (including
+former shortcuts and digits) focus and filter the current local list
+immediately. Ctrl-F focuses search, Ctrl-U clears, Esc clears active
+search, mouse caret/selection and bounded paste use the existing editor.
+Arrow keys select/scroll, Tab leaves search without discarding it.
+Filters stay with each view/shelf; no query triggers acquisition or
+execution. No second inventory, remote search or draft store.
+
+Selected model/registration/device/profile/setting row owns one
+ellipsis. Click selects; ellipsis or matching right-click release
+selects the exact row and opens the contextual menu without executing.
+Enter opens model/device/registration actions; profiles open their
+editor and Config retains direct YAML editing, with typed Edit in its
+menu. F4 is the same context menu; when the selected row is offscreen,
+collapsed or no row exists, one affordance is attached to the relevant
+pane. Home/Serve/Downloads/Logs use only the relevant pane menu.
+Cached snapshots offer Load/Run/Details/Inspect/Verify/Alias/Load for
+Serve/removal; catalog/partial expose only relevant pull/details
+actions, not cached execution/removal. Session menu in footer/F10
+holds Web, Appearance, Refresh and Quit. No duplicate action list,
+unnecessary new cards or persistent header controls. Exact identity,
+full revisions, provenance, raw byte counts and diagnostic receipts
+remain available on demand through Details.
+
+Keyboard conflict resolved deliberately: in searchable views every
+ordinary printable character is search text, not a command. Alt+1–9
+switches views, Alt+letter explicitly invokes existing operation
+shortcuts, F4/F10 open context/session, Ctrl-Q quits outside modal;
+F1/Alt+? help, Alt+: destination palette. Non-search views retain
+their ordinary shortcuts. Existing typed request/confirmation owners
+and press/release exact-scope revalidation remain authoritative.
 
 Human-readable memory/model/transfer sizes use automatic binary
 B/KiB/MiB/GiB/TiB/PiB/EiB (up to two decimals, no trailing zeros).
@@ -38,8 +59,8 @@ Exact bytes remain in technical details and unchanged machine-readable
 owner data. Unknown remains unknown. Do not infer verified payloads,
 model execution or remote freshness from cached metadata.
 
-This decision supersedes the earlier generous wide action strip and
-repeated key-hint/policy lines in §§4–6. Subsequent polish must preserve
+This decision supersedes the earlier wide and curated action strips,
+modal search and conflicting bare-letter shortcuts in §§4–6. Subsequent polish must preserve
 the restrained hierarchy, not spend newly available space on more chrome.
 
 
@@ -236,33 +257,33 @@ body text; do not interpret it as terminal escape sequences.
 Keep nine destinations and their existing key numbers. Group rail labels
 only when height permits: Workspace (Home, Running, Serve), Resources
 (Models, Downloads, Devices), Settings (Profiles, Config, Logs).
-Header: ZeroGravity / current view; active profile, compact appearance
-control and connection/owner status if space. Rail has one active marker.
-Workspace has one title and context actions, not a title inside a
-title. Footer: current operation/notice (higher priority than help),
-then compact context hints and clickable Help/Quit. No redundant
-navigation instructions in every content pane.
+Header: ZeroGravity and active profile. Rail has one active marker.
+Workspace has one title, inline search in searchable views and context
+actions attached to its selected row/pane. Footer: current operation
+or notice, compact hints, Session Menu and Help. No permanent toolbar.
 
 Representative wide view (not literal exact cell artwork):
 
 ~~~text
- ZeroGravity / Models                    laptop •     Theme: Auto ▾
+ ZeroGravity · default
 ───────────────────────────────────────────────────────────────────────
- WORKSPACE    │ Models                [ Cached ] Catalog  Partial
-   Home       │ Search models…                     [Pull model]
-   Running    │
-   Serve      │ NAME                  SIZE   STATUS │ Qwen3.5-0.8B
- RESOURCES    │ ▎ Qwen3.5-0.8B        0.5 G  Cached │ GGUF · snapshot
- ▎ Models     │   Qwen3.5-2B          1.4 G  Cached │ Source / digest
-   Downloads  │   …                                 │ Files / bytes
-   Devices    │                                     │ Verification
- SETTINGS     │                                     │
-   Profiles   │                                     │ [Load] [Run]
-   Config     │                                     │ [Verify] […]
-   Logs       │                                     │
+ Navigation   │ Search qwen                           ×
+   Home       │ Models
+   Running    │ Cached   Catalog   Partial   3 models
+   Serve      │ Name                       │ Selected
+ ● Models     │ > Qwen3.5-2B    4.26 GiB …  │ Qwen3.5-2B
+   Downloads  │   Qwen3.8-27B  51.77 GiB    │ Size: 4.26 GiB · 12 files
+   Devices    │   Qwen3.5-0.8B  1.65 GiB    │ Metadata only
+   Profiles   │                             │
+   Config     │                             │
+   Logs       │                             │
 ───────────────────────────────────────────────────────────────────────
- Ready · 2 cached models             Tab Focus  / Search  : Go to  ? Help
+ Ready                     F4 actions · Ctrl-Q quit      Menu …  ? Help
 ~~~
+
+Click the selected row ellipsis, right-click a row or press Enter to
+open the small exact-object menu. Details and all other operations are
+there, not repeated in the selected summary.
 
 The rail and list/detail boundary are draggable. Header maximize/restore
 and collapse/expand controls appear on meaningful panes, not on every
@@ -277,7 +298,7 @@ minima rather than hard width branches scattered in views:
 | 70–99 cols | Compact rail + primary; stack list/detail if enough height, else detail drill-in |
 | 100–139 cols | Rail + primary and contextual split when both fit; otherwise vertical/collapsed |
 | >=140 cols | Rail + list/workspace + detail where useful |
-| Short heights | Collapse chrome/action overflow, then secondary pane; no lost state |
+| Short heights | Collapse chrome, then secondary pane; no lost state |
 
 Initial rail 22 cols (compact ~18, clamp min 15/max 32); list/details
 default ~55/45 with list min 32, detail min 28 cells; vertical split
@@ -377,17 +398,23 @@ sufficient. Keyboard equivalent for all controls.
   matching destinations and Appearance/Help shortcuts, not a second
   command interpreter.
 
-### 5.3 Responsive action bar
+### 5.3 Contextual actions and inline search
 
-Every action currently exposed solely by key hints gets a visible labeled
-button, tab, menu item or picker. Per the screenshot review, both wide
-and narrow bars show a curated subset (at most three quick actions)
-plus one `More…` button, not every action that happens to fit. More/F4
-remains fully mouse/keyboard accessible. Click hitbox includes padding and label,
-not just a glyph. Context hints (shortcut next to action) replace repeated
-long key lists. Keep action visibility and enabled predicate from the
-original typed owner/status/selection, not a parallel policy table.
-Unavailable optional feature has clear state and no fake enabled button.
+No toolbar. One selected-row ellipsis (or a pane-context affordance
+when no visible selected row), matching right-click release and F4
+all open the same compact context menu with exact observed identity.
+Session controls are in a single footer menu (F10). Click hitboxes
+include padding and label. Keep original bound action predicates and
+fresh dispatch validation; pointer motion and selection remain inert.
+Unavailable operations are either omitted as inapplicable or visibly
+disabled with the selected reason, never fake enabled buttons.
+
+Inline local search replaces the old search form: current list filters
+on every edit, preserve exact selected key if still visible, otherwise
+reconcile to a visible row or none. Render-derived editor geometry
+owns input. Printable chars in searchable views cannot execute or
+navigate; Alt shortcuts and existing modal keyboard ownership are
+explicit. Preserve per-shelf query without duplicating inventory.
 
 ## 6. View-by-view design
 
@@ -396,7 +423,7 @@ Unavailable optional feature has clear state and no fake enabled button.
 | Home | Compact live overview: resident models, API listener, active transfer, profile. Quick Run, Load, Open Models, Start/Manage Serve, Open Web, refresh/help. Click status summary navigates to related view. Empty state explains next action. | No auto-load/serve/pull; status is current snapshot. |
 | Running | Registration list + selected owner details and task response. Click selects exact registration; Load, Invoke, Unload/Retire, Cancel active action, chat/raw selector, prompt Send, copyable identity. Independent response scrolling/follow. | Selected owner is not a new registration. Unload confirmation and cancellation use exact original IDs. No persistence of prompts/output or new history. |
 | Serve | Listener status/address, registered routes, counters, selected policy; explicit Start (form), Stop (exact generation), Open Web, Manage Models. Show disabled reasons and terminal join status. | No implicit listener on selection; no server config change applies to an admitted listener. Don't expose inference key. |
-| Models | Click Cached/Catalog/Partial tabs, local search/filter, exact row selection, details with source/digest/verification/bytes. Load, Run, Load for Serve, Pull, Verify, Alias, Reclaim preview/Remove via action bar. | Static catalog not remote search/readiness; no implicit acquisition. Partial controls only if original owner supports them. Remove exact digest, preview and confirm. |
+| Models | Click Cached/Catalog/Partial tabs, local search/filter, exact row selection, details with source/digest/verification/bytes. Load, Run, Load for Serve, Pull, Verify, Alias, Reclaim preview/Remove via the exact selected-row context menu. | Static catalog not remote search/readiness; no implicit acquisition. Partial controls only if original owner supports them. Remove exact digest, preview and confirm. |
 | Downloads | Operation and phase, observed vs durable/checkpoint bytes, known-total progress (indeterminate otherwise), file counts/status. Pause/Resume/Cancel buttons gated by exact live operation; transfer remains visible while browsing other pages. | Preserve original safe-pause vs request distinction. No synthetic progress, no duplicate transfer scheduler. |
 | Devices | Observed physical rows, vendor/class and memory, stable selector and backend metadata/exclusion; click details, Check model policy and Load on selected device via form. | Only observed hardware names/data. Cold fit is not admission. Original device/source planner unchanged. |
 | Profiles | Active marker separate from selected row; click selects, Open editor, Create, Copy, Activate, Remove (confirm). Show defaults and relative path context. | Open inert; activation affects future operations only. Original exact document/path guards. |
@@ -594,6 +621,27 @@ not mark an untested or interrupted phase accepted.
     native-only 8 GiB envelope refusal (7188 MiB available after headroom)
     block final real cached-owner acceptance. No reduced envelope or
     unrelated job cleanup. Rerun on recovered host in P4A2/P4B.
+  - [x] P4A1 follow-up: user explicitly rejected even a curated
+    toolbar. Remove action_bar and modal Search path; inline grapheme
+    filter on Models (per shelf), Devices, Profiles, Config, Running
+    and Logs. Reuse original Rows indices for Config; no filtered
+    copies of inventory. Every printable key is filter input in list
+    views; Ctrl-F/U/Esc and mouse editor/clear; Alt explicit shortcuts,
+    F1/F4/F10 and Ctrl-Q. Selected-row ellipsis and exact right-click
+    release select and open a compact object context; no effects on
+    selection. Cached/candidate/partial action sets differ, all original
+    effects remain under typed bound dispatch. No-row/offscreen/collapsed
+    fallback is attached to pane. Separate session footer menu; no
+    duplicated global controls or technical data. Actual rendered cell
+    check and right-click/search guard tests, strict feature lint,
+    88/0/3 optimized Rust, native mouse/context/editor/settings/theme/
+    shell and controlled transfer PTY pass. Real approved cached Qwen
+    CPU/browser/native/HTTP 1/0/0 (57.77s, five filtered), original 8 GiB
+    admission and exact output, context cache/run/listener operations,
+    shared settings/stale refusal pass; prior memory blocker cleared.
+    Actual attached Firefox/native transfer durable and cancelled pass;
+    exact default CPU/TUI/Web release and native PTY pass.
+    No new dependency or runtime/authority changes. Earlier P4A1 toolbar guidance superseded.
   Remaining coherent exit slices: P4A2 ergonomics/visual review
   (stable item/log/output anchors across refresh/resize/reorder, distinct
   Running selected-detail/output affordance, safe log-row detail, compact

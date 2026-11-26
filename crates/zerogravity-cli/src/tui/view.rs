@@ -49,10 +49,22 @@ impl View {
         Self::Config,
         Self::Logs,
     ];
+    pub fn library(self) -> Option<Kind> {
+        match self {
+            Self::Models => Some(Kind::Models),
+            Self::Devices => Some(Kind::Devices),
+            Self::Profiles => Some(Kind::Profiles),
+            Self::Config => Some(Kind::Config),
+            _ => None,
+        }
+    }
+    pub fn searchable(self) -> bool {
+        self.library().is_some() || matches!(self, Self::Logs | Self::Running)
+    }
     fn index(self) -> usize {
         self as usize
     }
-    fn name(self) -> &'static str {
+    pub fn name(self) -> &'static str {
         [
             "Home",
             "Running",
@@ -127,9 +139,6 @@ pub(super) enum FormKind {
     RawYaml {
         file: Snapshot,
     },
-    Search {
-        view: View,
-    },
 }
 #[derive(Debug, PartialEq, Eq)]
 pub(super) struct Form {
@@ -151,7 +160,6 @@ impl Form {
             FormKind::ConfigValue { .. } | FormKind::RawYaml { .. } => {
                 zerogravity::pipelines::MAX_CONFIG_BYTES
             }
-            FormKind::Search { .. } => 256,
             _ => 32 * 1024,
         }
     }
@@ -200,6 +208,8 @@ pub(super) struct Navigation {
     pointer: Pointer,
     too_small: bool,
     split_visible: bool,
+    search: Option<Editor>,
+    search_width: u16,
     modal: Modal,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -215,7 +225,6 @@ pub(super) enum LibraryAction {
     Run,
     Pull,
     Fit,
-    Search,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum DownloadAction {
@@ -237,7 +246,6 @@ pub(super) enum SettingsAction {
     Unset,
     RawView,
     RawEdit,
-    Search,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum LogAction {
@@ -248,7 +256,6 @@ pub(super) enum LogAction {
     PickComponent,
     SetLevel(Option<crate::control_host::logs::Level>),
     SetComponent(Option<crate::control_host::logs::Component>),
-    Search,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -257,6 +264,10 @@ pub(super) enum Action {
     Open,
     ShowDetails,
     OpenActions,
+    OpenSessionMenu,
+    RowActions(Kind, Key),
+    OwnerActions(Owner),
+    Search(SearchEdit),
     Bound(Bound),
     FollowOutput,
     Refresh,
@@ -281,12 +292,74 @@ pub(super) enum Action {
     Confirmed(Confirmation),
 }
 
+/// Text input is interpreted only by the inline filter, never as an
+/// operation shortcut. Actual query storage remains with each observed list.
+#[derive(Debug, PartialEq, Eq)]
+pub(super) enum SearchEdit {
+    Focus,
+    Insert(String),
+    Delete(bool),
+    Move(bool, bool),
+    Edge(bool, bool),
+    Point {
+        start: usize,
+        end: usize,
+        column: u16,
+        extend: bool,
+    },
+    Clear,
+    Escape,
+}
+
 impl Navigation {
     pub fn view(&self) -> View {
         self.view
     }
+    pub fn inline_search(&self) -> bool {
+        self.idle() && self.view.searchable() && self.search.is_some()
+    }
+    pub fn edit_search(&mut self, value: &mut String, edit: SearchEdit) -> bool {
+        if !self.idle() || !self.view.searchable() {
+            return false;
+        }
+        if self.search.is_none() {
+            self.focus(Pane::Main);
+            self.search = Some(Editor::new(value, value.len()));
+        }
+        let editor = self.search.as_mut().expect("focused search");
+        let escape = edit == SearchEdit::Escape;
+        match edit {
+            SearchEdit::Focus => {}
+            SearchEdit::Insert(text) => {
+                if text.chars().any(char::is_control) {
+                    return false;
+                }
+                if !editor.replace(value, &text, 256) {
+                    return false;
+                }
+            }
+            SearchEdit::Delete(backward) => editor.delete(value, backward),
+            SearchEdit::Move(right, extend) => editor.move_horizontal(value, right, extend),
+            SearchEdit::Edge(end, extend) => editor.edge(value, end, true, extend),
+            SearchEdit::Point {
+                start,
+                end,
+                column,
+                extend,
+            } => {
+                editor.measure(value, self.search_width.max(1), 1);
+                editor.point(value, start..end, column, extend);
+            }
+            SearchEdit::Clear | SearchEdit::Escape => editor.clear(value),
+        }
+        if escape {
+            self.search = None;
+        }
+        true
+    }
     pub fn details(&mut self, title: String, lines: Vec<String>) {
         self.pointer.cancel();
+        self.search = None;
         self.modal = Modal::Details {
             title,
             lines,
@@ -295,6 +368,7 @@ impl Navigation {
     }
     pub fn menu(&mut self, menu: Menu) {
         self.pointer.cancel();
+        self.search = None;
         self.modal = Modal::Menu(menu);
     }
     pub fn following_output(&self) -> bool {
@@ -338,6 +412,7 @@ impl Navigation {
             value.len()
         };
         self.pointer.cancel();
+        self.search = None;
         self.modal = Modal::Form {
             editor: Editor::new(&value, cursor),
             form: Form { kind, value },
@@ -353,6 +428,7 @@ impl Navigation {
         if key == "ui.theme" {
             let choice = serde_yaml::from_str(&value).unwrap_or_default();
             self.pointer.cancel();
+            self.search = None;
             self.modal = Modal::Theme { file, choice };
         } else {
             self.form_value(FormKind::ConfigValue { file, key }, value);
@@ -368,6 +444,7 @@ impl Navigation {
     ) {
         if let Some(index) = choices.iter().position(|choice| *choice == effective) {
             self.pointer.cancel();
+            self.search = None;
             self.modal = Modal::Choice(Picker::setting(file, key, choices, index));
         } else {
             // A custom value (e.g. draft:MODEL) is not coerced into a
@@ -377,10 +454,12 @@ impl Navigation {
     }
     pub fn pick_level(&mut self, level: Option<crate::control_host::logs::Level>) {
         self.pointer.cancel();
+        self.search = None;
         self.modal = Modal::Choice(Picker::level(level));
     }
     pub fn pick_component(&mut self, component: Option<crate::control_host::logs::Component>) {
         self.pointer.cancel();
+        self.search = None;
         self.modal = Modal::Choice(Picker::component(component));
     }
     fn choice_yaml(&mut self) -> Action {
@@ -404,10 +483,12 @@ impl Navigation {
     #[cfg(feature = "web")]
     pub fn web_url(&mut self, url: String) {
         self.pointer.cancel();
+        self.search = None;
         self.modal = Modal::WebUrl(url);
     }
     pub fn confirm(&mut self, question: String, action: Confirmation) {
         self.pointer.cancel();
+        self.search = None;
         self.modal = Modal::Confirm {
             question,
             action,
@@ -418,6 +499,7 @@ impl Navigation {
         self.workspace.focus == Pane::Rail
     }
     fn focus(&mut self, pane: Pane) {
+        self.search = None;
         self.workspace.focus(self.view.index(), pane);
         if pane == Pane::Rail {
             self.workspace
@@ -474,6 +556,13 @@ impl Navigation {
                 if let Modal::Form { form, editor } = &mut self.modal {
                     editor.point(&form.value, start..end, column, extend);
                     Some(Action::Redraw)
+                } else if self.idle() && self.view.searchable() {
+                    Some(Action::Search(SearchEdit::Point {
+                        start,
+                        end,
+                        column,
+                        extend,
+                    }))
                 } else {
                     None
                 }
@@ -515,6 +604,18 @@ impl Navigation {
                 Some(Action::Redraw)
             }
             Intent::Scroll(pane, motion) if self.idle() => Some(Action::Scroll(pane, motion)),
+            Intent::Context(target) if self.idle() => {
+                self.search = None;
+                match target {
+                    Target::Row(kind, key) | Target::RowMenu(kind, key) => {
+                        Some(Action::RowActions(kind, key))
+                    }
+                    Target::Owner(owner) | Target::OwnerMenu(owner) => {
+                        Some(Action::OwnerActions(owner))
+                    }
+                    _ => None,
+                }
+            }
             Intent::Click(target) => {
                 // A modal registers only its own visible targets. No backdrop
                 // click can select an underlying model or approve a mutation.
@@ -567,7 +668,24 @@ impl Navigation {
                 }
                 Some(match target {
                     Target::Navigate(view) => self.open(view),
-                    Target::More => Action::OpenActions,
+                    Target::More => {
+                        self.search = None;
+                        Action::OpenActions
+                    }
+                    Target::SessionMenu => {
+                        self.search = None;
+                        Action::OpenSessionMenu
+                    }
+                    Target::SearchFocus => Action::Search(SearchEdit::Focus),
+                    Target::SearchClear => Action::Search(SearchEdit::Clear),
+                    Target::RowMenu(kind, key) => {
+                        self.focus(Pane::Main);
+                        Action::RowActions(kind, key)
+                    }
+                    Target::OwnerMenu(owner) => {
+                        self.focus(Pane::Main);
+                        Action::OwnerActions(owner)
+                    }
                     Target::Command(bound) => Action::Bound(bound),
                     Target::Navigation => {
                         self.focus(if self.rail() {
@@ -582,6 +700,7 @@ impl Navigation {
                         Action::Redraw
                     }
                     Target::Maximize(pane) => {
+                        self.search = None;
                         self.workspace.toggle_maximize(self.view.index(), pane);
                         Action::Redraw
                     }
@@ -598,11 +717,8 @@ impl Navigation {
                         Action::Library(LibraryAction::SelectShelf(shelf))
                     }
                     Target::Help => {
+                        self.search = None;
                         self.modal = Modal::Help;
-                        Action::Redraw
-                    }
-                    Target::Palette => {
-                        self.modal = Modal::Palette(Palette::default());
                         Action::Redraw
                     }
                     _ => return None,
@@ -639,6 +755,7 @@ impl Navigation {
 
     pub fn open(&mut self, view: View) -> Action {
         self.pointer.cancel();
+        self.search = None;
         self.view = view;
         self.cursor = view.index();
         self.workspace.focus = self.workspace.preferred_focus(view.index());
@@ -735,7 +852,7 @@ impl Navigation {
             }
             Modal::Menu(menu) => {
                 match key.code {
-                    Esc | F(4) => {
+                    Esc | F(4) | F(10) => {
                         return self.dismiss_modal();
                     }
                     Enter if key.kind == crossterm::event::KeyEventKind::Press => {
@@ -860,6 +977,44 @@ impl Navigation {
             }
             Modal::None => {}
         }
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        let alt = key.modifiers.contains(KeyModifiers::ALT);
+        let shift = key.modifiers.contains(KeyModifiers::SHIFT);
+        if ctrl && key.code == Char('q') {
+            return Action::Quit;
+        }
+        if self.view.searchable() {
+            let editing = self.search.is_some();
+            let edit = match key.code {
+                Char('f') if ctrl && !alt => Some(SearchEdit::Focus),
+                Char('u') if ctrl && editing => Some(SearchEdit::Clear),
+                Char('a' | 'e') if ctrl && editing => {
+                    Some(SearchEdit::Edge(key.code == Char('e'), shift))
+                }
+                Esc if editing => Some(SearchEdit::Escape),
+                Left | Right if editing && !ctrl && !alt => {
+                    Some(SearchEdit::Move(key.code == Right, shift))
+                }
+                Home | End if editing && !alt => Some(SearchEdit::Edge(key.code == End, shift)),
+                Backspace | Delete if !alt && !ctrl => {
+                    Some(SearchEdit::Delete(key.code == Backspace))
+                }
+                Char(c) if !ctrl && !alt && !c.is_control() => {
+                    Some(SearchEdit::Insert(c.to_string()))
+                }
+                _ => None,
+            };
+            if let Some(edit) = edit {
+                return Action::Search(edit);
+            }
+            if editing && key.code == Tab {
+                self.search = None;
+                return Action::Redraw;
+            }
+            // Arrow navigation, menu, Alt commands and explicit view changes
+            // leave the inline field but retain the live filter.
+            self.search = None;
+        }
         let pane = self.workspace.focus;
         if key.modifiers.contains(KeyModifiers::CONTROL) {
             let split = match key.code {
@@ -879,8 +1034,16 @@ impl Navigation {
                 .adjust(SplitKind::Rail, if key.code == Left { -1 } else { 1 });
             return Action::Redraw;
         }
+        if ctrl && matches!(key.code, Char(_)) {
+            return Action::Redraw;
+        }
         match key.code {
+            F(1) => {
+                self.modal = Modal::Help;
+                Action::Redraw
+            }
             F(4) => Action::OpenActions,
+            F(10) => Action::OpenSessionMenu,
             F(9) => Action::FollowOutput,
             F(6) if self.workspace.has_detail => {
                 self.focus(if pane == Pane::Detail {
@@ -909,7 +1072,7 @@ impl Navigation {
             End => Action::Scroll(pane, Motion::End),
             Up | Char('k') if pane == Pane::Detail => Action::Scroll(pane, Motion::Step(-1)),
             Down | Char('j') if pane == Pane::Detail => Action::Scroll(pane, Motion::Step(1)),
-            Enter if pane == Pane::Detail => Action::Redraw,
+            Enter if pane == Pane::Detail => Action::OpenActions,
             Char('q') => Action::Quit,
             Char('T') => Action::Appearance,
             Char('D')
@@ -955,16 +1118,9 @@ impl Navigation {
             Char('w') if !self.rail() && self.view == View::Config => {
                 Action::Settings(SettingsAction::RawEdit)
             }
-            Char('/') if !self.rail() && self.view == View::Models => {
-                Action::Library(LibraryAction::Search)
-            }
             Char('e') if !self.rail() && self.view == View::Config => {
                 Action::Settings(SettingsAction::Choose)
             }
-            Char('/') if !self.rail() && self.view == View::Config => {
-                Action::Settings(SettingsAction::Search)
-            }
-            Char('/') if !self.rail() && self.view == View::Logs => Action::Logs(LogAction::Search),
             Char('p') if !self.rail() && self.view == View::Logs => Action::Logs(LogAction::Follow),
             Char('l') if !self.rail() && self.view == View::Logs => {
                 Action::Logs(LogAction::PickLevel)
@@ -976,7 +1132,7 @@ impl Navigation {
             Char('F') if !self.rail() && self.view == View::Logs => {
                 Action::Logs(LogAction::Component)
             }
-            Char('b') if !self.rail() && matches!(self.view, View::Home | View::Serve) => {
+            Char('b') if alt || (!self.rail() && matches!(self.view, View::Home | View::Serve)) => {
                 Action::OpenWeb
             }
             Char('d') if !self.rail() && matches!(self.view, View::Models | View::Downloads) => {
@@ -994,11 +1150,16 @@ impl Navigation {
             Char('m') if !self.rail() && self.view == View::Models => {
                 Action::Library(LibraryAction::Cycle)
             }
-            Enter | Char('i')
-                if !self.rail() && matches!(self.view, View::Models | View::Devices) =>
+            Enter
+                if !self.rail()
+                    && matches!(self.view, View::Models | View::Devices | View::Logs) =>
             {
+                Action::OpenActions
+            }
+            Char('i') if !self.rail() && matches!(self.view, View::Models | View::Devices) => {
                 Action::Library(LibraryAction::Inspect)
             }
+
             Char('v') if !self.rail() && self.view == View::Models => {
                 Action::Library(LibraryAction::Verify)
             }
@@ -1031,6 +1192,7 @@ impl Navigation {
             {
                 Action::Load
             }
+            Enter if !self.rail() && self.view == View::Running => Action::OpenActions,
             Enter | Char('p')
                 if !self.rail() && matches!(self.view, View::Home | View::Running) =>
             {
@@ -1330,6 +1492,9 @@ fn content(app: &App, theme: Theme) -> Content {
                 runtime.status.loaded_owners
             )));
             for model in &runtime.catalog {
+                if !app.owner_matches(&model.aliases) {
+                    continue;
+                }
                 if model.lifecycle == zerogravity::models::ModelLifecycle::Ready
                     && let Some(alias) = model.aliases.first()
                 {
@@ -1357,6 +1522,9 @@ fn content(app: &App, theme: Theme) -> Content {
                 } else {
                     line
                 });
+            }
+            if !app.running_query.is_empty() && rows.len() == 1 {
+                rows.push(text("No matches").style(theme.muted()));
             }
             detail_at = Some(rows.len());
             if let Some(selected) = &app.selected
@@ -1399,8 +1567,9 @@ fn content(app: &App, theme: Theme) -> Content {
                                 admission,
                                 resident_bytes,
                             } => rows.push(text(format!(
-                                "Device: {} · {} resident bytes",
-                                admission.device.device, resident_bytes
+                                "Device: {} · {} resident",
+                                admission.device.device,
+                                format::bytes(*resident_bytes as u64)
                             ))),
                         }
                     }
@@ -1556,56 +1725,37 @@ fn control(
         Some(target),
     );
 }
-fn action_bar(frame: &mut Frame<'_>, area: Rect, app: &mut App, theme: Theme) {
-    let scope = std::rc::Rc::new(Scope::capture(app));
-    let buttons = scope.buttons();
-    frame.render_widget(Block::default().style(theme.surface()), area);
-    let more = " More… ";
-    let more_width = more.chars().count() as u16;
-    if area.width < more_width {
+/// A context affordance when the selected row menu is not visible.
+fn pane_actions(frame: &mut Frame<'_>, nav: &mut Navigation, theme: Theme, area: Rect) {
+    if area.is_empty() {
         return;
     }
-    let more_rect = Rect::new(area.right() - more_width, area.y, more_width, area.height);
-    let mut x = area.x;
-    let mut primary = true;
-    for item in buttons.into_iter().filter(|item| scope.quick(item.command)) {
-        // Availability never changes a button's geometry.
-        let title = format!(
-            "{}{} ",
-            if item.disabled.is_some() { "×" } else { " " },
-            item.label
-        );
-        let width = title.chars().count() as u16;
-        if x.saturating_add(width) >= more_rect.x {
-            break;
-        }
-        let enabled = item.disabled.is_none();
-        let style = if !enabled {
-            theme.raised().patch(theme.muted())
-        } else if primary {
-            primary = false;
-            theme.primary()
-        } else {
-            theme.raised()
-        };
-        button(
+    let reserved = if !nav.workspace.has_detail || area.width < 20 {
+        0
+    } else if nav.split_visible {
+        5
+    } else if area.width >= 33 {
+        13
+    } else {
+        9
+    };
+    let remaining = area.width.saturating_sub(reserved);
+    let title = if remaining >= 26 {
+        " Actions… "
+    } else {
+        " … "
+    };
+    let width = title.chars().count() as u16;
+    if remaining >= width + 8 {
+        control(
             frame,
-            &mut app.navigation.hits,
-            Rect::new(x, area.y, width, 1),
-            &title,
-            style,
-            enabled.then(|| Target::Command(Bound::new(item.command, &scope))),
+            nav,
+            theme,
+            Rect::new(area.right() - reserved - width, area.y, width, 1),
+            title,
+            Target::More,
         );
-        x += width + 1;
     }
-    control(
-        frame,
-        &mut app.navigation,
-        theme,
-        more_rect,
-        more,
-        Target::More,
-    );
 }
 /// Render only buttons which actually fit. The explicit confirm is never
 /// the default key action of a destructive confirmation.
@@ -1813,6 +1963,7 @@ fn render_editor(
     area: Rect,
     value: &str,
     editor: &mut Editor,
+    show_cursor: bool,
 ) {
     if area.is_empty() {
         return;
@@ -1867,7 +2018,7 @@ fn render_editor(
     }
     frame.render_widget(Paragraph::new(lines).style(theme.raised()), body);
     let (row, col) = layout.position(value, editor.caret);
-    if let Some(rect) = row_rect(body, row, viewport.offset) {
+    if show_cursor && let Some(rect) = row_rect(body, row, viewport.offset) {
         frame.set_cursor_position((rect.x + col.min(body.width - 1), rect.y));
     }
     let track = Rect::new(body.right(), body.y, 1, body.height);
@@ -1883,6 +2034,62 @@ fn render_editor(
                 });
         }
         hits.add(track, Target::EditorBar(bar));
+    }
+}
+
+fn render_search(frame: &mut Frame<'_>, area: Rect, app: &mut App, theme: Theme) {
+    if area.is_empty() || area.width < 12 {
+        return;
+    }
+    let value = app.search_query().to_owned();
+    let focused = app.navigation.inline_search();
+    let clear_width = if value.is_empty() || area.width < 16 {
+        0
+    } else {
+        4
+    };
+    let [label, field, clear] = Layout::horizontal([
+        Constraint::Length(8),
+        Constraint::Min(1),
+        Constraint::Length(clear_width),
+    ])
+    .areas(area);
+    frame.render_widget(
+        Paragraph::new(" Search ").style(if focused {
+            theme.accent()
+        } else {
+            theme.muted()
+        }),
+        label,
+    );
+    app.navigation.hits.add(label, Target::SearchFocus);
+    let mut inactive = Editor::new(&value, value.len());
+    app.navigation.search_width = field.width.saturating_sub(1);
+    let editor = app.navigation.search.as_mut().unwrap_or(&mut inactive);
+    render_editor(
+        frame,
+        &mut app.navigation.hits,
+        theme,
+        field,
+        &value,
+        editor,
+        focused,
+    );
+    if value.is_empty() && !focused {
+        frame.render_widget(
+            Paragraph::new("Type to filter…").style(theme.raised().patch(theme.muted())),
+            field,
+        );
+    }
+    if clear_width > 0 {
+        control(
+            frame,
+            &mut app.navigation,
+            theme,
+            clear,
+            " × ",
+            Target::SearchClear,
+        );
     }
 }
 
@@ -1942,11 +2149,16 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
         render_rail(frame, rail, app, theme);
     }
     if !workspace.is_empty() {
-        let [actions, content] =
-            Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).areas(workspace);
-        action_bar(frame, actions, app, theme);
+        let [search, content] = Layout::vertical([
+            Constraint::Length(u16::from(app.navigation.view.searchable())),
+            Constraint::Min(0),
+        ])
+        .areas(workspace);
         if !content.is_empty() {
             render_workspace(frame, content, app, theme);
+        }
+        if !search.is_empty() {
+            render_search(frame, search, app, theme);
         }
     }
     divider(frame, &mut app.navigation, theme, track);
@@ -1990,12 +2202,17 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
     }
     frame.render_widget(
         Paragraph::new(vec![
-            text("Tab focus  ·  F4 More  ·  q quit").style(theme.muted()),
+            text(if app.navigation.view.searchable() {
+                "Type to search  ·  F4 actions  ·  Ctrl-Q quit"
+            } else {
+                "F4 actions  ·  Ctrl-Q quit"
+            })
+            .style(theme.muted()),
         ])
         .style(theme.surface()),
         Rect::new(footer.x, footer.y + 1, footer.width, 1),
     );
-    if footer.width >= 44 {
+    if footer.width >= 20 {
         let y = footer.bottom() - 1;
         control(
             frame,
@@ -2005,16 +2222,14 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
             " ? Help ",
             Target::Help,
         );
-        if area.width < 70 {
-            control(
-                frame,
-                &mut app.navigation,
-                theme,
-                Rect::new(footer.right() - 16, y, 8, 1),
-                " : Go   ",
-                Target::Palette,
-            );
-        }
+        control(
+            frame,
+            &mut app.navigation,
+            theme,
+            Rect::new(footer.right() - 16, y, 8, 1),
+            " Menu … ",
+            Target::SessionMenu,
+        );
     }
     if !app.navigation.idle() {
         app.navigation.hits.clear();
@@ -2061,24 +2276,21 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
             frame.render_widget(
                 Paragraph::new(vec![
                     label("Navigation", theme),
-                    text("1–9     Open a view"),
-                    text("Tab     Switch navigation/workspace"),
-                    text("↑ ↓ j k Move/scroll"),
-                    text("Enter   Open view / run"),
-                    text("l       Load on Home / Running / Serve"),
-                    text("u       Retire selected Running registration"),
-                    text("s / t   Start / stop listener on Serve"),
-                    text("b       Web control URL on Home / Serve"),
-                    text("c       Request cancellation"),
-                    text(":       Destination palette"),
-                    text("r       Refresh observations"),
-                    text("T       Appearance setting (Auto / Dark / Light)"),
-                    text("Config: e typed picker · Enter YAML value · F2 YAML"),
-                    text("Editor: click caret · drag/Shift+arrows select · PgUp/PgDn"),
-                    text("F4 actions · F6 panes · F7 maximize · F8 mouse"),
+                    text("Alt+1–9   Views · Alt+: go to view"),
+                    text("Tab       Cycle pane focus"),
+                    text("↑ ↓       Select / scroll"),
+                    text("Type      Live filter in list views"),
+                    text("Ctrl-F    Focus search · Esc clear"),
+                    text("Enter     Selected model / device actions"),
+                    text("          Open profile or edit setting"),
+                    text("F4 / …    Context actions · right-click row"),
+                    text("F10       Session menu · Web / theme / refresh"),
+                    text("Alt+key   Listed operation shortcuts"),
+                    text("F6 panes · F7 maximize · F8 mouse"),
                     text("Alt+←/→ rail · Ctrl+arrows split size"),
-                    text("Esc     Back / close overlay"),
-                    text("q       Quit · Ctrl-C cancel/quit"),
+                    text("Editor    Drag or Shift+arrows select"),
+                    text("Esc       Back / close dialog"),
+                    text("Ctrl-Q    Quit · Ctrl-C cancel / quit"),
                 ])
                 .wrap(Wrap { trim: false }),
                 content,
@@ -2112,11 +2324,15 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
         Modal::Menu(menu) => {
             let popup = center(
                 body,
-                72,
-                (menu.buttons.len().saturating_add(4)).min(26) as u16,
+                56,
+                (menu.buttons.len().saturating_add(4)).clamp(7, 26) as u16,
             );
             frame.render_widget(Clear, popup);
-            let block = dialog(" Actions ", theme);
+            let title = format!(
+                " Actions · {} ",
+                truncate_cells(&menu.title, popup.width.saturating_sub(14) as usize)
+            );
+            let block = dialog(&title, theme);
             let inner = block.inner(popup);
             frame.render_widget(block, popup);
             let [list, reason, footer] = Layout::vertical([
@@ -2147,7 +2363,13 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
                 };
                 let available = current && item.disabled.is_none();
                 let selected = menu.cursor == index;
-                let mut title = format!(
+                let shortcut = if app.navigation.view.searchable() && item.key.chars().count() == 1
+                {
+                    format!("Alt+{}", item.key)
+                } else {
+                    item.key.to_owned()
+                };
+                let title = format!(
                     "{} {}  ({})",
                     if !available {
                         "-"
@@ -2157,12 +2379,8 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
                         " "
                     },
                     item.label,
-                    item.key
+                    shortcut
                 );
-                if let Some(reason) = item.disabled {
-                    title.push_str(" · ");
-                    title.push_str(reason);
-                }
                 let style = if !available {
                     theme.muted()
                 } else if selected {
@@ -2179,7 +2397,9 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
                     available.then(|| Target::Command(Bound::new(item.command, &menu.scope))),
                 );
             }
-            let message = if !current {
+            let message = if menu.buttons.is_empty() {
+                "No available actions"
+            } else if !current {
                 "Observations changed; reopen actions"
             } else {
                 menu.buttons
@@ -2371,11 +2591,6 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
                     "Ctrl-S validates and saves; Enter newline, Tab two spaces, Ctrl-U clear, Esc discard.",
                     "",
                 ),
-                FormKind::Search { .. } => (
-                    " Search ",
-                    "Search visible rows by text. Empty clears the filter.",
-                    "",
-                ),
             };
             let title = match &form.kind {
                 FormKind::ConfigValue { file, .. } | FormKind::RawYaml { file } => {
@@ -2419,11 +2634,11 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
                 input,
                 &form.value,
                 editor,
+                true,
             );
             let accept = match form.kind {
                 FormKind::RawYaml { .. } => " Ctrl-S save ",
                 FormKind::Prompt { .. } => " Enter send ",
-                FormKind::Search { .. } => " Enter search ",
                 FormKind::ConfigValue { .. } => " Enter save ",
                 _ => " Enter accept ",
             };
@@ -2433,7 +2648,7 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
                 theme,
                 controls,
                 (accept, " Esc cancel "),
-                !busy || matches!(form.kind, FormKind::Search { .. }),
+                !busy,
                 false,
             );
             if !mode.is_empty() {
@@ -2647,11 +2862,7 @@ fn render_library(frame: &mut Frame<'_>, area: Rect, app: &mut App, kind: Kind, 
     let inner = block.inner(area);
     frame.render_widget(block, area);
     let collection = app.library.rows(kind);
-    let query = if kind == Kind::Config {
-        &app.library.query
-    } else {
-        collection.query()
-    };
+    let query = collection.query();
     let count = collection.visible().len();
     let mut status = match kind {
         Kind::Models => format!("{count} models"),
@@ -2668,9 +2879,6 @@ fn render_library(frame: &mut Frame<'_>, area: Rect, app: &mut App, kind: Kind, 
         Kind::Profiles => format!("{count} profiles"),
         Kind::Devices => format!("{count} devices"),
     };
-    if !query.is_empty() {
-        status.push_str(&format!(" · Search: {query}"));
-    }
     if let Some(notice) = app.library.notice(kind) {
         status.push_str(&format!(" · {notice}"));
     } else if kind == Kind::Models && app.document.snapshot().offline {
@@ -2701,6 +2909,19 @@ fn render_library(frame: &mut Frame<'_>, area: Rect, app: &mut App, kind: Kind, 
             app.navigation.hits.add(rect, Target::Shelf(shelf));
             x += width + 1;
         }
+    }
+    if kind == Kind::Models && head.height > 0 && head.width < 30 {
+        let title = format!(" {:?} › ", app.library.shelf);
+        let width = (title.chars().count() as u16).min(head.width);
+        control(
+            frame,
+            &mut app.navigation,
+            theme,
+            Rect::new(x, head.y, width, 1),
+            &title,
+            Target::Shelf(app.library.shelf.next()),
+        );
+        x += width + 1;
     }
     if x < head.right() {
         frame.render_widget(
@@ -2740,7 +2961,7 @@ fn render_library(frame: &mut Frame<'_>, area: Rect, app: &mut App, kind: Kind, 
         lines.push(item_line(
             &row.title,
             annotation,
-            list.width.saturating_sub(2),
+            list.width.saturating_sub(6),
             selected,
             theme,
         ));
@@ -2760,6 +2981,7 @@ fn render_library(frame: &mut Frame<'_>, area: Rect, app: &mut App, kind: Kind, 
             .style(theme.muted()),
         );
     }
+    let mut menu_visible = false;
     if !list.is_empty() {
         let inner = pane_body(
             frame,
@@ -2792,6 +3014,18 @@ fn render_library(frame: &mut Frame<'_>, area: Rect, app: &mut App, kind: Kind, 
                 app.navigation
                     .hits
                     .add(rect, Target::Row(kind, key.clone()));
+                if collection.selected.as_ref() == Some(key) && rect.width >= 7 {
+                    let menu = Rect::new(rect.right() - 4, rect.y, 4, 1);
+                    control(
+                        frame,
+                        &mut app.navigation,
+                        theme,
+                        menu,
+                        " … ",
+                        Target::RowMenu(kind, key.clone()),
+                    );
+                    menu_visible = true;
+                }
             }
         }
     }
@@ -2830,26 +3064,9 @@ fn render_library(frame: &mut Frame<'_>, area: Rect, app: &mut App, kind: Kind, 
             Pane::Detail,
             "Selected",
         );
-        if collection.selected().is_some() {
-            let reserved = if app.navigation.split_visible {
-                5
-            } else if detail.width >= 33 {
-                13
-            } else {
-                9
-            };
-            if detail.width >= reserved + 20 {
-                let scope = std::rc::Rc::new(Scope::capture(app));
-                let rect = Rect::new(detail.right() - reserved - 11, detail.y, 11, 1);
-                control(
-                    frame,
-                    &mut app.navigation,
-                    theme,
-                    rect,
-                    " Details… ",
-                    Target::Command(Bound::new(super::controls::Command::Details, &scope)),
-                );
-            }
+        if !menu_visible {
+            pane_actions(frame, &mut app.navigation, theme, detail);
+            menu_visible = true;
         }
         scroll_rows(
             frame,
@@ -2860,6 +3077,9 @@ fn render_library(frame: &mut Frame<'_>, area: Rect, app: &mut App, kind: Kind, 
             Paragraph::new(details).wrap(Wrap { trim: false }),
             ScrollMode::Manual,
         );
+    }
+    if !menu_visible && !list.is_empty() {
+        pane_actions(frame, &mut app.navigation, theme, list);
     }
 }
 
@@ -2872,6 +3092,7 @@ fn render_logs(frame: &mut Frame<'_>, area: Rect, app: &mut App, theme: Theme) {
         Pane::Main,
         "Operational logs",
     );
+    pane_actions(frame, &mut app.navigation, theme, area);
     let [head, body] =
         Layout::vertical([Constraint::Length(1.min(inner.height)), Constraint::Min(0)])
             .areas(inner);
@@ -2940,6 +3161,7 @@ fn render_workspace(frame: &mut Frame<'_>, area: Rect, app: &mut App, theme: The
         (area, Rect::default(), None)
     };
     app.navigation.split_visible = !main.is_empty() && !detail.is_empty();
+    let mut menu_visible = false;
     divider(frame, &mut app.navigation, theme, track);
     if !main.is_empty() {
         let title = app.navigation.view.name();
@@ -2971,9 +3193,24 @@ fn render_workspace(frame: &mut Frame<'_>, area: Rect, app: &mut App, theme: The
         );
         for (line, owner) in owners {
             if let Some(rect) = row_rect(visible, line, offset) {
-                app.navigation.hits.add(rect, Target::Owner(owner));
+                app.navigation.hits.add(rect, Target::Owner(owner.clone()));
+                if app.selected.as_ref() == Some(&owner) && rect.width >= 7 {
+                    control(
+                        frame,
+                        &mut app.navigation,
+                        theme,
+                        Rect::new(rect.right() - 4, rect.y, 4, 1),
+                        " … ",
+                        Target::OwnerMenu(owner),
+                    );
+                    menu_visible = true;
+                }
             }
         }
+    }
+    if !menu_visible && !main.is_empty() {
+        pane_actions(frame, &mut app.navigation, theme, main);
+        menu_visible = true;
     }
     if !detail.is_empty() {
         let inner = pane_body(
@@ -2988,6 +3225,9 @@ fn render_workspace(frame: &mut Frame<'_>, area: Rect, app: &mut App, theme: The
                 "Selected"
             },
         );
+        if !menu_visible {
+            pane_actions(frame, &mut app.navigation, theme, detail);
+        }
         let follow = app.response.is_some()
             && app
                 .navigation
@@ -3050,7 +3290,7 @@ mod tests {
         }
         assert_eq!(nav.key(key(KeyCode::Enter)), Action::Open);
         assert_eq!(nav.view(), View::Logs);
-        nav.key(key(KeyCode::Char('5')));
+        nav.key(KeyEvent::new(KeyCode::Char('5'), KeyModifiers::ALT));
         assert_eq!(
             nav.workspace
                 .viewport(View::Downloads.index(), Pane::Main)
@@ -3122,6 +3362,7 @@ mod tests {
             active: None,
             selected: None,
             response: None,
+            running_query: String::new(),
             library: super::super::library::Library::new(
                 super::super::work::Document::test_default().target,
             ),
@@ -3209,13 +3450,11 @@ mod tests {
                 .collect::<String>()
         };
         let bar = row(1);
-        assert!(
-            bar.contains("Load")
-                && bar.contains("Run")
-                && bar.contains("Search")
-                && bar.contains("More")
-        );
+        assert!(bar.contains("Search") && bar.contains("Type to filter"));
         for redundant in [
+            "Load",
+            "Run",
+            "More",
             "Inspect",
             "Verify",
             "Alias",
@@ -3232,8 +3471,64 @@ mod tests {
         let text = visible.join("\n");
         assert!(text.contains("30.71 MiB") && text.contains("4.26 GiB"));
         assert!(!text.contains("sha256:") && !text.contains("4571272453"));
-        assert!(text.contains("Details…"));
-        println!("Minimal Models cells:\n{text}");
+        println!("Toolbar-free Models cells:\n{text}");
+        // Ordinary characters, even former operation/navigation/quit
+        // keys, go to local filtering. No hidden model can be acted on.
+        let scope = std::rc::Rc::new(Scope::capture(&app));
+        let old = Bound::new(
+            super::super::controls::Command::Library(LibraryAction::Load(false)),
+            &scope,
+        );
+        for c in "gemma".chars() {
+            let action = app.navigation.key(key(KeyCode::Char(c)));
+            assert!(matches!(action, Action::Search(_)));
+            assert!(!app.handle(&runtime, runtime.control(), action));
+        }
+        assert_eq!(app.search_query(), "gemma");
+        assert_eq!(app.library.rows(Kind::Models).visible().len(), 1);
+        assert_eq!(
+            app.library.rows(Kind::Models).selected().unwrap().key,
+            Key::Snapshot("a".repeat(64))
+        );
+        assert!(!old.valid(&app));
+        assert!(app.active.is_none());
+        terminal.draw(|frame| render(frame, &mut app)).unwrap();
+        let text = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+        assert!(!text.contains("Qwen/Qwen3.5-2B"));
+        for c in "q8:/?".chars() {
+            let action = app.navigation.key(key(KeyCode::Char(c)));
+            assert!(matches!(action, Action::Search(_)));
+            assert!(!app.handle(&runtime, runtime.control(), action));
+        }
+        assert_eq!(app.search_query(), "gemmaq8:/?");
+        assert!(app.library.rows(Kind::Models).selected().is_none());
+        assert!(!app.handle(
+            &runtime,
+            runtime.control(),
+            Action::RowActions(Kind::Models, Key::Snapshot("b".repeat(64)))
+        ));
+        assert!(app.navigation.idle());
+        let action = app.navigation.key(key(KeyCode::Esc));
+        app.handle(&runtime, runtime.control(), action);
+        assert!(app.search_query().is_empty());
+        assert_eq!(app.library.rows(Kind::Models).visible().len(), 2);
+        // Right-click/ellipsis is selection + menu only, never work.
+        app.handle(
+            &runtime,
+            runtime.control(),
+            Action::RowActions(Kind::Models, Key::Snapshot("b".repeat(64))),
+        );
+        assert!(
+            matches!(&app.navigation.modal,Modal::Menu(menu) if menu.title=="Qwen/Qwen3.5-2B" && menu.buttons[0].label=="Load" && menu.buttons[1].label=="Run" && !menu.buttons.iter().any(|b|b.label=="Pull"))
+        );
+        assert!(app.active.is_none());
+        app.navigation.dismiss_modal();
         app.handle(&runtime, runtime.control(), Action::ShowDetails);
         terminal.draw(|frame| render(frame, &mut app)).unwrap();
         let text = terminal
@@ -3244,6 +3539,16 @@ mod tests {
             .map(|cell| cell.symbol())
             .collect::<String>();
         assert!(text.contains(&format!("sha256:{}", "b".repeat(64))));
+        app.navigation.dismiss_modal();
+        app.library.shelf = Shelf::Catalog;
+        let menu = Menu::new(&app, false);
+        assert!(menu.buttons.iter().any(|b| b.label == "Pull"));
+        assert!(
+            !menu
+                .buttons
+                .iter()
+                .any(|b| matches!(b.label, "Load" | "Run" | "Verify payloads" | "Remove"))
+        );
         runtime.shutdown().unwrap();
     }
 }

@@ -30,6 +30,7 @@ class Terminal:
     def __init__(self, root, args, width=100, height=28, hints=None):
         self.master, self.slave = pty.openpty()
         self.height = height
+        self.repaint_width = width
         self.repaint_on_wait = False
         self.resize(width)
         self.initial = termios.tcgetattr(self.slave)
@@ -59,7 +60,7 @@ class Terminal:
             # word. A real resize forces a fresh cell paint without assuming
             # that an unchanged screen cell was emitted again.
             if self.repaint_on_wait and time.monotonic() >= next_repaint and self.proc.poll() is None and not needle.startswith(b"\x1b"):
-                self.resize(149 if self.width == 150 else 150)
+                self.resize(self.repaint_width-1 if self.width == self.repaint_width else self.repaint_width)
                 os.kill(self.proc.pid, signal.SIGWINCH)
                 next_repaint = time.monotonic() + 0.8
             if select.select([self.master], [], [], min(remaining, 0.1))[0]:
@@ -81,7 +82,7 @@ class Terminal:
         self.pending.clear()
         while select.select([self.master], [], [], 0)[0]:
             os.read(self.master, 65536)
-        os.write(self.master, b"b")
+        os.write(self.master, alt(b"b"))
         deadline = time.monotonic() + 10
         repaint = time.monotonic() + 0.8
         data = b""
@@ -143,18 +144,18 @@ def shell(root):
                 if terminate:
                     terminal.proc.send_signal(signal.SIGTERM)
                 else:
-                    os.write(terminal.master, b"q")
+                    os.write(terminal.master, b"\x11")
             else:
                 terminal.until(b"USAGE:")
                 assert b"\x1b[?1049h" not in terminal.transcript
             terminal.finish(interactive=interactive)
 
-    exercise([], [(b"8", b"defaults"), (b":q", b"matching"),
+    exercise([], [(alt(b"8"), b"defaults"), (alt(b":") + b"q", b"matching"),
                   (b"\x7flog\r", b"received."),
                   (60, b"ZeroGravity"), (b"\t", b"Navigation")])
     exercise([], [], terminate=True)
-    exercise(["--offline"], [(b"4", b"Cached"), (b"m", b"qwen3.5-plus"),
-                              (b"d", b"prohibits"), (b"5", b"Download")])
+    exercise(["--offline"], [(alt(b"4"), b"Cached"), (alt(b"m"), b"qwen3.5-plus"),
+                              (alt(b"d"), b"prohibits"), (alt(b"5"), b"Download")])
     exercise(["--help"], [], interactive=False)
     exercise(["--interactive", "never"], [], interactive=False)
     plain = subprocess.run([binary], cwd=root, env=environment(root),
@@ -185,6 +186,24 @@ def wheel(x,y,down=True):
     return sgr(65 if down else 64,x,y)
 
 
+def alt(value):
+    return b"\x1b" + value
+
+def right_click(x,y):
+    return sgr(2,x,y) + sgr(2,x,y,True)
+
+def menu_cell(terminal,index,count):
+    height = min(terminal.height-3,max(7,min(26,count+4)))
+    return terminal.width//2, 2 + (terminal.height-3-height)//2 + index
+
+def menu_action(terminal,index,count,expected,seconds=10,opener=b"\x1bOS"):
+    terminal.send(opener,b"Actions")
+    terminal.send(click(*menu_cell(terminal,index,count)),expected,seconds)
+
+def filter_text(terminal,value,expected,seconds=10):
+    terminal.send(b"\x06\x15" + value,expected,seconds)
+
+
 def mouse_interaction(root):
     with Terminal(root, ["--offline"], width=150, height=24) as terminal:
         terminal.check_started()
@@ -199,13 +218,13 @@ def mouse_interaction(root):
         # Drag the rail from its default 22 cells to 29; clicking the newly
         # exposed rail area (previously workspace) must navigate.
         terminal.send(drag(22,18,29,18), b"Models")
-        terminal.send(click(26,6), b"Download operation")
+        terminal.send(click(26,6), b"new acquisition disabled")
         terminal.send(click(26,5), b"Catalog")
         # Resize the actual inner divider, then select through the newly
         # enlarged list region (which was formerly the detail pane).
         terminal.send(drag(95,15,105,15), b"Selected")
         terminal.send(click(101,6), b"> qwen3.8-flash-next")
-        terminal.send(click(135,4),b"pinned-indexed-safetensors")
+        menu_action(terminal,1,2,b"pinned-indexed-safetensors",opener=click(102,6))
         os.write(terminal.master,b"\x1b")
         time.sleep(0.2)
         # Maximize the list; select a row in the former details area, then
@@ -214,16 +233,16 @@ def mouse_interaction(root):
         terminal.send(click(147,4), b"Qwen/Qwen3.8-27B")
         # Focus details and return with keyboard equivalence. Opening a
         # modal masks every hit target behind it.
-        terminal.send(b"\x1b[17~?", b"Help")
+        terminal.send(b"\x1b[17~\x1bOP", b"Help")
         os.write(terminal.master, click(4,2))
         time.sleep(0.2)
         os.write(terminal.master,b"\x1b")
         time.sleep(0.2)
-        terminal.send(b"d",b"prohibits")
+        terminal.send(alt(b"d"),b"prohibits")
         terminal.send(b"\x1b[19~", b"\x1b[?1006l")
         assert b"\x1b[?1006l" in terminal.transcript
         terminal.send(b"\x1b[19~", b"\x1b[?1006h")
-        os.write(terminal.master,b"q")
+        os.write(terminal.master,b"\x11")
         terminal.finish()
         assert b"\x1b[?1006l" in terminal.transcript
 
@@ -241,7 +260,7 @@ def mouse_interaction(root):
         terminal.until(b"ZeroGravity")
         terminal.send(click(2,0),b"Navigation")
         terminal.send(click(4,2),b"Local runtime")
-        os.write(terminal.master,b"q")
+        os.write(terminal.master,b"\x11")
         terminal.finish()
     assert not (root/"cache").exists()
     assert not (root/"config").exists()
@@ -258,14 +277,14 @@ def mouse_interaction(root):
     document.write_text(long_yaml)
     with Terminal(root, [], width=100, height=24) as terminal:
         terminal.check_started()
-        terminal.send(b"8", b"ui.color")
-        terminal.send(b"v", b"filler-00")
+        terminal.send(alt(b"8"), b"ui.color")
+        terminal.send(alt(b"v"), b"filler-00")
         terminal.send(wheel(75,12), b"zzzzzzzzzzzzzzzzzzzz")
         terminal.send(drag(99,10,99,21), b"TAIL-TARGET-ONLY")
         terminal.send(wheel(30,10) + b"\r", b"Ctrl-U")
         os.write(terminal.master,b"\x1b")
         time.sleep(0.2)
-        os.write(terminal.master,b"q")
+        os.write(terminal.master,b"\x11")
         terminal.finish()
     assert document.read_text() == long_yaml
 
@@ -277,7 +296,7 @@ def mouse_interaction(root):
         terminal.check_started()
         assert b"\x1b[?1006h" not in terminal.transcript
         terminal.send(b"\x1b[19~", b"\x1b[?1006h")
-        os.write(terminal.master,b"q")
+        os.write(terminal.master,b"\x11")
         terminal.finish()
         assert b"\x1b[?1006l" in terminal.transcript
     assert document.read_text() == original
@@ -285,85 +304,91 @@ def mouse_interaction(root):
 
 
 def mouse_controls(root):
-    # A real foreground host, not simulated Action dispatch. The action
-    # strip, choice rows, modal buttons and overflow are all SGR clicks.
+    # A real foreground host, not simulated Action dispatch. The selected-row
+    # menu, choice rows and modal buttons are all SGR clicks.
     profiles = root / "config/abird/zerogravity/profiles"
     desk = profiles / "desk.yaml"
     other = profiles / "other.yaml"
     with Terminal(root, [], width=150, height=40) as terminal:
         terminal.repaint_on_wait = True
         terminal.check_started()
-        terminal.send(click(4,8), b"Open editor")
+        terminal.send(click(4,8), b"Profiles")
         terminal.until(b"> default")
-        terminal.send(click(40,1), b"lowercase")
+        menu_action(terminal,1,3,b"lowercase",opener=right_click(30,5))
         terminal.send(b"desk" + click(105,24), b"Created", 10)
         assert desk.is_file()
         terminal.until(b"ui.theme", 10)
-        terminal.send(click(33,1), b"Enter search")
-        terminal.send(b"ui.theme" + click(105,24), b"ui.theme = auto")
-        terminal.send(click(26,1), b"Enter apply")
+        terminal.send(click(33,1) + b"ui.theme", b"ui.theme = auto")
+        menu_action(terminal,0,9,b"Enter apply",opener=right_click(35,6))
         original = desk.read_bytes()
         terminal.send(click(55,19), b"> Light")
         assert desk.read_bytes() == original
         os.write(terminal.master, click(81,23))
         time.sleep(0.2)
-        terminal.send(click(26,1), b"Enter apply")
+        menu_action(terminal,0,9,b"Enter apply",opener=right_click(35,6))
         terminal.send(click(55,18), b"> Dark")
         terminal.send(click(95,23), b"Saved", 10)
         assert "theme: dark" in desk.read_text()
         # The overflow menu includes the existing exact document action.
         terminal.until(b"ui.theme", 10)
-        terminal.send(click(146,1), b"Actions")
-        terminal.send(click(45,17), b"Activated", 10)
+        menu_action(terminal,4,9,b"Activated",10)
         assert desk.is_file()
         # Create a second profile, then exercise the explicit remove
         # confirmation (cancel first, confirm only on second invocation).
         terminal.send(click(4,8), b"desk")
-        terminal.send(click(40,1), b"lowercase")
+        menu_action(terminal,1,3,b"lowercase",opener=right_click(30,5))
         terminal.send(b"other" + click(105,24), b"Created", 10)
         assert other.is_file()
         terminal.until(b"ui.theme",10)
-        terminal.send(click(146,1), b"Actions")
-        terminal.send(click(45,20), b"y confirm")
+        menu_action(terminal,7,9,b"y confirm")
         os.write(terminal.master, click(100,25))
         time.sleep(0.2)
         assert other.is_file()
-        terminal.send(click(146,1), b"Actions")
-        terminal.send(click(45,20), b"y confirm")
+        menu_action(terminal,7,9,b"y confirm")
         terminal.send(click(112,25), b"Removed",10)
         assert not other.exists() and desk.is_file()
         # A down on a valid button followed by release elsewhere must
         # not activate it. Existing keyboard navigation remains usable.
-        os.write(terminal.master, sgr(0,26,1) + sgr(0,60,4,True))
-        terminal.send(b"9", b"Operational logs")
-        terminal.send(b"1", b"Quick")
+        terminal.send(b"\x1bOS",b"Actions")
+        x,y=menu_cell(terminal,0,9)
+        os.write(terminal.master,sgr(0,x,y)+sgr(0,5,4,True))
+        os.write(terminal.master,b"\x1b")
+        time.sleep(0.2)
+        terminal.send(alt(b"9"), b"Operational logs")
+        terminal.send(alt(b"1"), b"Quick")
         from web_shell import Client
         client = Client(terminal.private_web_url())
         os.write(terminal.master,b"\r")
-        terminal.send(b"8",b"ui.theme")
+        terminal.send(alt(b"8"),b"ui.theme")
         observation = client.config("@active")
-        os.write(terminal.master,sgr(0,26,1))
+        terminal.send(b"\x1bOS",b"Actions")
+        x,y=menu_cell(terminal,0,9)
+        os.write(terminal.master,sgr(0,x,y))
         time.sleep(0.25)
         client.action({"kind":"settings","action":{"command":"set",
             "snapshot":observation["snapshot"],"key":"ui.theme","value":"light"}})
         assert "theme: light" in desk.read_text()
         time.sleep(0.25)
-        os.write(terminal.master,sgr(0,26,1,True))
-        terminal.send(b"9",b"Operational logs")
-        terminal.send(b"q",b"y confirm")
+        os.write(terminal.master,sgr(0,x,y,True))
+        time.sleep(0.2)
+        os.write(terminal.master,b"\x1b")
+        time.sleep(0.2)
+        terminal.send(alt(b"9"),b"Operational logs")
+        terminal.send(b"\x11",b"y confirm")
         os.write(terminal.master,click(112,25))
         terminal.finish()
         client.closed()
     with Terminal(root,[],width=50,height=18) as terminal:
         terminal.check_started()
         terminal.send(b"\x1bOS",b"> Run  (Enter)")
-        terminal.send(b"\r",b"Quick run source")
+        terminal.send(b"\r",b"MODEL or ID=MODEL")
         os.write(terminal.master,b"\x1b")
         time.sleep(0.2)
-        terminal.send(click(46,1),b"> Run  (Enter)")
+        terminal.send(click(terminal.width-4,1),b"> Run  (Enter)")
         os.write(terminal.master,b"\x1b")
         time.sleep(0.2)
-        os.write(terminal.master,b"q")
+        menu_action(terminal,1,4,b"ui.theme",opener=click(terminal.width-12,terminal.height-1))
+        os.write(terminal.master,b"\x11")
         terminal.finish()
     assert not (root/"cache").exists()
     assert not (profiles.parent/"config.yaml").exists()
@@ -380,29 +405,27 @@ def editor_and_choices(root):
     with Terminal(root, [], width=150, height=40) as terminal:
         terminal.repaint_on_wait = True
         terminal.check_started()
-        terminal.send(b"8", b"ui.theme")
-        terminal.send(click(33,1),b"Enter search")
-        terminal.send(b"run.backend" + click(105,24),b"run.backend = cpu")
-        terminal.send(click(26,1),b"> cpu")
+        terminal.send(alt(b"8"), b"ui.theme")
+        terminal.send(click(33,1)+b"run.backend",b"run.backend = cpu")
+        menu_action(terminal,0,9,b"> cpu",opener=right_click(35,6))
         terminal.send(click(51,19),b"> rocm")
         assert document.read_text()==original
         os.write(terminal.master,click(86,22))
         time.sleep(0.2)
-        terminal.send(click(26,1),b"> cpu")
+        menu_action(terminal,0,9,b"> cpu",opener=right_click(35,6))
         terminal.send(click(51,19),b"> rocm")
         terminal.send(click(99,22),b"Saved",10)
         assert "backend: rocm" in document.read_text()
         terminal.until(b"run.backend = rocm")
-        terminal.send(click(33,1),b"Enter search")
-        terminal.send(b"\x15run.task.raw" + click(105,24),b"run.task.raw = false")
-        terminal.send(click(26,1),b"> false")
+        filter_text(terminal,b"run.task.raw",b"run.task.raw = false")
+        menu_action(terminal,0,9,b"> false",opener=right_click(35,6))
         terminal.send(click(51,17),b"> true")
         terminal.send(click(99,21),b"Saved",10)
         assert "raw: true" in document.read_text()
         terminal.until(b"run.task.raw = true")
         # A finite choice uses the same exact document bytes as a YAML
         # value. An external update cannot be overwritten by its Apply.
-        terminal.send(click(26,1),b"> true")
+        menu_action(terminal,0,9,b"> true",opener=right_click(35,6))
         terminal.send(click(51,16),b"> false")
         concurrent = "# concurrent edit\n" + document.read_text()
         document.write_text(concurrent)
@@ -412,30 +435,32 @@ def editor_and_choices(root):
         time.sleep(0.2)
         # Log filter choices are local, not configuration writes.
         before = document.read_bytes()
-        terminal.send(b"9",b"Operational logs")
-        terminal.send(click(35,1),b"All levels")
+        terminal.send(alt(b"9"),b"Operational logs")
+        menu_action(terminal,1,3,b"All levels")
         terminal.send(click(51,19),b"> ERROR")
         terminal.send(click(99,21),b"returned")
-        terminal.send(click(45,1),b"All components")
+        menu_action(terminal,2,3,b"All components")
         terminal.send(click(51,15),b"> action")
         terminal.send(click(99,23),b"action")
         assert document.read_bytes()==before
 
         # Search the existing catalog locally and replace the visible
         # query via a drag selection, not a remote provider query.
-        terminal.send(b"4",b"Cached")
+        terminal.send(alt(b"4"),b"Cached")
         terminal.send(click(35,3),b"qwen3.5-plus")
-        terminal.send(click(33,1),b"Enter search")
-        terminal.send(b"gemma4" + click(105,24),b"gemma4-e2b-it")
-        terminal.send(b"/",b"Enter search")
-        x=(terminal.width-76)//2+1
-        terminal.send(drag(x,15,x+6,15) + b"qwen3.5",b"qwen3.5")
-        terminal.send(click(105,24),b"qwen3.5-plus")
-        terminal.send(b"m",b"Partial")
-        terminal.send(b"m",b"Cached")
-        terminal.send(b"m",b"Catalog")
+        # Ordinary input immediately filters, including former shortcuts.
+        terminal.send(b"gemma4",b"> gemma4-e2b-it")
+        terminal.send(b"q8:/?",b"No matches")
+        # Escape clears the active filter. No operation was submitted.
+        terminal.send(b"\x1b",b"qwen3.5-plus")
+        terminal.send(b"gemma4",b"> gemma4-e2b-it")
+        x=31
+        terminal.send(drag(x,1,x+6,1)+b"qwen3.5",b"> qwen3.5-plus")
+        terminal.send(alt(b"m"),b"Partial")
+        terminal.send(alt(b"m"),b"Cached")
+        terminal.send(alt(b"m"),b"Catalog")
         terminal.until(b"qwen3.5-plus")
-        os.write(terminal.master,b"q")
+        os.write(terminal.master,b"\x11")
         terminal.finish()
 
     # A long raw editor is independently scrollable. Select wide and
@@ -446,14 +471,14 @@ def editor_and_choices(root):
     with Terminal(root, [], width=150, height=40) as terminal:
         terminal.repaint_on_wait = True
         terminal.check_started()
-        terminal.send(b"8",b"ui.theme")
-        terminal.send(b"w",b"Ctrl-S")
+        terminal.send(alt(b"8"),b"ui.theme")
+        terminal.send(alt(b"w"),b"Ctrl-S")
         terminal.send(click(terminal.width-2,4), b"filler-00")
         terminal.send(drag(4,4,7,4) + b"X",b"Xz")
         terminal.send(click(5,4) + b"_",b"_z")
         terminal.send(click(terminal.width-8,36),b"Saved",10)
         assert document.read_text() == long_yaml.replace("a界e\u0301z","aX_z",1)
-        os.write(terminal.master,b"q")
+        os.write(terminal.master,b"\x11")
         terminal.finish()
     assert not (root/"cache").exists()
     print("TUI editor/choices PTY: typed effective enum and boolean, cancel/apply, log pickers, local shelf search, grapheme drag/caret replacement and independent raw scroll; exact saved bytes")
@@ -467,7 +492,7 @@ def appearance(root):
         terminal.check_started()
         terminal.until(b"Quick")
         assert b"48;2;255;255;255" in terminal.transcript
-        terminal.send(b"T", b"ui.theme = auto")
+        terminal.send(alt(b"T"), b"ui.theme = auto")
         terminal.send(b"\r", b"Enter apply")
         terminal.send(b"j", b"> Dark")
         assert b"48;2;23;26;32" in terminal.transcript
@@ -478,14 +503,14 @@ def appearance(root):
         terminal.send(b"jj", b"> Light")
         terminal.send(b"\r", b"Saved", 10)
         assert "theme: light" in default.read_text()
-        terminal.send(b"1", b"Quick")
+        terminal.send(alt(b"1"), b"Quick")
         from web_shell import Client
         client = Client(terminal.private_web_url())
         os.write(terminal.master, b"\r")
         assert client.snapshot()["configuration"]["theme"] == "light"
         # Preview of an exact observed document cannot overwrite a newer
         # setting applied by the attached Web client.
-        terminal.send(b"T", b"ui.theme = light")
+        terminal.send(alt(b"T"), b"ui.theme = light")
         terminal.send(b"\r", b"Enter apply")
         document = client.config("@active")
         client.action({"kind":"settings", "action":{"command":"set",
@@ -503,7 +528,7 @@ def appearance(root):
             "snapshot":alternate["snapshot"],"key":"ui.theme","value":"light"}})
         assert client.snapshot()["configuration"]["theme"] == "dark"
         assert "theme: light" in (default.parent / "profiles/theme-alt.yaml").read_text()
-        terminal.send(b"q", b"confirm")
+        terminal.send(b"\x11", b"confirm")
         os.write(terminal.master, b"y")
         terminal.finish()
         client.closed()
@@ -511,7 +536,7 @@ def appearance(root):
     with Terminal(root, [], hints=hints) as terminal:
         terminal.check_started()
         assert b"48;2;23;26;32" in terminal.transcript
-        os.write(terminal.master, b"q")
+        os.write(terminal.master, b"\x11")
         terminal.finish()
     # Restricted terminals preserve usable text, and color=never wins.
     for args, term, color, expected in [
@@ -525,7 +550,7 @@ def appearance(root):
                 assert expected in terminal.transcript, terminal.transcript[-2000:]
             else:
                 assert not re.search(rb"\x1b\[(?:38|48);", terminal.transcript)
-            os.write(terminal.master, b"q")
+            os.write(terminal.master, b"\x11")
             terminal.finish()
     assert not (root / "cache").exists()
     print("TUI appearance PTY: Auto light, Dark/Light preview, cancel/no write, explicit save, stale Web edit refusal, inactive profile isolation, persisted reopen, 256/16/no-color")
@@ -545,13 +570,12 @@ def settings_lifecycle(root):
     with Terminal(root, [], width=150, height=40) as terminal:
         terminal.repaint_on_wait = True
         terminal.check_started()
-        terminal.send(b"7", b"broken")
-        terminal.send(b"c", b"lowercase")
+        terminal.send(alt(b"7"), b"broken")
+        terminal.send(alt(b"c"), b"lowercase")
         terminal.send(b"desk\r", b"Created")
         assert desk.is_file()
         terminal.until(b"run.backend", 10)
-        terminal.send(b"/", b"visible")
-        terminal.send(paste("run.backend") + b"\r", b"run.backend")
+        filter_text(terminal,b"run.backend",b"> run.backend")
         terminal.send(b"\r", b"Ctrl-U")
         terminal.send(b"cpu\r", b"Saved", 10)
         assert "backend: cpu" in desk.read_text()
@@ -571,37 +595,36 @@ def settings_lifecycle(root):
         assert desk.read_text() == valid.replace("backend: cpu", "backend: rocm")
         os.write(terminal.master, b"\x1b")
         time.sleep(0.2)  # allow standalone Escape to be decoded before the next key
-        terminal.send(b"r", b"rocm", 10)
-        terminal.send(b"w", b"Ctrl-S")
+        terminal.send(alt(b"r"), b"rocm", 10)
+        terminal.send(alt(b"w"), b"Ctrl-S")
         terminal.send(b"\x15" + paste(valid) + b"\x13", b"Saved", 10)
         assert desk.read_text() == valid
         terminal.until(b"run.backend", 10)
-        terminal.send(b"a", b"Activated", 10)
-        terminal.send(b"x", b"another", 10)
+        terminal.send(alt(b"a"), b"Activated", 10)
+        terminal.send(alt(b"x"), b"another", 10)
         assert desk.is_file()
-        terminal.send(b"y", b"preserved")
+        terminal.send(alt(b"y"), b"preserved")
         terminal.send(b"copy\r", b"Created", 10)
         assert copied.read_text() == valid
         terminal.until(b"run.backend", 10)
-        terminal.send(b"x", b"confirm")
+        terminal.send(alt(b"x"), b"confirm")
         os.write(terminal.master, b"n")
         assert copied.exists()
-        terminal.send(b"x", b"confirm")
+        terminal.send(alt(b"x"), b"confirm")
         terminal.send(b"y", b"Removed", 10)
         assert not copied.exists() and desk.exists()
         # Repair an invalid named document using the same full raw YAML owner.
-        terminal.send(b"7", b"broken")
-        terminal.send(b"j\r", b"Invalid", 10)
-        terminal.send(b"w", b"Ctrl-S")
+        terminal.send(alt(b"7"), b"broken")
+        terminal.send(b"\x1b[B\r", b"Invalid", 10)
+        terminal.send(alt(b"w"), b"Ctrl-S")
         terminal.send(b"\x15" + paste(valid) + b"\x13", b"Saved", 10)
         assert broken.read_text() == valid
         # The Logs surface records actions/owner outcomes, not draft contents.
-        terminal.send(b"9", b"Operational")
-        terminal.send(b"p", b"Paused")
-        terminal.send(b"/", b"visible")
-        terminal.send(paste("Save config") + b"\r", b"Save")
-        terminal.send(b"p", b"Following")
-        terminal.send(b"1", b"Quick")
+        terminal.send(alt(b"9"), b"Operational")
+        terminal.send(alt(b"p"), b"Paused")
+        filter_text(terminal,"Save config".encode(),b"Save")
+        terminal.send(alt(b"p"), b"Following")
+        terminal.send(alt(b"1"), b"Quick")
         from web_shell import Client
         client = Client(terminal.private_web_url())
         os.write(terminal.master, b"\r")
@@ -609,9 +632,8 @@ def settings_lifecycle(root):
         assert any(row["message"] == "Save config completed" for row in native_logs["entries"])
         assert "invalid-backend" not in json.dumps(native_logs)
         assert "broken" in client.inventory("profiles")["profiles"]
-        terminal.send(b"8", b"run.backend")
-        terminal.send(b"/", b"visible")
-        terminal.send(paste("run.backend") + b"\r", b"run.backend")
+        terminal.send(alt(b"8"), b"run.backend")
+        filter_text(terminal,b"run.backend",b"> run.backend")
         document = client.config("broken")
         client.action({"kind": "settings", "action": {"command": "set", "snapshot": document["snapshot"],
                       "key": "run.backend", "value": "rocm"}})
@@ -620,11 +642,9 @@ def settings_lifecycle(root):
         document = client.config("broken")
         client.action({"kind": "settings", "action": {"command": "activate", "snapshot": document["snapshot"]}})
         assert client.snapshot()["configuration"]["profile"] == "broken"
-        terminal.send(b"9", b"Operational")
-        terminal.send(b"/", b"visible")
-        terminal.send(b"\x15" + paste("Activate profile") + b"\r", b"Activate profile")
-        terminal.send(b"/", b"visible")
-        terminal.send(b"\x15" + paste("Validate config") + b"\r", b"notifications")
+        terminal.send(alt(b"9"), b"Operational")
+        filter_text(terminal,"Activate profile".encode(),b"Activate profile")
+        filter_text(terminal,"Validate config".encode(),b"notifications")
         # No navigation, resize, user input or runtime event after the Web
         # validation. The shared log revision alone must repaint the TUI.
         terminal.repaint_on_wait = False
@@ -632,7 +652,7 @@ def settings_lifecycle(root):
         terminal.until(b"completed", 10)
         assert any(row["message"] == "Validate config completed" for row in client.inventory("logs")["entries"])
         terminal.repaint_on_wait = True
-        terminal.send(b"q", b"confirm")
+        terminal.send(b"\x11", b"confirm")
         os.write(terminal.master, b"y")
         terminal.finish()
         client.closed()
@@ -672,7 +692,7 @@ def lifecycle(root, expected):
     with Terminal(root, ["--profile", "local"], width=150, height=40) as terminal:
         terminal.check_started()
         terminal.repaint_on_wait = os.environ.get("ZG_TEST_WEB") == "1"
-        terminal.send(b"6", b"cpu:0", 30)
+        terminal.send(alt(b"6"), b"cpu:0", 30)
         # Original inventory ordering ends in host memory. Use the original
         # read-only CLI observation to select that exact physical row.
         observation = subprocess.run([binary, "device", "list", "--format=json"], cwd=root,
@@ -680,35 +700,34 @@ def lifecycle(root, expected):
         devices = json.loads(observation.stdout)["devices"]
         cpu_index = next(i for i, device in enumerate(devices) if device["id"] == "cpu:0")
         if cpu_index:
-            os.write(terminal.master, b"j" * cpu_index)
-        terminal.send(click(28,1), b"MODEL")
+            os.write(terminal.master, b"\x1b[B" * cpu_index)
+        menu_action(terminal,0,3,b"MODEL")
         terminal.send(click(105,24), b"accepted", 60)
-        terminal.send(b"4", b"fixture/serve")
+        terminal.send(alt(b"4"), b"fixture/serve")
         # Exact snapshot identity is disclosed only on request.
-        terminal.send(click(terminal.width-14,4),b"sha256:")
+        menu_action(terminal,2,9,b"sha256:",opener=right_click(30,5))
         os.write(terminal.master,b"\x1b")
         time.sleep(0.2)
         def model_action(index,expected,seconds=10):
-            terminal.send(click(terminal.width-4,1),b"Actions")
-            terminal.send(click(45,10+index),expected,seconds)
+            menu_action(terminal,index,9,expected,seconds,opener=right_click(30,5))
         model_action(3,b"checked;")
-        model_action(5,b"Payloads",60)
-        model_action(6,b"replacement.")
+        model_action(4,b"Payloads",60)
+        model_action(5,b"replacement.")
         terminal.send(b"tui-fixture" + click(105,24), b"created", 30)
         # Alias publication triggers a cold inventory refresh; let the
         # new observation settle before pressing another exact-row action.
         time.sleep(0.5)
         model_action(8,b"confirm")
         os.write(terminal.master, b"n")
-        terminal.send(click(32,1), b"Prompt")
+        model_action(1,b"Prompt")
         # Original profile raw=true. TUI completion must be actual output.
         terminal.send(b"\x1b[200~" + prompt.encode() + b"\x1b[201~" + click(105,24), b"length", 90)
         assert b"Response" in terminal.transcript
-        terminal.send(b"2", b"registration")
-        terminal.send(b"\r", b"Prompt")
+        terminal.send(alt(b"2"), b"registration")
+        terminal.send(alt(b"p"), b"Prompt")
         terminal.send(b"\x1b[200~" + prompt.encode() + b"\x1b[201~\r", b"length", 30)
-        terminal.send(b"3", b"OpenAI-compatible")
-        terminal.send(click(25,1), b"IP:PORT")
+        terminal.send(alt(b"3"), b"OpenAI-compatible")
+        menu_action(terminal,0,1,b"IP:PORT",opener=click(terminal.width-4,1))
         terminal.send(address.encode() + click(105,24), b"Listening:", 30)
         models = http("/models")
         assert len(models["data"]) == 1, models
@@ -758,9 +777,8 @@ def lifecycle(root, expected):
             stale = client.config("local")
             assert stale["active"] and stale["raw"] is None
             admitted_context = observed["runtime"]["scheduler"]["context"]
-            terminal.send(b"8", b"run.backend")
-            terminal.send(b"/", b"visible")
-            terminal.send(b"run.task.context\r", b"run.task.context")
+            terminal.send(alt(b"8"), b"run.backend")
+            filter_text(terminal,b"run.task.context",b"> run.task.context")
             terminal.send(b"\r", b"Ctrl-U")
             with client.events() as events:
                 terminal.send(b"\x15128\r", b"Saved", 15)
@@ -795,20 +813,20 @@ def lifecycle(root, expected):
         # Activate a different startup profile without reconfiguring the
         # existing listener/scheduler. Restore the original for later load.
         terminal.repaint_on_wait = True
-        terminal.send(b"9", b"accepted")
-        terminal.send(b"7", b"default")
+        terminal.send(alt(b"9"), b"accepted")
+        terminal.send(alt(b"7"), b"default")
         terminal.send(b"\r", b"defaults")
         if client:
             with client.events() as events:
-                terminal.send(b"a", b"Activated")
+                terminal.send(alt(b"a"), b"Activated")
                 assert events.readline() == b"event: refresh\n"
                 assert client.snapshot()["configuration"]["profile"] == "default"
         else:
-            terminal.send(b"a", b"Activated")
+            terminal.send(alt(b"a"), b"Activated")
         assert http("/models") == models
-        terminal.send(b"7", b"local")
-        terminal.send(b"j\r", b"run.backend")
-        terminal.send(b"a", b"Activated")
+        terminal.send(alt(b"7"), b"local")
+        terminal.send(b"\x1b[B\r", b"run.backend")
+        terminal.send(alt(b"a"), b"Activated")
         assert http("/models") == models
         if client:
             observed = client.snapshot()
@@ -817,12 +835,12 @@ def lifecycle(root, expected):
             assert observed["serving"]["generation"] == generation
         terminal.repaint_on_wait = client is not None
         # Navigation and a declined quit leave the same listener alive.
-        terminal.send(b"1", b"Quick")
-        terminal.send(b"q", b"confirm")
+        terminal.send(alt(b"1"), b"Quick")
+        terminal.send(b"\x11", b"confirm")
         os.write(terminal.master, b"n")
         assert http("/models") == models
-        terminal.send(b"3", b"OpenAI-compatible")
-        terminal.send(click(25,1), b"confirm")
+        terminal.send(alt(b"3"), b"OpenAI-compatible")
+        menu_action(terminal,0,1,b"confirm",opener=click(terminal.width-4,1))
         if client:
             with client.events() as events:
                 terminal.send(click(112,25), b"Listener stopped", 30)
@@ -833,14 +851,14 @@ def lifecycle(root, expected):
         else:
             terminal.send(click(112,25), b"Listener stopped", 30)
         closed()
-        terminal.send(b"2", b"registered")
+        terminal.send(alt(b"2"), b"registered")
         if client:
             terminal.repaint_on_wait = True
             retired = client.action({"kind": "unload", "alias": loaded_alias,
                                      "registration_id": registration, "confirm": True})
             assert retired["state"] == "completed"
             client.observed(lambda row: row["runtime"]["status"]["loaded_owners"] == 0)
-            terminal.send(b"1", b"Quick")
+            terminal.send(alt(b"1"), b"Quick")
             # The Web load-and-run uses the configured alias and original
             # resident plan, not a second service. No browser connection owns
             # the worker once the POST has returned its exact id.
@@ -850,7 +868,7 @@ def lifecycle(root, expected):
             second = client.snapshot()["runtime"]["models"][0]
             assert second["aliases"] == ["configured"] and second["registration_id"] != registration
             assert generated["response"]["owner"]["registration_id"] == second["registration_id"]
-            terminal.send(b"2", b"configured", 30)
+            terminal.send(alt(b"2"), b"configured", 30)
             # Stale selected owner cannot retire a replacement even when the
             # alias is supplied from a fresh observation.
             client.action({"kind": "unload", "alias": "configured", "registration_id": registration,
@@ -859,27 +877,27 @@ def lifecycle(root, expected):
             client.action({"kind": "start", "address": address})
             observed = client.observed(lambda row: row["serving"]["state"] == "listening")
             assert observed["serving"]["generation"] != generation
-            terminal.send(b"3", address.encode(), 30)
+            terminal.send(alt(b"3"), address.encode(), 30)
             assert [model["id"] for model in http("/models")["data"]] == ["configured"]
             client.action({"kind": "stop", "generation": generation, "confirm": True}, state="failed")
             assert client.snapshot()["serving"]["generation"] == observed["serving"]["generation"]
             # Native invocation and Web observation still use the same
             # registered owner. Browser receipts are not overwritten by it.
-            terminal.send(b"2", b"configured")
-            terminal.send(b"\r", b"Prompt")
+            terminal.send(alt(b"2"), b"configured")
+            terminal.send(alt(b"p"), b"Prompt")
             terminal.send(b"\x1b[200~" + prompt.encode() + b"\x1b[201~\r", b"length", 30)
-            terminal.send(b"3", address.encode(), 30)
+            terminal.send(alt(b"3"), address.encode(), 30)
         else:
-            terminal.send(click(33,1), b"confirm")
+            terminal.send(alt(b"u"), b"confirm")
             terminal.send(b"y", b"retired", 60)
             # The last retirement makes the same runtime available for a new load.
             terminal.send(b"l", b"MODEL")
             terminal.send(b"\r", b"loaded", 90)
-            terminal.send(b"3", b"OpenAI-compatible")
+            terminal.send(alt(b"3"), b"OpenAI-compatible")
             terminal.send(b"s", b"IP:PORT")
             terminal.send(address.encode() + b"\r", b"Listening:", 30)
             assert [model["id"] for model in http("/models")["data"]] == ["configured"]
-        terminal.send(b"q", b"confirm")
+        terminal.send(b"\x11", b"confirm")
         os.write(terminal.master, b"y")
         terminal.finish()
         closed()
@@ -895,7 +913,7 @@ def lifecycle(root, expected):
             from web_shell import Client
             client = Client(terminal.private_web_url())
             os.write(terminal.master, b"\r")
-            terminal.send(b"4", b"fixture/serve")
+            terminal.send(alt(b"4"), b"fixture/serve")
             preview = client.action({"kind": "removal_preview", "digest": loaded_alias})
             assert "no mutation" in preview["message"]
             assert len(client.inventory("models")["cached"]) == 1
@@ -911,17 +929,17 @@ def lifecycle(root, expected):
             terminal.repaint_on_wait = True
             # A full paint may move the cursor across the blank between
             # the count and label, rather than emitting a literal space.
-            terminal.until(rb"0(?: |\x1b\[\d+;\d+H)entries", 15, pattern=True)
+            terminal.until(rb"0(?: |\x1b\[\d+;\d+H)models", 15, pattern=True)
         else:
-            terminal.send(b"4", b"fixture/serve")
-            terminal.send(b"X", b"preview;", 30)
-            terminal.send(b"x", b"confirm")
+            terminal.send(alt(b"4"), b"fixture/serve")
+            terminal.send(alt(b"X"), b"preview;", 30)
+            terminal.send(alt(b"x"), b"confirm")
             terminal.send(b"y", b"durable", 60)
         if os.environ.get("ZG_TEST_WEB") == "1":
-            terminal.send(b"q", b"confirm")
+            terminal.send(b"\x11", b"confirm")
             os.write(terminal.master, b"y")
         else:
-            os.write(terminal.master, b"q")
+            os.write(terminal.master, b"\x11")
         terminal.finish()
         if os.environ.get("ZG_TEST_WEB") == "1":
             client.closed()
@@ -967,7 +985,7 @@ def shared_download():
                         browser.stdin.write((private_url + "\n").encode())
                         browser.stdin.flush()
                         browser_line(browser, "Attached browser ready")
-                        terminal.send(b"5", b"Paused")
+                        terminal.send(alt(b"5"), b"Paused")
                         terminal.send(b"s", b"Running")
                         client.observed(lambda row: row["download"]["total_bytes"] > 0)
                         terminal.send(b"p", b"Pause")
@@ -989,7 +1007,7 @@ def shared_download():
                         client.post({"kind": "download", "operation_id": identity, "command": "resume"}, status=409)
                         # The browser closed independently; native quit joins
                         # the attached host and the original transfer worker.
-                        terminal.send(b"q", b"confirm")
+                        terminal.send(b"\x11", b"confirm")
                         os.write(terminal.master, b"y")
                         terminal.finish()
                         client.closed()
@@ -1034,27 +1052,27 @@ elif sys.argv[2] == "--download-fixture":
             os.environ["ZG_MONITOR_MODE"] = mode
             with Terminal(root, ["--ignored", "--exact", "pull::monitor::tests::monitor_child", "--nocapture"], width=150, height=40) as terminal:
                 terminal.check_started()
-                terminal.send(b"5", b"Paused", 15)
-                terminal.send(click(26,1), b"Running", 15)
+                terminal.send(alt(b"5"), b"Paused", 15)
+                menu_action(terminal,0,2,b"Running",15,opener=click(terminal.width-4,1))
                 # The existing fixture body accepts 128 bytes per 40 ms.
                 # Allow a prefix before asking for the safe range checkpoint;
                 # the child asserts that an actual second request was made.
                 time.sleep(0.35)
-                terminal.send(click(26,1), b"Pause", 15)
+                menu_action(terminal,0,2,b"Pause",15,opener=click(terminal.width-4,1))
                 # Ratatui may emit only the final changed cell of "Paused".
                 # Change views after the safe body boundary to read a newly
                 # painted status, not the raw differential transition bytes.
                 time.sleep(0.5)
-                terminal.send(b"1", b"Quick", 15)
-                terminal.send(b"5", b"Paused", 15)
+                terminal.send(alt(b"1"), b"Quick", 15)
+                terminal.send(alt(b"5"), b"Paused", 15)
                 if mode == "tui":
-                    terminal.send(click(26,1), b"Snapshot", 20)
+                    menu_action(terminal,0,2,b"Snapshot",20,opener=click(terminal.width-4,1))
                 else:
-                    terminal.send(click(38,1), b"Cancel", 20)
+                    menu_action(terminal,1,2,b"Cancel",20,opener=click(terminal.width-4,1))
                     time.sleep(0.5)
-                    terminal.send(b"1", b"Quick", 15)
-                    terminal.send(b"5", b"Cancelled", 15)
-                os.write(terminal.master, b"q")
+                    terminal.send(alt(b"1"), b"Quick", 15)
+                    terminal.send(alt(b"5"), b"Cancelled", 15)
+                os.write(terminal.master, b"\x11")
                 try:
                     terminal.finish()
                 except AssertionError:

@@ -220,7 +220,10 @@ pickers, local shelf search, grapheme caret/selection and independent
 editor viewport landed; focused 86/0/3, real native editor and cached
 browser/native/HTTP 1/0/0 (55.96s) pass. UX-P4A1 screenshot-driven minimalism landed: curated toolbar, concise
 summary, smart sizes and on-demand exact Details; 87/0/3 and native PTY
-regression. P4A2 remaining ergonomics/visual review, then full gate. Complete UX-P before public serving/ordinary benchmarks, then
+regression. User follow-up removes toolbar entirely; exact selected-row
+context menus, inline live local search, separate session menu and explicit
+Alt shortcuts landed with focused 88/0/3 and native PTY. P4A2 remaining
+ergonomics/visual review, then full gate. Complete UX-P before public serving/ordinary benchmarks, then
 ordered performance phases.
 General UMA/foreign backing, device-write host read, unqualified model/
 backend/media and other expansion holds remain explicit. Historical

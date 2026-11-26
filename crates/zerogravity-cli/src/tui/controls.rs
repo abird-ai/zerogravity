@@ -1,10 +1,12 @@
 //! Visible native actions. Bind to observed identities, not coordinates or
 //! simulated keystrokes. The original App handlers remain the effect owners.
+#[cfg(all(feature = "acquisition", target_os = "linux"))]
+use super::view::DownloadAction;
 use super::{
     App,
     library::{Key, Kind, Shelf},
     settings::Snapshot,
-    view::{Action, DownloadAction, LibraryAction, LogAction, SettingsAction, View},
+    view::{Action, LibraryAction, LogAction, SettingsAction, View},
     work::Owner,
 };
 use crate::control_host::{ActionSummary, Target};
@@ -20,6 +22,7 @@ pub(super) enum Command {
     Stop,
     Cancel,
     Library(LibraryAction),
+    #[cfg(all(feature = "acquisition", target_os = "linux"))]
     Download(DownloadAction),
     Settings(SettingsAction),
     Logs(LogAction),
@@ -40,6 +43,7 @@ impl Command {
             Self::Stop => Action::Stop,
             Self::Cancel => Action::Cancel,
             Self::Library(action) => Action::Library(action),
+            #[cfg(all(feature = "acquisition", target_os = "linux"))]
             Self::Download(action) => Action::Download(action),
             Self::Settings(action) => Action::Settings(action),
             Self::Logs(action) => Action::Logs(action),
@@ -172,84 +176,22 @@ impl Scope {
         self.file()
             .or((!self.valid_document).then_some("Invalid document"))
     }
+    #[cfg(all(feature = "acquisition", target_os = "linux"))]
     fn download(&self, action: DownloadAction) -> Option<&'static str> {
-        #[cfg(all(feature = "acquisition", target_os = "linux"))]
-        {
-            use zerogravity::control::DownloadStatus;
-            let Some((_, status, cancel)) = self.download else {
-                return Some("No active transfer");
-            };
-            if status.terminal() {
-                return Some("Transfer finished");
-            }
-            if cancel {
-                return Some("Cancellation requested");
-            }
-            match action {
-                DownloadAction::Pause if status != DownloadStatus::Running => Some("Not running"),
-                DownloadAction::Resume if status != DownloadStatus::Paused => Some("Not paused"),
-                _ => None,
-            }
+        use zerogravity::control::DownloadStatus;
+        let Some((_, status, cancel)) = self.download else {
+            return Some("No active transfer");
+        };
+        if status.terminal() {
+            return Some("Transfer finished");
         }
-        #[cfg(not(all(feature = "acquisition", target_os = "linux")))]
-        {
-            let _ = action;
-            Some("Acquisition not compiled")
+        if cancel {
+            return Some("Cancellation requested");
         }
-    }
-
-    /// The toolbar is a curated subset, never a second navigation rail
-    /// or an exhaustive list. Everything else remains in More/F4.
-    pub fn quick(&self, command: Command) -> bool {
-        use Command as C;
-        use LibraryAction as L;
-        use LogAction as G;
-        use SettingsAction as S;
-        match self.view {
-            View::Home => matches!(command, C::Run | C::Load),
-            View::Running => {
-                matches!(command, C::Run)
-                    || (command == C::Load && self.owner.is_none())
-                    || (command == C::Unload && self.owner.is_some())
-            }
-            View::Serve => {
-                matches!(command, C::Start | C::Stop)
-                    && match self.listener {
-                        Listener::Listening(_) | Listener::Finished(_) => command == C::Stop,
-                        _ => command == C::Start,
-                    }
-                    || command == C::Load && self.owner.is_none()
-            }
-            View::Models => match self.shelf {
-                Shelf::Cached => matches!(command, C::Library(L::Load(false) | L::Run | L::Search)),
-                Shelf::Catalog | Shelf::Partial => {
-                    matches!(command, C::Library(L::Pull | L::Search))
-                }
-            },
-            View::Downloads => {
-                #[cfg(all(feature = "acquisition", target_os = "linux"))]
-                if let Some((_, status, _)) = self.download
-                    && !status.terminal()
-                {
-                    return matches!(command, C::Download(DownloadAction::Cancel))
-                        || command
-                            == C::Download(
-                                if status == zerogravity::control::DownloadStatus::Paused {
-                                    DownloadAction::Resume
-                                } else {
-                                    DownloadAction::Pause
-                                },
-                            );
-                }
-                command == C::Library(L::Pull)
-            }
-            View::Devices => matches!(command, C::Library(L::Fit | L::Load(false))),
-            View::Profiles => matches!(command, C::Settings(S::Open | S::Create)),
-            View::Config => matches!(command, C::Settings(S::Choose | S::Search)),
-            View::Logs => matches!(
-                command,
-                C::Logs(G::Search | G::PickLevel | G::PickComponent)
-            ),
+        match action {
+            DownloadAction::Pause if status != DownloadStatus::Running => Some("Not running"),
+            DownloadAction::Resume if status != DownloadStatus::Paused => Some("Not paused"),
+            _ => None,
         }
     }
 
@@ -270,137 +212,112 @@ impl Scope {
             })
         };
         let selected = self.selection.is_some();
-        let snapshot = matches!(self.selection, Some(Key::Snapshot(_)));
-        let choose_snapshot = (!snapshot).then_some("Select a cached snapshot");
-        let device = (!matches!(self.selection, Some(Key::Device(_)))).then_some("Select a device");
         let choose_owner = self.owner.is_none().then_some("No ready registration");
         let select_row = (!selected).then_some("Select a row");
-        let web = (!cfg!(feature = "web")).then_some("Web not compiled");
         match self.view {
             View::Home => {
                 add(C::Run, "Run", "Enter", self.run());
                 add(C::Load, "Load", "l", self.load());
-                add(C::OpenWeb, "Web", "b", web);
             }
             View::Running => {
-                add(C::Run, "Run", "Enter", self.run());
-                add(C::Load, "Load", "l", self.load());
-                add(C::Unload, "Unload", "u", self.busy().or(choose_owner));
-            }
-            View::Serve => {
-                let start = match self.listener {
-                    Listener::Unavailable => Some("Serve not compiled"),
-                    Listener::Idle => self.owner.is_none().then_some("Load a model first"),
-                    _ => Some("Stop current listener first"),
-                };
-                add(C::Start, "Start", "s", self.busy().or(start));
-                add(
-                    C::Stop,
-                    "Stop",
-                    "t",
-                    self.busy().or((!matches!(
-                        self.listener,
-                        Listener::Listening(_) | Listener::Finished(_)
-                    ))
-                    .then_some("No owned listener")),
-                );
-                add(C::Load, "Load", "l", self.load());
-                add(C::OpenWeb, "Web", "b", web);
-            }
-            View::Models => {
-                add(
-                    C::Library(L::Load(false)),
-                    "Load",
-                    "l",
-                    self.load().or(choose_snapshot),
-                );
-                add(
-                    C::Library(L::Run),
-                    "Run",
-                    "p",
-                    self.load().or(choose_snapshot),
-                );
-                add(C::Library(L::Pull), "Pull", "d", self.pull());
-                add(
-                    C::Library(L::Inspect),
-                    "Inspect",
-                    "Enter",
-                    self.busy().or(select_row),
-                );
-                add(
-                    C::Library(L::Load(true)),
-                    "Load for Serve",
-                    "s",
-                    self.load().or(choose_snapshot),
-                );
-                add(
-                    C::Library(L::Verify),
-                    "Verify",
-                    "v",
-                    self.busy().or(choose_snapshot),
-                );
-                add(
-                    C::Library(L::Alias),
-                    "Alias",
-                    "a",
-                    self.busy().or(choose_snapshot),
-                );
-                add(
-                    C::Library(L::Reclaim(false)),
-                    "Removal preview",
-                    "X",
-                    self.busy().or(choose_snapshot),
-                );
-                add(
-                    C::Library(L::Reclaim(true)),
-                    "Remove",
-                    "x",
-                    self.busy().or(choose_snapshot),
-                );
-                add(C::Library(L::Search), "Search", "/", None);
-                // Available in overflow even when shelf tabs cannot fit.
-                for (shelf, label) in [
-                    (Shelf::Cached, "Cached"),
-                    (Shelf::Catalog, "Catalog"),
-                    (Shelf::Partial, "Partial"),
-                ] {
-                    add(C::Library(L::SelectShelf(shelf)), label, "m", None);
+                if self.owner.is_some() {
+                    add(C::Run, "Run", "p", self.run());
+                    add(C::Unload, "Unload", "u", self.busy().or(choose_owner));
+                } else if self.phase == RuntimePhase::Empty {
+                    add(C::Load, "Load", "l", self.load());
                 }
             }
+            View::Serve => match self.listener {
+                Listener::Listening(_) | Listener::Finished(_) => {
+                    add(C::Stop, "Stop", "t", self.busy())
+                }
+                Listener::Idle => {
+                    add(C::Start, "Start", "s", self.busy().or(choose_owner));
+                    if self.owner.is_none() {
+                        add(C::Load, "Load", "l", self.load());
+                    }
+                }
+                Listener::Transitioning | Listener::Unavailable => {}
+            },
+            View::Models => match &self.selection {
+                Some(Key::Snapshot(_)) => {
+                    add(C::Library(L::Load(false)), "Load", "l", self.load());
+                    add(C::Library(L::Run), "Run", "p", self.load());
+                    add(C::Details, "Details", "D", None);
+                    add(C::Library(L::Inspect), "Inspect manifest", "i", self.busy());
+                    add(C::Library(L::Verify), "Verify payloads", "v", self.busy());
+                    add(C::Library(L::Alias), "Alias", "a", self.busy());
+                    add(
+                        C::Library(L::Load(true)),
+                        "Load for Serve",
+                        "s",
+                        self.load(),
+                    );
+                    add(
+                        C::Library(L::Reclaim(false)),
+                        "Removal preview",
+                        "X",
+                        self.busy(),
+                    );
+                    add(C::Library(L::Reclaim(true)), "Remove", "x", self.busy());
+                }
+                Some(Key::Target(_)) | Some(Key::Partial(_)) => {
+                    add(
+                        C::Library(L::Pull),
+                        if matches!(self.selection, Some(Key::Partial(_))) {
+                            "Resume pull…"
+                        } else {
+                            "Pull"
+                        },
+                        "d",
+                        self.pull(),
+                    );
+                    add(C::Details, "Details", "D", None);
+                }
+                _ => add(C::Library(L::Pull), "New pull", "d", self.pull()),
+            },
             View::Downloads => {
-                add(
-                    C::Download(DownloadAction::Pause),
-                    "Pause",
-                    "p",
-                    self.download(DownloadAction::Pause),
-                );
-                add(
-                    C::Download(DownloadAction::Resume),
-                    "Resume",
-                    "s",
-                    self.download(DownloadAction::Resume),
-                );
-                add(
-                    C::Download(DownloadAction::Cancel),
-                    "Cancel transfer",
-                    "c",
-                    self.download(DownloadAction::Cancel),
-                );
+                #[cfg(all(feature = "acquisition", target_os = "linux"))]
+                if let Some((_, status, _)) = self.download
+                    && !status.terminal()
+                {
+                    let action = if status == zerogravity::control::DownloadStatus::Paused {
+                        DownloadAction::Resume
+                    } else {
+                        DownloadAction::Pause
+                    };
+                    add(
+                        C::Download(action),
+                        if action == DownloadAction::Pause {
+                            "Pause"
+                        } else {
+                            "Resume"
+                        },
+                        if action == DownloadAction::Pause {
+                            "p"
+                        } else {
+                            "s"
+                        },
+                        self.download(action),
+                    );
+                    add(
+                        C::Download(DownloadAction::Cancel),
+                        "Cancel transfer",
+                        "c",
+                        self.download(DownloadAction::Cancel),
+                    );
+                } else {
+                    add(C::Library(L::Pull), "New pull", "d", self.pull());
+                }
+                #[cfg(not(all(feature = "acquisition", target_os = "linux")))]
                 add(C::Library(L::Pull), "New pull", "d", self.pull());
             }
             View::Devices => {
-                add(
-                    C::Library(L::Fit),
-                    "Check policy",
-                    "e",
-                    self.busy().or(device),
-                );
-                add(
-                    C::Library(L::Load(false)),
-                    "Load",
-                    "l",
-                    self.load().or(device),
-                );
+                if selected {
+                    add(C::Library(L::Fit), "Check policy", "e", self.busy());
+                    add(C::Library(L::Load(false)), "Load", "l", self.load());
+                    add(C::Details, "Details", "D", None);
+                }
             }
             View::Profiles => {
                 add(C::Settings(S::Open), "Open editor", "Enter", select_row);
@@ -413,7 +330,6 @@ impl Scope {
                     "e",
                     self.file().or(select_row),
                 );
-                add(C::Settings(S::Search), "Search", "/", None);
                 add(C::Settings(S::Validate), "Validate", "t", self.valid_file());
                 add(
                     C::Settings(S::RawView),
@@ -453,7 +369,6 @@ impl Scope {
                 );
             }
             View::Logs => {
-                add(C::Logs(G::Search), "Search", "/", None);
                 add(
                     C::Logs(G::Follow),
                     if self.follow_logs {
@@ -488,16 +403,39 @@ impl Scope {
                 active.cancel_requested.then_some("Cancellation requested"),
             );
         }
-        if matches!(
-            self.view,
-            View::Models | View::Devices | View::Profiles | View::Config
-        ) {
-            add(C::Details, "Details", "D", select_row);
+        if selected && matches!(self.view, View::Profiles | View::Config) {
+            add(C::Details, "Details", "D", None);
         }
-        add(C::Refresh, "Refresh", "r", None);
-        add(C::Appearance, "Appearance", "T", None);
-        add(C::Quit, "Quit", "q", None);
         out
+    }
+    pub fn session_buttons(&self) -> Vec<Button> {
+        let web = (!cfg!(feature = "web")).then_some("Web not compiled");
+        vec![
+            Button {
+                command: Command::OpenWeb,
+                label: "Open Web",
+                key: "b",
+                disabled: web,
+            },
+            Button {
+                command: Command::Appearance,
+                label: "Appearance",
+                key: "T",
+                disabled: None,
+            },
+            Button {
+                command: Command::Refresh,
+                label: "Refresh",
+                key: "r",
+                disabled: None,
+            },
+            Button {
+                command: Command::Quit,
+                label: "Quit",
+                key: "Ctrl-Q",
+                disabled: None,
+            },
+        ]
     }
 }
 
@@ -525,7 +463,8 @@ impl Bound {
         self.scope.as_ref() == &current
             && current
                 .buttons()
-                .iter()
+                .into_iter()
+                .chain(current.session_buttons())
                 .any(|button| button.command == self.command && button.disabled.is_none())
     }
 }
@@ -533,20 +472,41 @@ impl Bound {
 #[derive(Debug)]
 pub(super) struct Menu {
     pub scope: Rc<Scope>,
+    pub title: String,
     pub buttons: Vec<Button>,
     pub cursor: usize,
     pub scroll: u16,
 }
 impl Menu {
-    pub fn new(app: &App) -> Self {
+    pub fn new(app: &App, session: bool) -> Self {
         let scope = Rc::new(Scope::capture(app));
-        let buttons = scope.buttons();
+        let title = if session {
+            "Session".into()
+        } else if let Some(kind) = scope.view.library() {
+            app.library
+                .rows(kind)
+                .selected()
+                .map_or_else(|| scope.view.name().to_owned(), |row| row.title.clone())
+        } else if scope.view == View::Running {
+            scope
+                .owner
+                .as_ref()
+                .map_or_else(|| "Running actions".into(), |owner| owner.alias.clone())
+        } else {
+            scope.view.name().to_owned()
+        };
+        let buttons = if session {
+            scope.session_buttons()
+        } else {
+            scope.buttons()
+        };
         let cursor = buttons
             .iter()
             .position(|b| b.disabled.is_none())
             .unwrap_or(0);
         Self {
             scope,
+            title,
             buttons,
             cursor,
             scroll: 0,

@@ -470,6 +470,12 @@ Retain accepted UX-1–10 ownership and keyboard behavior.
     summaries and exact Details/D, human IEC sizes. Strict lint,
     focused 87/0/3, actual rendered cells/native PTY and controlled
     transfer pass.
+  - [x] P4A1 follow-up: no toolbar, selected-row context menus/right-click,
+    inline live local search across list views, session footer menu,
+    explicit Alt shortcuts. Strict lint, optimized Rust 88/0/3, actual
+    rendered cell/native/context/search/settings and transfer PTY pass.
+    Actual cached Qwen browser/native/HTTP 1/0/0 (57.77s), unchanged
+    admission and exact output; shared Firefox/native transfer outcomes pass.
   - [ ] P4A2 remaining scroll anchors, separate Running response,
     safe log detail, compact/modal/focus and editor drag edges.
   - [ ] P4B full simultaneous owner regressions and isolated gate.

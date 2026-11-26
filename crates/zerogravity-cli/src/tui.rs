@@ -91,6 +91,7 @@ fn session(
         job: None,
         selected: None,
         response: None,
+        running_query: String::new(),
     };
     app.reconcile_owner();
     #[cfg(all(feature = "acquisition", target_os = "linux"))]
@@ -208,7 +209,9 @@ fn session(
                 }
                 Event::Paste(value) => {
                     app.navigation.cancel_pointer();
-                    if !app.navigation.paste(&value) {
+                    if app.navigation.idle() && app.navigation.view().searchable() {
+                        app.edit_search(view::SearchEdit::Insert(value));
+                    } else if !app.navigation.paste(&value) {
                         app.notice = Some(
                             "Paste ignored outside an editable field or outside its input bounds"
                                 .into(),
@@ -285,6 +288,7 @@ struct App {
     job: Option<Job>,
     selected: Option<Owner>,
     response: Option<Response>,
+    running_query: String,
     library: Library,
 }
 
@@ -302,6 +306,7 @@ impl App {
             .catalog
             .iter()
             .filter(|model| model.lifecycle == ModelLifecycle::Ready)
+            .filter(|model| self.owner_matches(&model.aliases))
             .filter_map(|model| {
                 model.aliases.first().map(|alias| Owner {
                     alias: alias.clone(),
@@ -310,6 +315,58 @@ impl App {
             })
     }
 
+    fn owner_matches(&self, aliases: &[String]) -> bool {
+        if self.navigation.view() != View::Running || self.running_query.is_empty() {
+            return true;
+        }
+        let query = self.running_query.to_ascii_lowercase();
+        aliases
+            .iter()
+            .any(|alias| alias.to_ascii_lowercase().contains(&query))
+    }
+    fn search_query(&self) -> &str {
+        let view = self.navigation.view();
+        if let Some(kind) = view.library() {
+            self.library.rows(kind).query()
+        } else if view == View::Logs {
+            &self.logs.query
+        } else if view == View::Running {
+            &self.running_query
+        } else {
+            ""
+        }
+    }
+    fn edit_search(&mut self, edit: view::SearchEdit) {
+        let mut query = self.search_query().to_owned();
+        if !self.navigation.edit_search(&mut query, edit) {
+            return;
+        }
+        if query == self.search_query() {
+            return;
+        }
+        if let Some(kind) = self.navigation.view().library() {
+            self.library.rows_mut(kind).set_query(query);
+            if kind == Kind::Config {
+                self.library.raw = false;
+            }
+        } else if self.navigation.view() == View::Logs {
+            self.logs.query = query;
+        } else if self.navigation.view() == View::Running {
+            self.running_query = query;
+            self.reconcile_owner();
+        }
+        self.navigation.reveal_library(0);
+    }
+    fn select_row(&mut self, kind: Kind, key: library::Key) -> bool {
+        if self.navigation.view().library() != Some(kind)
+            || !self.library.rows(kind).visible().any(|row| row.key == key)
+        {
+            return false;
+        }
+        self.library.rows_mut(kind).selected = Some(key);
+        self.navigation.reveal_library(0);
+        true
+    }
     fn reconcile_owner(&mut self) {
         let selected = self.selected.as_ref();
         if selected.is_none() || !self.owners().any(|owner| Some(&owner) == selected) {
@@ -455,7 +512,22 @@ impl App {
                 }
                 self.notice = Some("Action target or availability changed; choose again".into());
             }
-            Action::OpenActions => self.navigation.menu(controls::Menu::new(self)),
+            Action::OpenActions => self.navigation.menu(controls::Menu::new(self,false)),
+            Action::OpenSessionMenu => self.navigation.menu(controls::Menu::new(self,true)),
+            Action::RowActions(kind,key) => {
+                if self.select_row(kind,key) {
+                    self.navigation.focus_main();
+                    self.navigation.menu(controls::Menu::new(self,false));
+                }
+            }
+            Action::OwnerActions(owner) => {
+                if self.navigation.view()==View::Running && self.owners().any(|candidate|candidate==owner) {
+                    self.selected=Some(owner);
+                    self.navigation.focus_main();
+                    self.navigation.menu(controls::Menu::new(self,false));
+                }
+            }
+            Action::Search(edit) => self.edit_search(edit),
             Action::ShowDetails => {
                 let kind=match self.navigation.view() {
                     View::Models=>Kind::Models,
@@ -484,7 +556,7 @@ impl App {
                 view::Confirmation::Quit,
             ),
             Action::Quit | Action::Confirmed(view::Confirmation::Quit) => return true,
-            Action::Open => { self.notice=None; self.refresh_cold(runtime,control); }
+            Action::Open => { self.notice=None; self.reconcile_owner(); self.refresh_cold(runtime,control); }
             Action::Refresh => {
                 self.refresh(control);
                 self.refresh_cold(runtime, control);
@@ -498,23 +570,10 @@ impl App {
                 // A shortcut to the same cold Config reader and typed setting.
                 // No file creation, preview or write on navigation.
                 self.library.set_editor(self.document.snapshot().target);
-                self.library.query = "ui.theme".into();
+                self.library.rows_mut(Kind::Config).set_query("ui.theme".into());
                 self.navigation.open(View::Config);
                 self.navigation.focus_main();
                 self.library.request(runtime, Kind::Config);
-            }
-            Action::Submit(Form { kind: FormKind::Search { view }, value }) => {
-                match view {
-                    View::Config => {
-                        self.library.query = value;
-                        self.library.raw = false;
-                        self.library.filter_config();
-                    }
-                    View::Models => self.library.rows_mut(Kind::Models).set_query(value),
-                    View::Logs => self.logs.query = value,
-                    _ => {}
-                }
-                self.navigation.reveal_library(0);
             }
             Action::Redraw => {},
             Action::Cancel => self.cancel(),
@@ -525,19 +584,7 @@ impl App {
                     self.navigation.reveal_owner(0);
                 }
             }
-            Action::SelectRow(kind, key) => {
-                let expected = match self.navigation.view() {
-                    View::Models => Some(Kind::Models),
-                    View::Devices => Some(Kind::Devices),
-                    View::Profiles => Some(Kind::Profiles),
-                    View::Config => Some(Kind::Config),
-                    _ => None,
-                };
-                if expected == Some(kind) && self.library.rows(kind).visible().any(|row| row.key == key) {
-                    self.library.rows_mut(kind).selected = Some(key);
-                    self.navigation.reveal_library(0);
-                }
-            }
+            Action::SelectRow(kind,key) => {self.select_row(kind,key);}
             Action::Scroll(pane, motion) => {
                 let at_end = self.navigation.scroll(pane, motion);
                 if self.navigation.view() == View::Logs && pane == layout::Pane::Main && !at_end && self.logs.following() {
@@ -620,7 +667,6 @@ impl App {
                 FormKind::ProfileCopy { source } => self.start(runtime, Request::Settings(settings::Action::Copy { source, name: value })),
                 FormKind::ConfigValue { file, key } => self.start(runtime, Request::Settings(settings::Action::Set { file, key, value })),
                 FormKind::RawYaml { file } => self.start(runtime, Request::Settings(settings::Action::Replace { file, yaml: value })),
-                FormKind::Search { .. } => unreachable!("search handled before effect guard"),
 
                 FormKind::PullSource => self.pull_source(value),
                 FormKind::PullSelection { source } => self.confirm_pull(&source, &value),
@@ -657,15 +703,6 @@ impl App {
             Kind::Models
         };
         match action {
-            LibraryAction::Search => {
-                if self.navigation.view() == View::Models {
-                    self.navigation.form_value(
-                        FormKind::Search { view: View::Models },
-                        self.library.rows(kind).query().to_owned(),
-                    );
-                }
-                return;
-            }
             LibraryAction::Cycle | LibraryAction::SelectShelf(_) => {
                 if self.navigation.view() != View::Models {
                     return;
@@ -907,13 +944,6 @@ impl App {
                 self.navigation.reveal_library(index);
                 return;
             }
-            SettingsAction::Search => {
-                self.navigation.form_value(
-                    FormKind::Search { view: View::Config },
-                    self.library.query.clone(),
-                );
-                return;
-            }
             SettingsAction::RawView => {
                 self.library.raw = !self.library.raw;
                 self.navigation.reveal_library(0);
@@ -1072,10 +1102,6 @@ impl App {
             LogAction::PickComponent => self.navigation.pick_component(self.logs.component()),
             LogAction::SetLevel(level) => self.logs.set_level(level),
             LogAction::SetComponent(component) => self.logs.set_component(component),
-            LogAction::Search => self.navigation.form_value(
-                FormKind::Search { view: View::Logs },
-                self.logs.query.clone(),
-            ),
         }
         self.navigation.reveal_library(0);
     }

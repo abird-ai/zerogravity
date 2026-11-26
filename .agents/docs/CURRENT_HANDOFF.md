@@ -27,7 +27,54 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — UX-P4A1 minimal presentation (26 Nov)
+### Current checkpoint — UX-P4A1 follow-up: toolbar-free contextual UI (26 Nov)
+
+User rejected even a minimal top toolbar: select an object, show its
+actions in context, only inline search at the top. Supersedes previous
+wide/curated action strips and modal search.
+
+- Removed action_bar and FormKind::Search, replaced by the existing
+  grapheme editor in a single-line filter. All printable input in
+  Models/Devices/Profiles/Config/Running/Logs filters immediately,
+  including former operation/digit keys; Ctrl-F focuses, Ctrl-U clears,
+  Esc clears active search, arrows select, Tab leaves search. Local
+  per-shelf/row indices, config rows moved from observed projection into
+  same Rows owner, no duplicate filtered inventory/provider search.
+- Selected row ellipsis/right-click and F4 open one compact menu
+  titled with exact selected context, no effect on row selection.
+  Cached Load/Run/Details/Inspect/Verify/Alias/Load-for-Serve/removal;
+  catalog/partial only applicable pull/details. Ready registration,
+  device, profile and setting context. One pane fallback when selected
+  row not visible; Home/Serve/Downloads/Logs use pane action menu.
+  Footer session menu/F10 holds Web/Appearance/Refresh/Quit. Existing
+  context Scope and Bound dispatch revalidate live owner and slot;
+  matching right-click release, stale row refusal, no motion effects.
+- Search owns printable keys. Alt+1–9 navigation, Alt+operation letters,
+  F1/Alt+? help, Alt+: palette, Ctrl-Q quit outside dialog. Non-search
+  views retain ordinary shortcuts. Enter model/device/registration
+  context, profiles open editor, Config direct YAML edit; typed Edit
+  via menu/Alt+e. No new runtime or configuration ownership or dependency.
+- Strict minimal/Web-only/TUI-Web/combined lint; 15/0 focused native
+  Rust tests and actual rendered-cell inspection, optimized Rust 88/0/3.
+  Real SGR ellipsis/right-click, mouse/split/scroll, local type/drag
+  filtering, typed picker, profile/context/confirmation and stale Web
+  release, narrow/session menu, original shell/settings/appearance,
+  controlled download pause/resume/durable/cancel pass. Actual approved
+  cached Qwen CPU/browser/native/HTTP 1/0/0 (57.77s, five filtered) with
+  original 8 GiB admission and exact output, mouse context inspect/verify/
+  alias/run/removal, listener and stale identities, shared settings pass.
+  Previous host memory blocker resolved without policy change. Actual
+  attached Firefox/native shared transfer durable and cancelled pass.
+  Exact default CPU/model/text/TUI/Web release and all native PTY
+  invocations passed. Additional logs: target/ux-context-resident.log,
+  target/ux-context-default.log.
+  Test-only geometry and differential-render assertions adjusted; no effect guard
+  weakened. Logs target/ux-context-acceptance.log, -pty-rerun.log,
+  -pty-final.log. Remaining P4A2 stable scroll anchors, separate Running
+  selected detail/response, safe log row details, compact/focus/editor
+  edges and P4B full acceptance. No public serving or performance claim.
+
+### Previous checkpoint — UX-P4A1 minimal presentation (26 Nov; f723b0b6)
 
 User supplied two actual Alacritty screenshots and requested less
 visual overload, no redundant top-bar destinations or random text,
