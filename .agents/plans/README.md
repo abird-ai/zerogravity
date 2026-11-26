@@ -16,12 +16,11 @@ Cross-window continuation starts at [the canonical current handoff](../docs/CURR
 The latest [comprehensive takeover through UX-P-M1](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-26_UX_PM1.md)
 §§0–13 describes current architecture, accepted UX-1–10 and focused
 UX-P1/P2/P3/P4A, full default/error follow-up and live model metrics.
-Use the [standalone P4B prompt](../docs/NEXT_AGENT_2026-11-26_UX_P4B.md).
-Next required: P4B assembled acceptance in
-[UX-P polish](cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md) and
-[live performance](cli-ux/LIVE_MODEL_PERFORMANCE.md); deeper M2 inspection
-is optional and capability-bound. Do not start public serving before
-UX-P exit. The comprehensive handoff §10.2 records known full-default
+UX-P and the model-local execution selector are accepted. The
+[standalone P4B prompt](../docs/NEXT_AGENT_2026-11-26_UX_P4B.md) is historical.
+Current unit: [OA-1 public serving transport](serving-and-speculation/NEXT_ITERATION_OPENAI_COMPATIBLE_SERVING.md#oa-1--async-transport-substrate).
+Read the live handoff for the assembled gate and remaining OA-1 work;
+deeper M2 inspection stays optional and capability-bound. The comprehensive handoff §10.2 records known full-default
 link/gate/packaging and physical qualification caveats.
 Its Appendices A–E preserve the engineering index, unresolved snapshot,
 complete reachable Git ledger, every post-UX-9B landing narrative and

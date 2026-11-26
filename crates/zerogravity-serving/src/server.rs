@@ -6,10 +6,7 @@ use crate::{
 };
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener},
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
+    sync::Arc,
     thread::JoinHandle,
 };
 use zerogravity_engine::{
@@ -40,7 +37,7 @@ pub struct Server {
 pub struct ServerHandle {
     address: SocketAddr,
     worker: Option<JoinHandle<std::io::Result<()>>>,
-    shutdown: Arc<AtomicBool>,
+    shutdown: Arc<http::Shutdown>,
     metrics: Arc<Counters>,
     // Retained through the accept-thread join, including panic/error paths.
     _charge: ServingCharge,
@@ -48,7 +45,7 @@ pub struct ServerHandle {
 struct AcceptCaptures {
     listener: TcpListener,
     service: Arc<dyn TextService>,
-    connections: http::Connections,
+    shutdown: Arc<http::Shutdown>,
     config: http::ServeConfig,
     metrics: Arc<Counters>,
 }
@@ -57,7 +54,7 @@ impl AcceptCaptures {
         http::serve(
             self.listener,
             self.service,
-            self.connections,
+            self.shutdown,
             self.config,
             self.metrics,
         )
@@ -158,7 +155,8 @@ impl Server {
             // Add the full result row for this accept worker's non-unit return.
             std::mem::size_of::<Option<std::thread::Result<std::io::Result<()>>>>() as u64,
             std::mem::size_of::<ServerHandle>() as u64,
-            std::mem::size_of::<(usize, usize, AtomicBool)>() as u64,
+            std::mem::size_of::<(usize, usize, http::Shutdown)>() as u64,
+            http::SERVER_HEADROOM,
             std::mem::size_of::<(usize, usize, Counters)>() as u64,
             service_layout.size() as u64,
             builder
@@ -171,21 +169,15 @@ impl Server {
             .service
             .charge_ingress("http-server", owners)
             .map_err(service_error)?;
-        let shutdown = Arc::new(AtomicBool::new(false));
+        let shutdown = Arc::new(http::Shutdown::default());
         let metrics = Arc::new(Counters::default());
-        let connections = http::Connections::new(
-            builder.service.as_ref(),
-            Arc::clone(&shutdown),
-            builder.limits.connections,
-        )
-        .map_err(io_error)?;
         let listener = TcpListener::bind(builder.address).map_err(io_error)?;
         listener.set_nonblocking(true).map_err(io_error)?;
         let address = listener.local_addr().map_err(io_error)?;
         let captures = AcceptCaptures {
             listener,
             service: builder.service,
-            connections,
+            shutdown: Arc::clone(&shutdown),
             config: http::ServeConfig {
                 api_key: builder.api_key,
                 enable_per_request_metrics: builder.enable_per_request_metrics,
@@ -217,7 +209,7 @@ impl ServerHandle {
         self.metrics.snapshot()
     }
     pub fn stop(&self) {
-        self.shutdown.store(true, Ordering::Release);
+        self.shutdown.stop();
     }
     pub fn is_finished(&self) -> bool {
         self.worker.as_ref().is_none_or(JoinHandle::is_finished)

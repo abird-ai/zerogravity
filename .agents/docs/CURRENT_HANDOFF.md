@@ -6,8 +6,7 @@ Canonical cross-window entry point for `/home/pvl/spaces/abird/src/zerogravity`.
 [FULL_COMPREHENSIVE_HANDOFF_2026-11-26_UX_PM1.md](FULL_COMPREHENSIVE_HANDOFF_2026-11-26_UX_PM1.md).
 Read §§0–13 for historical design and gate context. The
 [standalone P4B takeover prompt](NEXT_AGENT_2026-11-26_UX_P4B.md)
-is superseded by the accepted checkpoint below; public serving OA-1
-is the next unit.
+is historical; the active public serving checkpoint below owns continuation.
 Appendix D preserves all fifteen post-UX-9B landing narratives and
 changed paths; Appendix B records the literal pending-marker snapshot.
 The complete [UX-9B pack](FULL_COMPREHENSIVE_HANDOFF_2026-11-26_UX9B_EXIT.md),
@@ -35,7 +34,46 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — model-local execution selector accepted (26 Nov)
+### Current checkpoint — OA-1A bounded asynchronous text transport (26 Nov)
+
+Source authoring began from clean signed `240bd05e` on L5. Replaced the
+bootstrap per-connection blocking HTTP/1 server with pinned cached Tokio
+1.53.2, Hyper 1.13.0 and hyper-util 0.1.21 confined to the serving crate.
+One owned current-thread runtime, bounded connection tasks, persistent and
+pipelined HTTP/1.1, charged fixed-length JSON ingress, direct SSE, connection
+output budget and stalled-client deadlines. The original charged event queue
+now offers standard-library waker readiness; no new scheduler/runtime or
+model owner. Stop joins protocol-owned tasks and leaves SDK caller-owned
+runtime/other work intact. Existing semantic routing, auth, ingress limits,
+errors/diagnostic redaction, cancellation and original output owners remain.
+A bounded duplicate socket observes EOF even behind a buffered pipeline.
+Opt-in token timing measures actual completed SSE payload handoff to the
+socket, not client receipt. External runtime headroom is a conservative
+allowance, not an exact allocator census.
+
+Hyper owns wire parsing: malformed frames can receive protocol-level 4xx
+rather than application JSON; identical repeated Content-Length may be
+normalized by Hyper, conflicting lengths remain rejected. Chunked requests
+and Expect remain refused; no TLS, HTTP/2, media, WebSocket or general
+compatibility claim. No downloads or new physical GPU/performance evidence.
+
+Focused strict lint, serving 25/0/0, engine 110/0/0; actual approved cached CPU
+CLI/native/Firefox listener lifecycle 1/0/0 (55.52s) including model list and
+both alias completions on one persistent connection, exact output equality,
+and original owner retirement; actual Rust SDK shared model/listener
+lifecycle 1/0/0 (8.83s). Complete assembled private-network gate exited
+0 (819.3s): 2,538 passed, zero failures, 109 explicit skips across 318
+Rust suites; release TUI/Web, installer and scripts passed.
+Logs: `target/oa1-final-focused.log`, `target/oa1-real-consumers.log`,
+`target/oa1-assembled.log`.
+
+Next: OA-1B bounded streaming upload,
+multipart primitives and WebSocket foundation using approved dependencies.
+Keep unsupported endpoints explicitly refused and no separate admission
+authority. OA-2 semantic request/model-template boundary follows complete
+OA-1. UX-P stays accepted; performance roadmap remains unchanged.
+
+### Prior checkpoint — model-local execution selector accepted (26 Nov)
 
 User-directed follow-up to the accepted UX-P4B checkpoint: one quiet
 Execution row/selector on the selected cached model in native TUI and Web.

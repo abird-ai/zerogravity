@@ -1,19 +1,22 @@
-//! Model-free HTTP controls; no numerical/device qualification.
-
-use super::*;
+//! Actual async transport ownership tests. The queue/events below deliberately
+//! hold original cancellation receipts; they do not qualify model arithmetic.
 use crate::{
-    ServerBuilder,
+    ServerBuilder, ServerHandle, TextService,
+    service::{Request, RequestEvents, ServiceError, ServingCharge},
     test_support::{self, HostBytes},
 };
-use pending::{CancelToken, PendingQueue, Pop, ServingHost};
-use std::sync::mpsc as control;
-
-fn pair() -> (TcpStream, TcpStream) {
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let client = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
-    let (server, _) = listener.accept().unwrap();
-    (client, server)
-}
+use std::{
+    io::{Read, Write},
+    net::TcpStream,
+    sync::{Arc, Mutex},
+    time::{Duration, Instant},
+};
+use zerogravity_core::resource_arbiter::AllocationClass;
+use zerogravity_engine::router::{
+    ResponseEvent,
+    event_channel::mpsc,
+    pending::{CancelToken, PendingQueue, Pop, ServingHost},
+};
 
 fn wait_until(mut ready: impl FnMut() -> bool) {
     let deadline = Instant::now() + Duration::from_secs(3);
@@ -26,24 +29,29 @@ fn wait_until(mut ready: impl FnMut() -> bool) {
     }
 }
 
-#[derive(Clone)]
-struct Ingress(ServingHost);
-impl IngressCharge for Ingress {
-    fn charge_http_ingress(
-        &self,
-        session: &str,
-        bytes: u64,
-    ) -> Result<ServingCharge, ServiceError> {
-        self.0.charge(
-            "shutdown-control",
-            session,
-            zerogravity_core::resource_arbiter::AllocationClass::Scratch,
-            bytes,
-        )
-    }
+fn start(service: Arc<dyn TextService>) -> ServerHandle {
+    ServerBuilder::from_service(service)
+        .bind("127.0.0.1:0".parse().unwrap())
+        .build()
+        .unwrap()
+        .start()
+        .unwrap()
 }
-fn ingress() -> Ingress {
-    Ingress(test_support::host())
+
+fn assert_closed(mut client: TcpStream) {
+    client
+        .set_read_timeout(Some(Duration::from_secs(1)))
+        .unwrap();
+    let mut bytes = Vec::new();
+    match client.read_to_end(&mut bytes) {
+        Ok(_) => {}
+        Err(error)
+            if matches!(
+                error.kind(),
+                std::io::ErrorKind::ConnectionReset | std::io::ErrorKind::BrokenPipe
+            ) => {}
+        other => panic!("socket survived joined shutdown: {other:?}"),
+    }
 }
 
 #[test]
@@ -51,12 +59,7 @@ fn idle_listener_stops_without_a_wakeup_connection() {
     let _lock = test_support::lock();
     let host = test_support::host();
     let baseline = host.serving_bytes();
-    let server = ServerBuilder::from_service(test_support::idle(&host))
-        .bind("127.0.0.1:0".parse().unwrap())
-        .build()
-        .unwrap()
-        .start()
-        .unwrap();
+    let server = start(test_support::idle(&host));
     let address = server.local_addr();
     assert_ne!(address.port(), 0);
     assert!(host.serving_bytes() > baseline);
@@ -67,16 +70,11 @@ fn idle_listener_stops_without_a_wakeup_connection() {
 }
 
 #[test]
-fn shutdown_interrupts_idle_partial_header_and_partial_body_then_joins_workers() {
+fn shutdown_interrupts_idle_partial_header_and_partial_body_then_joins_tasks() {
     let _lock = test_support::lock();
     let host = test_support::host();
     let baseline = host.serving_bytes();
-    let server = ServerBuilder::from_service(test_support::idle(&host))
-        .bind("127.0.0.1:0".parse().unwrap())
-        .build()
-        .unwrap()
-        .start()
-        .unwrap();
+    let server = start(test_support::idle(&host));
     let address = server.local_addr();
     let idle = TcpStream::connect(address).unwrap();
     let mut header = TcpStream::connect(address).unwrap();
@@ -85,306 +83,244 @@ fn shutdown_interrupts_idle_partial_header_and_partial_body_then_joins_workers()
         .unwrap();
     let mut body = TcpStream::connect(address).unwrap();
     body.write_all(b"POST /v1/completions HTTP/1.1\r\nHost: localhost\r\nContent-Length: 32\r\nContent-Type: application/json\r\n\r\n{\"").unwrap();
-    wait_until(|| host.serving_bytes() >= baseline + 3 * HTTP_HEADER_ENVELOPE);
+    wait_until(|| {
+        server.metrics().active_connections == 3 && server.metrics().accepted_requests == 1
+    });
+    assert!(host.serving_bytes() >= baseline + 3 * super::transport::CONNECTION_HEADROOM);
     server.shutdown().unwrap();
-    assert_eq!(
-        host.serving_bytes(),
-        baseline,
-        "HTTP/worker/table owners retired after joins"
-    );
-    assert!(
-        TcpStream::connect(address).is_err(),
-        "listener closed before return"
-    );
-    for mut client in [idle, header, body] {
-        client
-            .set_read_timeout(Some(Duration::from_secs(1)))
-            .unwrap();
-        let mut byte = [0];
-        match client.read(&mut byte) {
-            Ok(0) => {}
-            Err(error)
-                if matches!(
-                    error.kind(),
-                    std::io::ErrorKind::ConnectionReset | std::io::ErrorKind::BrokenPipe
-                ) => {}
-            other => panic!("client remained open after joined shutdown: {other:?}"),
-        }
+    assert_eq!(host.serving_bytes(), baseline);
+    assert!(TcpStream::connect(address).is_err());
+    for client in [idle, header, body] {
+        assert_closed(client);
     }
+}
+
+type Held = (CancelToken, mpsc::SyncSender<ResponseEvent>);
+struct PendingService {
+    host: ServingHost,
+    queue: PendingQueue<Held>,
+    receipts: Mutex<Vec<CancelToken>>,
+}
+impl TextService for PendingService {
+    fn charge_ingress(&self, session: &str, bytes: u64) -> Result<ServingCharge, ServiceError> {
+        self.host
+            .charge("shutdown-control", session, AllocationClass::Scratch, bytes)
+    }
+    fn model_ids(&self) -> Result<Vec<String>, ServiceError> {
+        Ok(vec!["fixture".into()])
+    }
+    fn max_output(&self) -> Result<usize, ServiceError> {
+        Ok(4)
+    }
+    fn admission(&self) -> Result<serde_json::Value, ServiceError> {
+        Ok(serde_json::json!({}))
+    }
+    fn request_admitted(
+        &self,
+        request: Request,
+        _ingress: Vec<ServingCharge>,
+    ) -> Result<RequestEvents, ServiceError> {
+        assert_ne!(request.model, "panic", "injected protocol-task panic");
+        let (sender, receiver) = mpsc::try_sync_channel(&self.host, "control", "events", 2)?;
+        let cancel = self.queue.cancel_token(None);
+        let mut receipts = self.receipts.lock().unwrap();
+        let id = receipts.len() as u64 + 1;
+        self.queue
+            .enqueue(self.queue.reserve()?, (cancel.clone(), sender))
+            .map_err(|(error, _)| error)?;
+        receipts.push(cancel.clone());
+        Ok(RequestEvents::new(
+            id,
+            request.model,
+            receiver,
+            cancel,
+            None,
+            None,
+        ))
+    }
+}
+impl PendingService {
+    fn open(host: ServingHost) -> Arc<Self> {
+        Arc::new(Self {
+            queue: PendingQueue::new(host.clone(), Some(8)).unwrap(),
+            host,
+            receipts: Mutex::new(Vec::new()),
+        })
+    }
+    fn receipt(&self, index: usize) -> CancelToken {
+        wait_until(|| self.receipts.lock().unwrap().len() > index);
+        self.receipts.lock().unwrap()[index].clone()
+    }
+}
+
+fn request(address: std::net::SocketAddr, streaming: bool) -> TcpStream {
+    let mut socket = TcpStream::connect(address).unwrap();
+    let body = format!(r#"{{"model":"fixture","prompt":"x","stream":{streaming}}}"#);
+    write!(socket, "POST /v1/completions HTTP/1.1\r\nHost: localhost\r\nContent-Length: {}\r\nContent-Type: application/json\r\n\r\n{body}", body.len()).unwrap();
+    socket
 }
 
 #[test]
 fn shutdown_cancels_original_queued_and_active_streaming_and_nonstream_receipts() {
     let _lock = test_support::lock();
-    let ingress = ingress();
-    let queue = PendingQueue::new(ingress.0.clone(), Some(8)).unwrap();
-    let consumer = queue.worker().unwrap();
-    let shutdown = Arc::new(AtomicBool::new(false));
-    let mut connections =
-        Connections::new(&ingress, Arc::clone(&shutdown), MAX_CONNECTIONS).unwrap();
+    let host = test_support::host();
+    let baseline = host.serving_bytes();
+    let service = PendingService::open(host.clone());
+    let consumer = service.queue.worker().unwrap();
+    let server = start(service.clone());
     let mut active = Vec::new();
     let mut clients = Vec::new();
-    let mut tokens = Vec::new();
-    let (begun, started) = control::channel();
-    for (id, streaming, running) in [
-        (1, false, true),
-        (2, true, true),
-        (3, false, false),
-        (4, true, false),
-    ] {
-        let cancel = queue.cancel_token(None);
-        let (sender, receiver) =
-            mpsc::try_sync_channel(&ingress.0, "control", "events", 2).unwrap();
-        queue
-            .enqueue(queue.reserve().unwrap(), (cancel.clone(), sender))
-            .unwrap_or_else(|_| panic!("publish control"));
-        if running {
-            match consumer.try_pop(|(cancel, _): &(CancelToken, _)| cancel.is_cancelled()) {
+    let mut receipts = Vec::new();
+    for (i, streaming) in [false, true, false, true].into_iter().enumerate() {
+        clients.push(request(server.local_addr(), streaming));
+        receipts.push(service.receipt(i));
+        if i < 2 {
+            match consumer.try_pop(|(cancel, _)| cancel.is_cancelled()) {
                 Pop::Item(job) => active.push(job),
-                _ => panic!("active control missing"),
+                _ => panic!("active fixture missing"),
             }
         }
-        let request =
-            RequestEvents::new(id, "no-model".into(), receiver, cancel.clone(), None, None);
-        tokens.push(cancel);
-        let (client, mut stream) = pair();
-        let interrupt = stream.try_clone().unwrap();
-        let stop = Arc::clone(&shutdown);
-        let begun = begun.clone();
-        let charge = ingress.charge_http_ingress("connection", 128).unwrap();
-        let handle = std::thread::spawn(move || {
-            begun.send(()).unwrap();
-            let mut wire = Wire::new(&mut stream, 1 << 20);
-            if streaming {
-                assert!(
-                    stream_events(
-                        &mut wire,
-                        request,
-                        false,
-                        false,
-                        &stop,
-                        &ErrorReporting::default()
-                    )
-                    .is_err()
-                );
-            } else {
-                assert_eq!(
-                    completion_events(&mut wire, request, false, &stop)
-                        .unwrap_err()
-                        .code,
-                    "shutting_down"
-                );
-            }
-        });
-        connections.entries.push(Connection {
-            handle,
-            interrupt,
-            _charge: charge,
-        });
-        clients.push(client);
     }
-    for _ in 0..4 {
-        started.recv_timeout(Duration::from_secs(3)).unwrap();
+    assert_eq!(service.queue.snapshot().pending, 2);
+    server.shutdown().unwrap();
+    assert!(receipts.iter().all(CancelToken::is_cancelled));
+    assert_eq!(
+        service
+            .queue
+            .sweep(|(cancel, _)| cancel.is_cancelled())
+            .unwrap(),
+        2
+    );
+    assert_eq!(service.queue.snapshot().pending, 0);
+    for client in clients {
+        assert_closed(client);
     }
-    assert_eq!(queue.snapshot().pending, 2);
-    connections.finish().unwrap();
-    assert!(tokens.iter().all(CancelToken::is_cancelled));
-    assert_eq!(queue.sweep(|(cancel, _)| cancel.is_cancelled()).unwrap(), 2);
-    assert_eq!(queue.snapshot().pending, 0);
     drop(active);
-    queue.close();
+    service.queue.close();
     assert!(matches!(
         consumer.try_pop(|(cancel, _)| cancel.is_cancelled()),
         Pop::Closed
     ));
-    drop((connections, tokens, clients, consumer, queue));
-    assert_eq!(ingress.0.serving_bytes(), 0);
+    drop((receipts, consumer, service));
+    assert_eq!(host.serving_bytes(), baseline);
 }
 
 #[test]
-fn disconnect_cancels_generation_before_the_first_token() {
+fn disconnect_cancels_only_its_original_request_before_first_token() {
     let _lock = test_support::lock();
     for (streaming, trailing) in [(false, false), (true, false), (false, true), (true, true)] {
         let host = test_support::host();
-        let (sender, receiver) = mpsc::try_sync_channel(&host, "control", "events", 2).unwrap();
-        let cancel = test_support::cancel(&host);
-        let token = cancel.clone();
-        let request = RequestEvents::new(1, "no-model".into(), receiver, cancel, None, None);
-        let (mut client, mut stream) = pair();
-        let handle = std::thread::spawn(move || {
-            let stop = AtomicBool::new(false);
-            let mut wire = Wire::new(&mut stream, 1 << 20);
-            if streaming {
-                assert!(
-                    stream_events(
-                        &mut wire,
-                        request,
-                        false,
-                        false,
-                        &stop,
-                        &ErrorReporting::default()
-                    )
-                    .is_err()
-                );
-            } else {
-                assert_eq!(
-                    completion_events(&mut wire, request, false, &stop)
-                        .unwrap_err()
-                        .status,
-                    499
-                );
-            }
-        });
+        let baseline = host.serving_bytes();
+        let service = PendingService::open(host.clone());
+        let consumer = service.queue.worker().unwrap();
+        let server = start(service.clone());
+        let mut first = request(server.local_addr(), streaming);
+        let first_token = service.receipt(0);
+        let second = request(server.local_addr(), !streaming);
+        let second_token = service.receipt(1);
         if trailing {
-            // Events are already admitted. Bytes arriving now must not hide EOF.
-            client.write_all(b"unexpected next request").unwrap();
+            // A buffered next request cannot mask a peer close indefinitely.
+            first
+                .write_all(b"GET /health HTTP/1.1\r\nHost: localhost\r\n\r\n")
+                .unwrap();
         }
-        drop(client);
-        wait_until(|| token.is_cancelled());
-        handle.join().unwrap();
-        drop(sender);
-        assert_eq!(host.serving_bytes(), 0);
-    }
-}
-
-fn blocked_reader(
-    connections: &mut Connections,
-    ingress: &Ingress,
-) -> (TcpStream, control::Receiver<()>) {
-    let (client, mut stream) = pair();
-    let interrupt = stream.try_clone().unwrap();
-    let source = ingress.clone();
-    let charge = ingress.charge_http_ingress("connection", 128).unwrap();
-    let (done, finished) = control::channel();
-    let handle = std::thread::spawn(move || {
-        assert!(read_request(&mut stream, &source, MAX_BODY).is_err());
-        done.send(()).unwrap();
-    });
-    connections.entries.push(Connection {
-        handle,
-        interrupt,
-        _charge: charge,
-    });
-    (client, finished)
-}
-
-#[test]
-fn listener_failure_interrupts_and_joins_existing_partial_clients() {
-    let _lock = test_support::lock();
-    let ingress = ingress();
-    let mut connections =
-        Connections::new(&ingress, Arc::new(AtomicBool::new(false)), MAX_CONNECTIONS).unwrap();
-    let (_client, finished) = blocked_reader(&mut connections, &ingress);
-    let error = accept_connections(
-        &mut connections,
-        || Err(std::io::Error::other("injected listener failure")),
-        |_, _| unreachable!(),
-    )
-    .unwrap_err();
-    assert_eq!(error.to_string(), "injected listener failure");
-    connections.finish().unwrap();
-    finished.recv_timeout(Duration::from_secs(3)).unwrap();
-    drop(connections);
-    assert_eq!(ingress.0.serving_bytes(), 0);
-}
-
-#[test]
-fn handler_spawn_failure_interrupts_and_joins_existing_clients() {
-    let _lock = test_support::lock();
-    let ingress = ingress();
-    let mut connections =
-        Connections::new(&ingress, Arc::new(AtomicBool::new(false)), MAX_CONNECTIONS).unwrap();
-    let (_blocked_client, finished) = blocked_reader(&mut connections, &ingress);
-    let (_new_client, stream) = pair();
-    let mut accepted = Some(stream);
-    let error = accept_connections(
-        &mut connections,
-        || Ok(accepted.take().expect("one connection before spawn error")),
-        |_, _| Err(std::io::Error::other("injected handler spawn failure")),
-    )
-    .unwrap_err();
-    assert_eq!(error.to_string(), "injected handler spawn failure");
-    connections.finish().unwrap();
-    finished.recv_timeout(Duration::from_secs(3)).unwrap();
-    drop(connections);
-    assert_eq!(ingress.0.serving_bytes(), 0);
-}
-
-#[test]
-fn shutdown_interrupts_a_backpressured_writer_before_join() {
-    let _lock = test_support::lock();
-    let ingress = ingress();
-    let mut connections =
-        Connections::new(&ingress, Arc::new(AtomicBool::new(false)), MAX_CONNECTIONS).unwrap();
-    let (_client, mut stream) = pair();
-    stream.set_nonblocking(true).unwrap();
-    let data = [0u8; 16 * 1024];
-    let deadline = Instant::now() + Duration::from_secs(3);
-    loop {
-        assert!(
-            Instant::now() < deadline,
-            "socket did not reach backpressure"
+        drop(first);
+        wait_until(|| first_token.is_cancelled());
+        assert!(!second_token.is_cancelled());
+        assert_eq!(
+            service
+                .queue
+                .sweep(|(cancel, _)| cancel.is_cancelled())
+                .unwrap(),
+            1
         );
-        match stream.write(&data) {
-            Ok(_) => {}
-            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => break,
-            other => panic!("cannot establish backpressured control: {other:?}"),
-        }
+        server.shutdown().unwrap();
+        assert!(second_token.is_cancelled());
+        assert_closed(second);
+        drop((first_token, second_token, consumer, service));
+        assert_eq!(host.serving_bytes(), baseline);
     }
-    stream.set_nonblocking(false).unwrap();
-    let interrupt = stream.try_clone().unwrap();
-    let (begun, started) = control::channel();
-    let handle = std::thread::spawn(move || {
-        begun.send(()).unwrap();
+}
+
+#[test]
+fn shutdown_joins_a_backpressured_stream_without_waiting_for_client() {
+    let _lock = test_support::lock();
+    let host = test_support::host();
+    let baseline = host.serving_bytes();
+    let service = PendingService::open(host.clone());
+    let consumer = service.queue.worker().unwrap();
+    let server = ServerBuilder::from_service(service.clone())
+        .bind("127.0.0.1:0".parse().unwrap())
+        .limits(crate::ingress::IngressLimits {
+            output_bytes: 32 * 1024 * 1024,
+            ..Default::default()
+        })
+        .build()
+        .unwrap()
+        .start()
+        .unwrap();
+    let client = request(server.local_addr(), true);
+    let receipt = service.receipt(0);
+    let active = match consumer.try_pop(|(cancel, _)| cancel.is_cancelled()) {
+        Pop::Item(job) => job,
+        _ => panic!("active fixture missing"),
+    };
+    // An unread socket eventually blocks the original bounded event channel.
+    // No unlimited producer or artificial sleep in the transport itself.
+    let mut blocked = false;
+    for _ in 0..64 {
+        let mut event = ResponseEvent::Text("x".repeat(256 * 1024));
+        let deadline = Instant::now() + Duration::from_millis(200);
         loop {
-            if stream.write_all(&data).is_err() {
-                break;
+            match active.1.try_send(event) {
+                Ok(()) => break,
+                Err(mpsc::TrySendError::Full(returned)) => {
+                    if Instant::now() >= deadline {
+                        blocked = true;
+                        break;
+                    }
+                    event = returned;
+                    std::thread::sleep(Duration::from_millis(2));
+                }
+                Err(mpsc::TrySendError::Disconnected(_)) => {
+                    panic!("request retired before backpressure")
+                }
             }
         }
-    });
-    connections.entries.push(Connection {
-        handle,
-        interrupt,
-        _charge: ingress.charge_http_ingress("connection", 128).unwrap(),
-    });
-    started.recv_timeout(Duration::from_secs(3)).unwrap();
-    connections.finish().unwrap();
-    drop(connections);
-    assert_eq!(ingress.0.serving_bytes(), 0);
+        if blocked {
+            break;
+        }
+    }
+    assert!(blocked && !receipt.is_cancelled());
+    let stopped = Instant::now();
+    server.shutdown().unwrap();
+    assert!(stopped.elapsed() < Duration::from_secs(3));
+    assert!(receipt.is_cancelled());
+    assert_closed(client);
+    drop((active, receipt, consumer, service));
+    assert_eq!(host.serving_bytes(), baseline);
 }
 
 #[test]
-fn unwind_interrupts_and_joins_every_existing_handler() {
+fn panicked_connection_is_reported_and_other_tasks_are_joined() {
     let _lock = test_support::lock();
-    let ingress = ingress();
-    let mut connections =
-        Connections::new(&ingress, Arc::new(AtomicBool::new(false)), MAX_CONNECTIONS).unwrap();
-    let (_client, finished) = blocked_reader(&mut connections, &ingress);
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
-        let _owned = connections;
-        panic!("startup/accept unwind after handler creation");
-    }));
-    assert!(result.is_err());
-    finished.recv_timeout(Duration::from_secs(3)).unwrap();
-    assert_eq!(ingress.0.serving_bytes(), 0);
-}
-
-#[test]
-fn panicked_handler_is_a_failure_and_does_not_skip_other_joins() {
-    let _lock = test_support::lock();
-    let ingress = ingress();
-    let mut connections =
-        Connections::new(&ingress, Arc::new(AtomicBool::new(false)), MAX_CONNECTIONS).unwrap();
-    let (_panicked_client, stream) = pair();
-    let handle = std::thread::spawn(|| panic!("injected handler panic"));
-    connections.entries.push(Connection {
-        handle,
-        interrupt: stream,
-        _charge: ingress.charge_http_ingress("connection", 128).unwrap(),
-    });
-    let (_blocked_client, finished) = blocked_reader(&mut connections, &ingress);
-    assert!(connections.finish().is_err());
-    finished.recv_timeout(Duration::from_secs(3)).unwrap();
-    drop(connections);
-    assert_eq!(ingress.0.serving_bytes(), 0);
+    let host = test_support::host();
+    let baseline = host.serving_bytes();
+    let service = PendingService::open(host.clone());
+    let consumer = service.queue.worker().unwrap();
+    let server = start(service.clone());
+    let addr = server.local_addr();
+    let client = request(addr, false);
+    let receipt = service.receipt(0);
+    let mut panic_client = TcpStream::connect(addr).unwrap();
+    let body = r#"{"model":"panic","prompt":"x"}"#;
+    write!(panic_client, "POST /v1/completions HTTP/1.1\r\nHost: localhost\r\nContent-Length: {}\r\nContent-Type: application/json\r\n\r\n{body}", body.len()).unwrap();
+    wait_until(|| server.is_finished());
+    assert!(server.join().is_err());
+    assert!(receipt.is_cancelled());
+    assert!(TcpStream::connect(addr).is_err());
+    assert_closed(client);
+    assert_closed(panic_client);
+    drop((receipt, consumer, service));
+    assert_eq!(host.serving_bytes(), baseline);
 }

@@ -7,6 +7,7 @@
 use super::dispatch::ServiceError;
 use super::pending::{ServingCharge, ServingHost, allocate_slots, checked_sum, slot_bytes};
 use std::sync::{Arc, Condvar, Mutex};
+use std::task::{Context, Poll, Waker};
 use std::time::{Duration, Instant};
 use zerogravity_core::resource_arbiter::AllocationClass;
 
@@ -33,6 +34,7 @@ pub mod mpsc {
         len: usize,
         senders: usize,
         receiver_closed: bool,
+        async_reader: Option<Waker>,
     }
 
     #[derive(Debug, PartialEq, Eq)]
@@ -102,6 +104,7 @@ pub mod mpsc {
                 len: 0,
                 senders: 1,
                 receiver_closed: false,
+                async_reader: None,
             }),
             ready: Condvar::new(),
             _charge: charge,
@@ -136,6 +139,11 @@ pub mod mpsc {
             state.slots[index] = Some(item);
             state.len += 1;
             self.inner.ready.notify_one();
+            let wake = state.async_reader.take();
+            drop(state);
+            if let Some(wake) = wake {
+                wake.wake();
+            }
             Ok(())
         }
     }
@@ -149,6 +157,11 @@ pub mod mpsc {
             state.senders = state.senders.saturating_sub(1);
             if state.senders == 0 {
                 self.inner.ready.notify_all();
+                let wake = state.async_reader.take();
+                drop(state);
+                if let Some(wake) = wake {
+                    wake.wake();
+                }
             }
         }
     }
@@ -175,6 +188,27 @@ pub mod mpsc {
             } else {
                 Err(TryRecvError::Empty)
             }
+        }
+        /// Transport-neutral readiness for the single owning receiver.
+        /// Registration and the empty check share the queue lock: no lost
+        /// wake between publication and parking, and no second event queue.
+        pub fn poll_recv(&self, cx: &mut Context<'_>) -> Poll<Result<T, RecvError>> {
+            let mut state = self.inner.state.lock().expect("event channel");
+            if let Some(value) = Self::pop(&mut state) {
+                self.inner.ready.notify_one();
+                return Poll::Ready(Ok(value));
+            }
+            if state.senders == 0 {
+                return Poll::Ready(Err(RecvError));
+            }
+            if state
+                .async_reader
+                .as_ref()
+                .is_none_or(|w| !w.will_wake(cx.waker()))
+            {
+                state.async_reader = Some(cx.waker().clone());
+            }
+            Poll::Pending
         }
         pub fn recv_timeout(&self, timeout: Duration) -> Result<T, RecvTimeoutError> {
             let deadline = Instant::now() + timeout;
@@ -221,7 +255,16 @@ pub mod mpsc {
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             state.receiver_closed = true;
+            // Remove a retained task waker before dropping the receiver.
+            let wake = state.async_reader.take();
             self.inner.ready.notify_all();
+            drop(state);
+            drop(wake);
+            let mut state = self
+                .inner
+                .state
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             // Retire each payload outside the channel lock: a payload may own
             // another sender or a host charge whose Drop re-enters this
             // channel or the serving ledger. `receiver_closed` already refuses
@@ -258,6 +301,41 @@ pub fn cancel_bytes() -> Result<u64, ServiceError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn async_receiver_wakes_on_publication_and_last_sender_drop() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::task::Wake;
+
+        struct Count(AtomicUsize);
+        impl Wake for Count {
+            fn wake(self: Arc<Self>) {
+                self.0.fetch_add(1, Ordering::Relaxed);
+            }
+        }
+        let (sender, receiver) = mpsc::sync_channel::<u8>(1);
+        let count = Arc::new(Count(AtomicUsize::new(0)));
+        let waker = Waker::from(count.clone());
+        let mut cx = Context::from_waker(&waker);
+        assert!(receiver.poll_recv(&mut cx).is_pending());
+        assert!(sender.try_send(7).is_ok());
+        assert_eq!(count.0.load(Ordering::Relaxed), 1);
+        assert!(matches!(receiver.poll_recv(&mut cx), Poll::Ready(Ok(7))));
+        assert!(receiver.poll_recv(&mut cx).is_pending());
+        drop(sender);
+        assert_eq!(count.0.load(Ordering::Relaxed), 2);
+        assert!(matches!(receiver.poll_recv(&mut cx), Poll::Ready(Err(_))));
+
+        // A receiver that is dropped while parked cannot retain a task via
+        // its surviving sender's channel.
+        let (sender, receiver) = mpsc::sync_channel::<u8>(1);
+        let refs = Arc::strong_count(&count);
+        assert!(receiver.poll_recv(&mut cx).is_pending());
+        assert_eq!(Arc::strong_count(&count), refs + 1);
+        drop(receiver);
+        assert_eq!(Arc::strong_count(&count), refs);
+        assert!(sender.try_send(9).is_err());
+    }
 
     #[test]
     fn receiver_retains_channel_charge_after_sender_drop() {

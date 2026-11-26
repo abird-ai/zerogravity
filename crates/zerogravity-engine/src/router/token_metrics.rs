@@ -30,7 +30,7 @@ pub fn validate_wire_id(value: &str) -> Result<(), ServiceError> {
 const SCHEMA: &str = "zerogravity.serving.request-token-metrics.v1";
 const CLOCK: &str = "request_monotonic_seconds";
 const COMMIT_SEMANTICS: &str = "observer immediately after existing source-root publication; not a GPU event clock or independent numerical proof";
-const DELIVERY_SEMANTICS: &str = "successful HTTP token-event write/flush to socket; not client receipt; absent for nonstream responses";
+const DELIVERY_SEMANTICS: &str = "successful complete HTTP token-event payload handoff to socket; not client receipt; absent for nonstream responses";
 const AGGREGATE_SEMANTICS: &str = "generation/mean ITL use provider commit-observed intervals; scheduled-start TTFT, queue time and scheduled throughput are unavailable; request-origin first commit is separate";
 const GPU_SEMANTICS: &str = "optional exact committed producer frontier; fused cohort sequence/width from the existing successful atomic-publication counter; absent fused cohort for singleton/interleaved execution; observation is not independent state or mathematics proof";
 
@@ -375,9 +375,14 @@ impl TokenMetrics {
         Ok(())
     }
     pub fn mark_written(&mut self) {
+        self.mark_written_at(Instant::now());
+    }
+    /// Timestamp observed by the transport after successful socket handoff,
+    /// rather than when its consumer next happens to be polled.
+    pub fn mark_written_at(&mut self, written: Instant) {
         if let Some(last) = self.records.last_mut() {
             last.http_write_completed_at_seconds =
-                Some(self.request.started.elapsed().as_secs_f64());
+                Some(written.duration_since(self.request.started).as_secs_f64());
         }
     }
     pub fn token_ids(&self) -> Vec<u32> {

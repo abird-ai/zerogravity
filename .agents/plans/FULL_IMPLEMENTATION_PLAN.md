@@ -764,6 +764,11 @@ protocol or backend performance work was admitted before this bounded exit.
 
 ### 2.3 Public serving and performance interface
 
+OA-1A bounded async text transport is accepted (complete isolated gate
+2,538/0/109, 318 suites; real cached CLI/TUI/Web and SDK passed). The remaining OA-1B streaming upload/multipart/WebSocket
+foundation precedes the OA-2 semantic request/model-template boundary.
+Preserve the original runtime, admission and listener owner.
+
 - [ ] Close the [OpenAI-compatible serving iteration](serving-and-speculation/NEXT_ITERATION_OPENAI_COMPATIBLE_SERVING.md):
   model catalog/router, OpenAI Chat/Responses and supported completion/
   embedding/tool/structured-output contracts, usage, errors, JSON/SSE,

@@ -2,7 +2,7 @@
 use crate::{Error, Result};
 #[derive(Clone, Copy, Debug)]
 pub struct IngressLimits {
-    /// Concurrent retained HTTP handlers (1..=64).
+    /// Concurrent retained HTTP connection tasks (1..=64).
     pub connections: usize,
     /// Content-Length limit (1..=1 MiB); checked before body allocation/read.
     pub body_bytes: usize,

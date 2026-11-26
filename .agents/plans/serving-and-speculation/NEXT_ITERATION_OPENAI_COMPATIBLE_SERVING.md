@@ -6,7 +6,7 @@ scaffolding), CLI/TUI/Web and serving, ROCm, CUDA, Vulkan, then concrete
 compiled providers. Native Hugging Face/Safetensors and GGUF are primary.
 Older ordering below is context; valid owner constraints remain authoritative.
 
-Status: **design only; OA-1 is next** (26 Nov, UX-P accepted).
+Status: **OA-1A bounded async text transport accepted** (26 Nov). OA-1B streaming upload/multipart/WebSocket foundation remains open; OA-2 and later remain ordered.
 
 26 Nov user decision: [UX-P native TUI polish](../cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md)
 was the prerequisite. The assembled P4B gate passed on ad7a4178;
@@ -1136,6 +1136,44 @@ Keep current /v1/models, Chat and Completions semantics working during the
 migration.
 
 Do not add new model semantics yet.
+
+#### OA-1A — bounded async text transport (26 Nov)
+
+The ordinary server owns one current-thread Tokio runtime and bounded Hyper
+HTTP/1 connection tasks. Pinned, locally cached transport dependencies are
+confined to the serving crate; the engine's charged, fixed-slot event channel
+adds only standard-library async receiver readiness. No second queue, model
+owner or inference thread per client. Successive/pipelined requests use the
+same connection; stop closes ingress, cancels protocol-owned receipts, and
+joins every task without stopping caller-owned SDK work. The existing auth,
+request parsing, body admission, JSON/SSE responses and diagnostic redaction
+remain the semantic boundary.
+
+Explicit text policy: 8 KiB header and 32-header caps, ten-second ingress
+deadlines, bounded connection count, 256 requests per connection, cumulative
+wire output budget and 30-second stalled-write bound. Connection and server
+runtime storage each receive conservative 64 KiB admission allowances,
+not an exact heap census; existing application body/output owners stay charged.
+A bounded read-only duplicate socket observes peer closure even behind a
+buffered pipeline. Hyper owns framing; invalid framing may produce a
+protocol-level 4xx rather than application JSON. Hyper normalizes identical
+repeated Content-Length; conflicting lengths and all chunked/Expect input
+remain refused in this slice. Ordinary output is directly polled from the
+original channel. Opt-in token observations measure completed SSE payload
+handoff via actual socket writes, never client receipt or body polling.
+
+OA-1A is not a general public API, TLS, HTTP/2, or external network exposure
+claim. No new model semantics or GPU performance claim.
+
+#### OA-1B — remaining bounded ingress and upgrade primitives
+
+Finish charged unknown-length streaming request bodies, multipart primitives
+and WebSocket foundations before closing OA-1. Use approved mature cached
+dependencies where available (multipart dependency availability must be
+checked; no automatic downloads). Keep auth, independent route/tenant scope,
+size/deadline limits, cancellation and owned shutdown; no stub modality
+endpoints or Responses translation hacks. Qualify new boundaries independently
+and preserve OA-1A's original text behavior.
 
 ### OA-2 — semantic request model and model template boundary
 

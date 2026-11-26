@@ -5,6 +5,20 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 26 Nov — OA-1A bounded async text transport
+
+Tokio/Hyper persistent HTTP/1.1 and bounded connection tasks now use the
+original charged event/admission owner. Focused serving 25/0/0, engine
+110/0/0, strict lint; actual cached CPU CLI/native/Firefox lifecycle 1/0/0
+(55.52s) with persistent model listing and exact alias completions, SDK
+listener/owner lifecycle 1/0/0 (8.83s). Assembled private-network gate
+passed (819.3s), 2,538/0/109 across 318 suites plus release TUI/Web,
+installer and scripts.
+No new numerical, GPU execution or performance comparison.
+Remaining OA-1B: streaming uploads, multipart and WebSocket foundation,
+then OA-2. Logs: target/oa1-final-focused.log,
+target/oa1-real-consumers.log, target/oa1-assembled.log.
+
 ## 26 Nov — model-local execution selector accepted
 
 Native/Web cached Models share a typed backend/device override, inheriting the

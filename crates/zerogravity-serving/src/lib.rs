@@ -1,4 +1,4 @@
-//! Embeddable bounded HTTP/1.1 transport over an existing text scheduler.
+//! Embeddable bounded async HTTP/1.1 transport over an existing text scheduler.
 //! Cold builders; explicit loopback listeners; no process-global policy.
 pub use zerogravity_core::{Error, Result};
 pub mod admin;

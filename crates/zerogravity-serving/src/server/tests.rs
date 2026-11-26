@@ -5,7 +5,7 @@ use crate::{
     test_support::{self, HostBytes},
 };
 use std::{
-    io::{Read, Write},
+    io::{BufRead, BufReader, Read, Write},
     net::TcpStream,
     sync::Mutex,
     time::{Duration, Instant},
@@ -31,6 +31,7 @@ fn exchange(address: SocketAddr, request: &str) -> String {
     socket
         .set_read_timeout(Some(Duration::from_secs(3)))
         .unwrap();
+    let request = request.replacen("\r\n\r\n", "\r\nConnection: close\r\n\r\n", 1);
     socket.write_all(request.as_bytes()).unwrap();
     let mut raw = String::new();
     socket.read_to_string(&mut raw).unwrap();
@@ -186,7 +187,7 @@ impl TextService for Script {
                 "fixture alias missing",
             ));
         }
-        let (tx, rx) = mpsc::try_sync_channel(&self.host, "fixture", "events", 2)?;
+        let (tx, rx) = mpsc::try_sync_channel(&self.host, "fixture", "events", 4)?;
         if let Some(error) = &self.failure {
             tx.try_send(ResponseEvent::Error(error.clone()))
                 .unwrap_or_else(|_| panic!("fixture channel"));
@@ -199,20 +200,39 @@ impl TextService for Script {
                 None,
             ));
         }
-        if request.stream {
-            tx.try_send(ResponseEvent::Text("transport fixture".into()))
+        let observations = request.token_metrics.clone();
+        let (output, completion_tokens) = if observations.is_some() {
+            for (index, id, text) in [(0, 4, ""), (1, 5, "é")] {
+                tx.try_send(ResponseEvent::TokenText {
+                    text: text.into(),
+                    token: zerogravity_engine::router::TokenObservation {
+                        index,
+                        id,
+                        commit_observed_at: Instant::now(),
+                        gpu: None,
+                    },
+                })
                 .unwrap_or_else(|_| panic!("fixture channel"));
-        }
+            }
+            ("é", 2)
+        } else {
+            if request.stream {
+                tx.try_send(ResponseEvent::Text("transport fixture".into()))
+                    .unwrap_or_else(|_| panic!("fixture channel"));
+            }
+            ("transport fixture", 1)
+        };
         tx.try_send(ResponseEvent::Done {
-            output: "transport fixture".into(),
+            output: output.into(),
             prompt_tokens: 3,
-            completion_tokens: 1,
+            completion_tokens,
             finish_reason: "stop",
         })
         .unwrap_or_else(|_| panic!("fixture channel"));
         let cancel = test_support::cancel(&self.host);
         self.cancellations.lock().unwrap().push(cancel.clone());
-        let events = RequestEvents::new(12, request.model.clone(), rx, cancel, None, None);
+        let events = RequestEvents::new(12, request.model.clone(), rx, cancel, None, None)
+            .observed(observations);
         self.requests.lock().unwrap().push((request, ingress));
         Ok(events)
     }
@@ -482,6 +502,271 @@ fn failed_bind_releases_all_transport_inventory_without_stopping_service() {
         .unwrap()
         .start()
         .unwrap();
+    server.shutdown().unwrap();
+    assert_eq!(host.serving_bytes(), baseline);
+}
+
+/// Read exactly one ordinary HTTP response without waiting for connection
+/// retirement. This intentionally does not assume one socket per response.
+fn read_response(reader: &mut BufReader<TcpStream>) -> (String, String) {
+    let mut head = String::new();
+    loop {
+        let mut line = String::new();
+        assert_ne!(
+            reader.read_line(&mut line).unwrap(),
+            0,
+            "short response headers"
+        );
+        head.push_str(&line);
+        assert!(head.len() <= 8192);
+        if line == "\r\n" {
+            break;
+        }
+    }
+    let lower = head.to_ascii_lowercase();
+    let mut body = Vec::new();
+    if lower.contains("transfer-encoding: chunked\r\n") {
+        loop {
+            let mut line = String::new();
+            reader.read_line(&mut line).unwrap();
+            let size = usize::from_str_radix(line.trim(), 16).unwrap();
+            if size == 0 {
+                let mut end = [0; 2];
+                reader.read_exact(&mut end).unwrap();
+                assert_eq!(&end, b"\r\n");
+                break;
+            }
+            let start = body.len();
+            assert!(start + size <= 1 << 20);
+            body.resize(start + size, 0);
+            reader.read_exact(&mut body[start..]).unwrap();
+            let mut end = [0; 2];
+            reader.read_exact(&mut end).unwrap();
+            assert_eq!(&end, b"\r\n");
+        }
+    } else {
+        let len = lower
+            .lines()
+            .find_map(|line| line.strip_prefix("content-length: "))
+            .expect("bounded length")
+            .parse::<usize>()
+            .unwrap();
+        assert!(len <= 1 << 20);
+        body.resize(len, 0);
+        reader.read_exact(&mut body).unwrap();
+    }
+    (head, String::from_utf8(body).unwrap())
+}
+
+#[test]
+fn persistent_socket_delivers_split_json_token_sse_and_next_request() {
+    let _lock = test_support::lock();
+    let host = test_support::host();
+    let baseline = host.serving_bytes();
+    let service = Script::new(host.clone());
+    let server = ServerBuilder::from_service(service.clone())
+        .bind("127.0.0.1:0".parse().unwrap())
+        .enable_per_request_metrics(true)
+        .build()
+        .unwrap()
+        .start()
+        .unwrap();
+    let stream = TcpStream::connect(server.local_addr()).unwrap();
+    stream
+        .set_read_timeout(Some(Duration::from_secs(3)))
+        .unwrap();
+    let mut client = BufReader::new(stream);
+
+    client
+        .get_mut()
+        .write_all(get("/v1/models", "").as_bytes())
+        .unwrap();
+    let (head, body) = read_response(&mut client);
+    assert!(head.starts_with("HTTP/1.1 200"));
+    assert!(!head.to_ascii_lowercase().contains("connection: close"));
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&body).unwrap()["data"][0]["id"],
+        "fixture"
+    );
+
+    // Header and a partial body arrive together, then the remaining bytes.
+    let request = post("/v1/completions", r#"{"model":"fixture","prompt":"hello"}"#);
+    let split = request.find("\r\n\r\n").unwrap() + 6;
+    client
+        .get_mut()
+        .write_all(&request.as_bytes()[..split])
+        .unwrap();
+    std::thread::sleep(Duration::from_millis(20));
+    assert!(service.requests.lock().unwrap().is_empty());
+    client
+        .get_mut()
+        .write_all(&request.as_bytes()[split..])
+        .unwrap();
+    let (head, body) = read_response(&mut client);
+    assert!(head.starts_with("HTTP/1.1 200"));
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&body).unwrap()["choices"][0]["text"],
+        "transport fixture"
+    );
+
+    let chat = r#"{"model":"fixture","messages":[{"role":"user","content":"hello"}],"stream":true,"return_token_ids":true}"#;
+    let request = post("/v1/chat/completions", chat).replacen(
+        "Host: localhost\r\n",
+        "Host: localhost\r\nX-Request-ID: run:request-0\r\n",
+        1,
+    );
+    // A next request may be buffered while streaming; it must not interrupt
+    // the original response or be mistaken for a disconnect.
+    let request = request + &get("/health", "");
+    client.get_mut().write_all(request.as_bytes()).unwrap();
+    let (head, body) = read_response(&mut client);
+    assert!(head.starts_with("HTTP/1.1 200"));
+    assert!(
+        head.to_ascii_lowercase()
+            .contains("x-request-id: run:request-0\r\n")
+    );
+    assert!(body.ends_with("data: [DONE]\n\n"));
+    let events = body
+        .lines()
+        .filter_map(|line| line.strip_prefix("data: "))
+        .filter(|line| *line != "[DONE]")
+        .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(events[0]["object"], "chat.completion.chunk");
+    assert_eq!(events[0]["id"], "chatcmpl-zg-12");
+    let ids = events
+        .iter()
+        .flat_map(|event| event["choices"].as_array().unwrap())
+        .flat_map(|choice| choice["token_ids"].as_array().into_iter().flatten())
+        .map(|id| id.as_u64().unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(ids, [4, 5]);
+    let usage = events
+        .iter()
+        .find(|event| event.get("usage").is_some())
+        .unwrap();
+    let metrics = &usage["zerogravity_token_metrics"];
+    assert_eq!(metrics["provider_response_id"], "chatcmpl-zg-12");
+    assert_eq!(metrics["wire_request_id"], "run:request-0");
+    assert_eq!(metrics["completion_tokens"], 2);
+    let mut last = 0.0;
+    for token in metrics["tokens"].as_array().unwrap() {
+        let commit = token["commit_observed_at_seconds"].as_f64().unwrap();
+        let received = token["output_received_at_seconds"].as_f64().unwrap();
+        let written = token["http_write_completed_at_seconds"].as_f64().unwrap();
+        assert!(last <= received && commit <= received && received <= written);
+        last = written;
+    }
+    assert_eq!(
+        events
+            .iter()
+            .flat_map(|event| event["choices"].as_array().unwrap())
+            .filter(|choice| !choice["finish_reason"].is_null())
+            .count(),
+        1
+    );
+    let (head, body) = read_response(&mut client);
+    assert!(head.starts_with("HTTP/1.1 200"));
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&body).unwrap()["status"],
+        "ok"
+    );
+    assert_eq!(server.metrics().accepted_requests, 4);
+    assert_eq!(server.metrics().active_connections, 1);
+    drop(client);
+    wait(|| server.metrics().active_connections == 0);
+    server.shutdown().unwrap();
+    drop(service);
+    assert_eq!(host.serving_bytes(), baseline);
+}
+
+#[test]
+fn actual_framing_refuses_ambiguity_and_preauth_body_without_admitting() {
+    let _lock = test_support::lock();
+    let host = test_support::host();
+    let baseline = host.serving_bytes();
+    let service = Script::new(host.clone());
+    let server = ServerBuilder::from_service(service.clone())
+        .bind("127.0.0.1:0".parse().unwrap())
+        .api_key(Some("secret".into()))
+        .build()
+        .unwrap()
+        .start()
+        .unwrap();
+    let addr = server.local_addr();
+    let unauthorized = exchange(
+        addr,
+        "POST /v1/completions HTTP/1.1\r\nHost: localhost\r\nContent-Length: 32\r\n\r\n",
+    );
+    assert!(unauthorized.starts_with("HTTP/1.1 401"));
+    assert_eq!(document(&unauthorized)["error"]["code"], "unauthorized");
+    for raw in [
+        "POST / HTTP/1.1\r\nHost: localhost\r\nContent-Length: 1\r\nContent-Length: 2\r\n\r\n",
+        "POST / HTTP/1.1\r\nHost: localhost\r\nTransfer-Encoding: chunked\r\nContent-Length: 1\r\n\r\n",
+        "POST / HTTP/1.1\r\nHost: localhost\r\nContent-Length: -1\r\n\r\n",
+        "GET /health HTTP/1.1\r\nHost: localhost\r\nHost: other\r\n\r\n",
+        "POST / HTTP/1.1\r\nContent-Length: 2\r\n\r\n",
+        "GET /health HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer secret\r\nAuthorization: Bearer other\r\n\r\n",
+        "POST / HTTP/1.1\r\nHost: localhost\r\nExpect: 100-continue\r\nContent-Length: 2\r\n\r\n",
+    ] {
+        let response = exchange(addr, raw);
+        assert!(response.starts_with("HTTP/1.1 400"), "{raw:?}: {response}");
+        assert!(!response.contains("100 Continue"));
+    }
+    let response = exchange(
+        addr,
+        "POST / HTTP/1.1\r\nHost: localhost\r\nContent-Length: 1048577\r\n\r\n",
+    );
+    assert!(response.starts_with("HTTP/1.1 413"));
+    let response = exchange(
+        addr,
+        &format!(
+            "GET /health HTTP/1.1\r\nHost: localhost\r\nX-Large: {}\r\n\r\n",
+            "a".repeat(8192)
+        ),
+    );
+    assert!(response.starts_with("HTTP/1.1 431") || response.starts_with("HTTP/1.1 400"));
+    let mut short = TcpStream::connect(addr).unwrap();
+    short
+        .set_read_timeout(Some(Duration::from_secs(3)))
+        .unwrap();
+    short.write_all(b"POST /v1/completions HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer secret\r\nContent-Type: application/json\r\nContent-Length: 32\r\n\r\n{").unwrap();
+    short.shutdown(std::net::Shutdown::Write).unwrap();
+    let mut response = String::new();
+    let _ = short.read_to_string(&mut response);
+    assert!(response.is_empty() || response.starts_with("HTTP/1.1 400"));
+    assert!(service.requests.lock().unwrap().is_empty());
+    server.shutdown().unwrap();
+    drop(service);
+    assert_eq!(host.serving_bytes(), baseline);
+}
+
+#[test]
+fn persistent_wire_budget_is_not_reset_by_next_request() {
+    let _lock = test_support::lock();
+    let host = test_support::host();
+    let baseline = host.serving_bytes();
+    let server = ServerBuilder::from_service(test_support::idle(&host))
+        .bind("127.0.0.1:0".parse().unwrap())
+        .limits(IngressLimits {
+            output_bytes: 512,
+            ..Default::default()
+        })
+        .build()
+        .unwrap()
+        .start()
+        .unwrap();
+    let mut client = TcpStream::connect(server.local_addr()).unwrap();
+    client
+        .set_read_timeout(Some(Duration::from_secs(3)))
+        .unwrap();
+    client
+        .write_all(get("/health", "").repeat(8).as_bytes())
+        .unwrap();
+    let mut raw = Vec::new();
+    let _ = client.read_to_end(&mut raw);
+    assert!(raw.starts_with(b"HTTP/1.1 200") && raw.len() <= 512);
+    wait(|| server.metrics().active_connections == 0);
     server.shutdown().unwrap();
     assert_eq!(host.serving_bytes(), baseline);
 }

@@ -3,7 +3,10 @@
 use super::*;
 use crate::test_support::{self, HostBytes};
 use std::{
-    sync::{Condvar, Mutex, atomic::AtomicBool},
+    sync::{
+        Condvar, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, Instant},
 };
 use zerogravity_core::identity::SourceIdentity;

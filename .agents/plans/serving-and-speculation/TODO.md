@@ -46,6 +46,22 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
 
 ## Uncommitted
 
+### OA-1 — async serving transport (26 Nov; after UX-P)
+
+- [x] OA-1A: mature bounded text HTTP/1 substrate over original service,
+  admission and event owners. Focused serving 25/0/0 and engine 110/0/0,
+  strict lint; actual cached CPU CLI/native/Firefox listener lifecycle with
+  model list and both alias completions on one persistent TCP connection
+  passed (55.52s). Real SDK listener/owner lifecycle passed (8.83s).
+  Assembled offline private-network gate passed (819.3s), 2,538/0/109 across
+  318 Rust suites, release TUI/Web, installer and scripts.
+  No numerical/GPU performance comparison. See the
+  [OA-1 design](NEXT_ITERATION_OPENAI_COMPATIBLE_SERVING.md#oa-1--async-transport-substrate).
+- [ ] OA-1B: bounded charged unknown-length/streaming ingress, multipart
+  primitives and WebSocket foundation, with approved dependencies and
+  explicit lifetime/authorization tests. No modality endpoints until their
+  real contracts. OA-2 remains ordered after OA-1.
+
 ### Current continuation — 22 Nov 2026
 
 - [x] Fresh baseline capture is complete and canonicalized in

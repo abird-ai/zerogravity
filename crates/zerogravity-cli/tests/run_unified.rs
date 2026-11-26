@@ -1081,7 +1081,7 @@ fn canonical_serve_refuses_incompatible_routes_before_cache_effects() {
 #[ignore = "existing approved local Qwen 0.8B GGUF and tokenizer; no download"]
 fn canonical_serve_profile_and_cached_aliases_use_one_listener_owner() {
     use std::{
-        io::{Read, Write},
+        io::{BufRead, BufReader, Read, Write},
         net::{SocketAddr, TcpStream},
         process::{Child, Stdio},
         time::{Duration, Instant},
@@ -1175,25 +1175,47 @@ serve:
         );
         std::thread::sleep(Duration::from_millis(50));
     };
-    let http = |path: &str, body: Option<&str>| {
-        let mut stream = TcpStream::connect_timeout(&address, Duration::from_secs(5)).unwrap();
-        stream
-            .set_read_timeout(Some(Duration::from_secs(60)))
-            .unwrap();
+    let stream = TcpStream::connect_timeout(&address, Duration::from_secs(5)).unwrap();
+    stream
+        .set_read_timeout(Some(Duration::from_secs(60)))
+        .unwrap();
+    let mut connection = BufReader::new(stream);
+    let mut http = |path: &str, body: Option<&str>| {
         let request = if let Some(body) = body {
             format!(
-                "POST {path} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                "POST {path} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
                 body.len()
             )
         } else {
-            format!("GET {path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+            format!("GET {path} HTTP/1.1\r\nHost: localhost\r\n\r\n")
         };
-        stream.write_all(request.as_bytes()).unwrap();
-        let mut response = String::new();
-        stream.read_to_string(&mut response).unwrap();
-        let (header, body) = response.split_once("\r\n\r\n").unwrap();
-        assert!(header.starts_with("HTTP/1.1 200"), "{response}");
-        serde_json::from_str::<serde_json::Value>(body).unwrap()
+        connection.get_mut().write_all(request.as_bytes()).unwrap();
+        let mut status = String::new();
+        connection.read_line(&mut status).unwrap();
+        assert!(status.starts_with("HTTP/1.1 200"), "{status}");
+        let mut length = None;
+        loop {
+            let mut header = String::new();
+            assert!(connection.read_line(&mut header).unwrap() > 0);
+            if header == "\r\n" {
+                break;
+            }
+            if let Some((name, value)) = header.split_once(':') {
+                if name.eq_ignore_ascii_case("content-length") {
+                    length = Some(value.trim().parse::<usize>().unwrap());
+                }
+                assert!(
+                    !name.eq_ignore_ascii_case("connection")
+                        || !value.trim().eq_ignore_ascii_case("close"),
+                    "listener unexpectedly closed a reusable connection"
+                );
+            }
+        }
+        let length = length.expect("fixed JSON response length");
+        assert!(length <= 1024 * 1024);
+        let mut body = vec![0; length];
+        connection.read_exact(&mut body).unwrap();
+        serde_json::from_slice::<serde_json::Value>(&body).unwrap()
     };
     let models = http("/v1/models", None);
     let mut ids = models["data"]
@@ -1212,6 +1234,8 @@ serve:
         response["choices"][0]["text"].clone()
     }).collect::<Vec<_>>();
     assert_eq!(outputs[0], outputs[1]);
+    assert_eq!(http("/v1/models", None), models);
+    drop(connection);
     // Aliases sharing the original snapshot must appear in one startup row.
     let text = std::fs::read_to_string(&log).unwrap();
     assert_eq!(
