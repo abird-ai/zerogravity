@@ -431,9 +431,7 @@ build or general model/backend grant. Historical failures keep their source scop
 - [x] Complete isolated gate sequence passed 2,505/0/109 (318 Rust suites), release Web/TUI/installer/scripts. Original run stopped at two transient busy-observation fixture assertions in acquisition/cache transactions; test-only bounded busy retry, reran affected cache-only/diagnostic/acquisition suites and exact remaining gate commands. No production change after the initial run.
   UX-1–10 accepted. Additional UX-P user priority below precedes serving.
 
-## Uncommitted
-
-### UX-P — native TUI interaction and visual polish (26 Nov decision)
+### UX-P — native TUI interaction and visual polish (26 Nov; accepted at ad7a4178)
 
 Design: [TUI polish and mouse interaction](../cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md).
 Retain accepted UX-1–10 ownership and keyboard behavior.
@@ -463,7 +461,7 @@ Retain accepted UX-1–10 ownership and keyboard behavior.
     real cached lifecycle 1/0/0 (55.96s) passed. Existing locked Unicode
     packages now direct optional TUI dependencies; no version change.
     Remaining compact/modal/focus and view affordance review at P4A.
-- [ ] UX-P4: complete ergonomics, actual PTY and accepted real cached
+- [x] UX-P4: complete ergonomics, actual PTY and accepted real cached
   resident/transfer/config regression, isolated workspace gate.
   - [x] P4A1 screenshot-driven minimalism: curated toolbar (max three
     actions + More), no repeated rail/shelf/theme actions, compact
@@ -488,13 +486,13 @@ Retain accepted UX-1–10 ownership and keyboard behavior.
     resource/I/O causes preserved. Safe HTTP/SSE default, authenticated
     opt-in details and safe native/Web operational log metadata.
     Core/engine/serving, SDK, CLI/config/pipeline focused regressions and
-    full default cargo check passed. Full-GPU lint debt remains separate.
+    full default cargo check passed; final full-default strict lint below.
   - [x] UX-P-M1: registration-owned measured live TPS/TTFT and bounded
     client-local trend, exact selected performance details and reported
     layer execution/lease bounds, native and Web. Focused engine 109,
     CLI 64/0/3, JS 4, strict lint/default check; actual cached CPU/
     Firefox/native/HTTP 1/0/0 (55.61s), exact counters, CPU layer map
-    and reset on re-registration. GPU placement compile-only. See
+    and reset on re-registration. CUDA placement later qualified below. See
     [live performance design](../cli-ux/LIVE_MODEL_PERFORMANCE.md).
   - [x] UX-P-M2 user-directed Running visual refinement: larger detail pane
     by default (preserve explicit split), responsive metric pair, richer
@@ -502,9 +500,7 @@ Retain accepted UX-1–10 ownership and keyboard behavior.
     reader activity and direct exact-owner details link. Native 20/0/0,
     JS 5/0, strict lint, actual cached native/Firefox/HTTP 1/0/0 (53.65s),
     unchanged 8 GiB admission and exact output. No inference-path changes.
-  - [ ] Optional deeper exact per-request/phase and individual layer
-    observations; keep profiling explicit and capability-bound.
-  - [ ] P4B comprehensive acceptance: actual combined owner regressions
+  - [x] P4B comprehensive acceptance: actual combined owner regressions
     passed (CPU CLI 6/0/0, cached listener SDK 1/0/0, real native/shared
     Firefox transfer durable/cancel, JS 4/0). Full production linked
     launch/version/help/doctor and TUI/Web smoke passed. Explicit old
@@ -521,19 +517,26 @@ Retain accepted UX-1–10 ownership and keyboard behavior.
     strict lint, GPU feature-boundary tests 26/0/2 and CPU dependency
     isolation. Acquisition-disabled TUI format import fixed; exact CPU
     workspace strict all-target lint passes. Isolated CPU test-stage retry
-    timed out during compilation (90s budget, no suites executed). Complete
-    isolated assembled gate pending.
-    Do not close P4B before actual pass.
+    timed out during compilation (90s budget, no suites executed). Final
+    assembled offline private-network gate on ad7a4178 exited 0 (592.3s):
+    2,539 passed, zero failures, 109 explicit skips across 318 Rust suites.
+    Strict lint, feature boundaries, release Web/TUI/installer/scripts pass.
     See [live checkpoint](../../docs/CURRENT_HANDOFF.md) and
     [takeover context](../../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-26_UX_PM1.md).
 
 
-Deferred public serving until UX-P exit. Optional terminal background
-helper requires dependency/offline approval; conservative Auto fallback
-must remain truthful. No additional theme catalog or persistent layout
-store now.
+UX-P accepted; public serving is the next ordered phase. No physical
+performance comparison or new HIP/Vulkan placement qualification.
+
+## Uncommitted
 
 ### Other deferred work
+
+- [ ] Optional deeper exact per-request/phase and individual layer
+  observations; keep profiling explicit and capability-bound.
+- [ ] Optional terminal background helper only with dependency/offline
+  approval; conservative Auto fallback must remain truthful. No additional
+  theme catalog or persistent layout store now.
 
 - [ ] Broader catalog presets, conversation history, dedicated graph
   visualization and unsupported routes remain explicit future scope.

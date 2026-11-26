@@ -5,7 +5,19 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
-## 26 Nov — UX-P-M2 dashboard refinement
+## 26 Nov — UX-P4B accepted
+
+Final offline private-network workspace gate on `ad7a4178e3b85ea9e8a0ddcf9f2be798b0416ca8`
+exited 0 in 592.3s: 2,539 passed, zero failures, 109 explicit skips across 318 Rust suites.
+Full-default and explicit-feature strict lint, architecture/source-only GPU
+boundaries, portable CPU release, native PTY (including 20x7), Web control/
+settings, installer and scripts pass. Prior final real CPU/native/Firefox/
+HTTP, SDK listener and transfer qualification, full native link/launch and
+physical CUDA 24-layer/counter evidence remain applicable. No new numerical
+comparison, HIP/Vulkan execution or overhead benchmark. UX-P accepted;
+public serving OA-1 next. Log: target/ux-p4b-assembled-ad7a4178.log.
+
+## 26 Nov — UX-P-M2 dashboard refinement (prior checkpoint)
 
 Reference-aligned adaptive metrics, recent chart, complete segmented
 layer placement and actual admitted-reader activity. Native 20/0/0,

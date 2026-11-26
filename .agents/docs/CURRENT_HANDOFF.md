@@ -4,9 +4,10 @@ Canonical cross-window entry point for `/home/pvl/spaces/abird/src/zerogravity`.
 
 **Latest complete takeover (26 Nov, through UX-P-M1):**
 [FULL_COMPREHENSIVE_HANDOFF_2026-11-26_UX_PM1.md](FULL_COMPREHENSIVE_HANDOFF_2026-11-26_UX_PM1.md).
-Read §§0–13 first, especially §10.2 (default/build/gate caveats) and §11
-(next required P4B acceptance, optional M2). Use the
-[standalone P4B takeover prompt](NEXT_AGENT_2026-11-26_UX_P4B.md).
+Read §§0–13 for historical design and gate context. The
+[standalone P4B takeover prompt](NEXT_AGENT_2026-11-26_UX_P4B.md)
+is superseded by the accepted checkpoint below; public serving OA-1
+is the next unit.
 Appendix D preserves all fifteen post-UX-9B landing narratives and
 changed paths; Appendix B records the literal pending-marker snapshot.
 The complete [UX-9B pack](FULL_COMPREHENSIVE_HANDOFF_2026-11-26_UX9B_EXIT.md),
@@ -34,7 +35,39 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — UX-P-M2 visual refinement and P4B repairs (26 Nov)
+### Current checkpoint — UX-P4B accepted; public serving next (26 Nov)
+
+Accepted implementation: `ad7a4178e3b85ea9e8a0ddcf9f2be798b0416ca8`. L5 main sole worktree,
+clean at gate completion; no source changes needed in this acceptance run.
+The complete existing offline workspace gate under mandatory private
+network isolation exited 0 in 592.3s: 2,539 passed, zero failures, 109 explicit skips across 318 Rust suites.
+Both cold_server assertions passed in the assembled run. Formatting,
+architecture, strict full-default and CPU/optional-feature lint, source-only
+GPU feature-boundary checks, minimal SDK/inspection/Web/cache/acquisition,
+portable CPU release, all release native PTY and Web control/settings,
+installer and scripts passed. Local log: target/ux-p4b-assembled-ad7a4178.log.
+
+The prior final real cached CPU/native/Firefox/HTTP lifecycle (6/0/0;
+M2 final 1/0/0), exact 8 GiB admission/output and 24 CPU layers, SDK
+listener/redaction, native/shared transfer durable/cancel, full native
+default link/launch and actual CUDA source admission/retry with 24
+reported compute layers provide the applicable owner qualification.
+The final gate includes the acquisition-only import correction and both
+typed-refusal fixture corrections; no later production behavior changes.
+No new GPU execution, HIP/Vulkan placement or profiling-overhead
+qualification or performance-parity claim. L5 GPU 37 MiB idle, no compute
+owners. No push.
+
+**Next coherent unit: public serving OA-1** under §2.3 of the full plan.
+Read [the serving design](../plans/serving-and-speculation/NEXT_ITERATION_OPENAI_COMPATIBLE_SERVING.md)
+§32 and §37 and live serving implementation/owning TODO. Verify the
+current transport boundary before replacing it with mature bounded async
+Rust transport; preserve existing models/Chat/Completions, auth,
+cancellation, ingress/backpressure and owned shutdown. No Responses
+translation hacks, model semantics or second scheduler in OA-1. Do not
+reopen accepted UX-P; optional deeper profiling remains capability-bound.
+
+### Prior checkpoint — UX-P-M2 visual refinement and P4B repairs (26 Nov)
 
 User explicitly requested the Running dashboard refinements before
 returning to the two failed P4B serving tests. Revalidated clean

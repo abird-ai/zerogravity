@@ -6,10 +6,11 @@ scaffolding), CLI/TUI/Web and serving, ROCm, CUDA, Vulkan, then concrete
 compiled providers. Native Hugging Face/Safetensors and GGUF are primary.
 Older ordering below is context; valid owner constraints remain authoritative.
 
-Status: **design only / dormant**.
+Status: **design only; OA-1 is next** (26 Nov, UX-P accepted).
 
 26 Nov user decision: [UX-P native TUI polish](../cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md)
-must be accepted before this iteration begins.
+was the prerequisite. The assembled P4B gate passed on ad7a4178;
+public serving is unblocked. No new public API acceptance is implied.
 
 26 Nov user follow-up: normal Cargo CLI defaults are the production
 superset (all current model features, CPU/CUDA/ROCm/Vulkan, acquisition,

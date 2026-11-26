@@ -712,9 +712,9 @@ demand. Preserve the existing detailed
 
 ### 2.2A Native TUI interaction and visual polish (UX-P)
 
-**Current next priority (26 Nov):** user requests full mouse interaction,
-resizable/focusable panes, independent scrolling and a polished, elegant
-visual system before public serving. See the owning
+**Accepted (26 Nov):** user-requested full mouse interaction,
+resizable/focusable panes, independent scrolling and polished visuals
+completed before public serving. See the owning
 [TUI polish specification](cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md).
 UX-1–10 remains accepted; this is additional presentation work.
 
@@ -732,7 +732,7 @@ UX-1–10 remains accepted; this is additional presentation work.
   86/0/3 plus real cached lifecycle 1/0/0, native editor/settings/mouse
   regressions and stale refusal passed. Remaining final view affordances,
   stable anchors and visual/focus edge cases are UX-P4A; P4B full gate.
-- [ ] UX-P4: visual/terminal-depth/accessibility polish, actual PTY and
+- [x] UX-P4: visual/terminal-depth/accessibility polish, actual PTY and
   simultaneous-client lifecycle acceptance; full isolated gate.
   P4A1 user screenshot-driven minimalism: at most three quick actions,
   one navigation rail, concise summaries, on-demand exact Details and
@@ -750,11 +750,12 @@ UX-1–10 remains accepted; this is additional presentation work.
   observations pass. User-directed M2 reference-aligned dashboard and
   exact layer strip, visible details and activity refinement focused-
   qualified; standalone serving refusal assertions corrected and pass.
-  Complete isolated gate remains required. Optional deeper profiling
-  follows actual provider capabilities.
+  Final assembled private-network gate on ad7a4178 passed: 2,539 passed, zero failures, 109 explicit skips across 318 Rust suites.
+  Release Web/TUI/installer/scripts passed. UX-P accepted; proceed to §2.3.
+  Optional deeper profiling follows actual provider capabilities.
 
 No new runtime, cache, configuration or execution owner. No inference
-protocol or backend performance work until this bounded polish exit.
+protocol or backend performance work was admitted before this bounded exit.
 
 ### 2.3 Public serving and performance interface
 

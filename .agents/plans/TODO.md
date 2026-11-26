@@ -232,9 +232,9 @@ selected model performance/trend and reported layer placement
 ([design](cli-ux/LIVE_MODEL_PERFORMANCE.md)). P4B focused real-owner
 acceptance (CPU/native/Firefox/HTTP, SDK listener, simultaneous transfers,
 actual CUDA layer/counters), full native link/launch and strict lint pass.
-Complete isolated workspace gate remains required; see live handoff.
-Complete UX-P before public serving/ordinary benchmarks, then ordered
-performance phases.
+Final assembled private-network gate on ad7a4178 passed 2,539 passed, zero failures, 109 explicit skips across 318 Rust suites; release Web/TUI/installer/scripts passed. UX-P accepted. Proceed to
+public serving OA-1, then ordinary benchmarks and ordered performance phases.
+Optional deeper profiling is not a blocker; see live handoff.
 General UMA/foreign backing, device-write host read, unqualified model/
 backend/media and other expansion holds remain explicit. Historical
 CPU cache gate corrected at 00f57e7a/9374e0ca.

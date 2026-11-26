@@ -4,7 +4,7 @@ Author: Project owner
 Co-authors: GPT-6.2
 Owner: @pvl
 Decision: 26 Nov 2026 — polish before public serving
-Status: UX-P1/P2/P3 and UX-P4A1/P4A2 focused-qualified; user follow-up [live model performance](LIVE_MODEL_PERFORMANCE.md) before P4B full acceptance (26 Nov).
+Status: UX-P accepted (26 Nov; assembled gate on ad7a4178). User-directed [live model performance](LIVE_MODEL_PERFORMANCE.md) presentation refinement accepted; optional deeper profiling remains separate.
 
 This is the follow-on to the accepted UX-1–10 iteration at `1b8de1cb`.
 It supersedes only the relevant interaction/presentation details of
@@ -674,16 +674,16 @@ not mark an untested or interrupted phase accepted.
     exact output/8 GiB admission, real F3 switch and shared policy
     pass. Full combined final run and comprehensive gate at P4B.
     No new dependency, runtime authority or output/history store.
-  - [ ] P4B full offline isolated workspace gate and final real
+  - [x] P4B full offline isolated workspace gate and final real
     resident/transfer/config acceptance on assembled source. Actual
     combined cached CPU/Firefox/native/HTTP 6/0/0, cached SDK listener
     1/0/0, native/shared transfer durable/cancel, full default linked
-    TUI/Web shell and strict lint passed (26 Nov). Complete isolated gate
-    still required; see current handoff. Review
-    remaining compact affordances and rendered terminal legibility;
-    no golden matrix. Native Auto remains conservative hint fallback,
-    active probe deferred unless separately approved. No public
-    serving or performance acceptance before P4 exit.
+    TUI/Web shell and strict lint passed (26 Nov). Final assembled gate
+    on ad7a4178 exited 0 (592.3s): 2,539 passed, zero failures, 109 explicit skips across 318 Rust suites.
+    Release PTY shell/settings/appearance/mouse/action/editor/20x7 compact
+    and Web control/settings, installer and scripts passed. Native Auto
+    remains conservative hint fallback; active probe deferred unless approved.
+    UX-P accepted; expanded public serving is next, not yet accepted.
 
 Use these as order, not four compulsory isolated branches. Preserve
 working keyboard controls during every slice. Continue from the live

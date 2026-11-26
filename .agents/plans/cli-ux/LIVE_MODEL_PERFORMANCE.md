@@ -1,6 +1,6 @@
 # Live model performance and execution inspection
 
-Status: UX-P-M1 and user-directed M2 presentation refinement focused-qualified (26 Nov); deeper capability-bound profiling and assembled P4B pending.
+Status: UX-P-M1 and user-directed M2 presentation refinement accepted with assembled P4B (26 Nov; ad7a4178). Optional deeper capability-bound profiling remains open.
 User direction 26 Nov 2026: Running models should show elegant live
 performance, average TPS/TTFT since the run began, and optionally detailed
 performance, layers and their devices. Keep the object-first toolbar-free
@@ -163,16 +163,17 @@ strings, paths, token IDs, credentials or diagnostic history in samples.
   qualify observer overhead and physical execution on relevant hardware.
   Keep unreported observations explicit. No requirement to invent
   unsupported split/offload or per-layer telemetry to fill a dashboard.
-- [ ] UX-P4B comprehensive isolated workspace gate on assembled source,
+- [x] UX-P4B comprehensive isolated workspace gate on assembled source,
   actual cached resident and simultaneous transfer/config qualification,
   default full production link/launch; hardware placement qualification
   on original existing routes before claim. L5 actual original CUDA
   source SDK 1/0/0 confirms 24 compute layers on admitted PCI, exact
   registration counters and retirement; HIP map not requalified. Full
   production linked launch and strict lint pass, prior CPU cache and
-  Web isolation preserved. Complete isolated gate pending.
-  No performance comparison claim from these UX
-  observations. Public serving remains after UX-P exit.
+  Web isolation preserved. Final assembled private-network gate exited 0
+  on ad7a4178: 2,539 passed, zero failures, 109 explicit skips across 318 Rust suites;
+  release Web/TUI/installer/scripts passed. No performance comparison
+  claim from these UX observations. Public serving is next.
 
 M1 is the minimal useful dashboard; M2 expands detail only on request and
 according to actual capability. Do not delay UX-P4B for imaginary hardware
