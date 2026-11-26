@@ -508,7 +508,7 @@ Retain accepted UX-1–10 ownership and keyboard behavior.
     admission/retry 1/0/0 with exact 24-layer admitted-device map,
     registration counters and joined retirement; HIP map not requalified.
     Portable Nix/release remains explicit CPU. Remaining complete
-    isolated workspace gate pending; do not close P4B before actual pass.
+    isolated workspace gate retry stopped at two cold_server typed refusal assertions (1191 passed, 2 failed, 56 ignored); qualify exact refusals and rerun full gate. Do not close P4B before actual pass.
     See [live checkpoint](../../docs/CURRENT_HANDOFF.md) and
     [takeover context](../../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-26_UX_PM1.md).
 

@@ -21,6 +21,8 @@ and profiling overhead not requalified. Full production strict all-target
 Clippy and preceding GPU source-only compile checks pass. Full assembled
 isolated gate pending. M2 optional; preserve existing public serving order.
 
+Assembled retry: GPU feature-boundary and CPU strict lint pass; 1191 passed, 2 failed, 56 ignored before cold_server stopped execution (exit 101). See CURRENT_HANDOFF for exact typed refusal assertions. P4B remains open.
+
 ## 26 Nov — UX-P-M1 live model performance
 
 Registration-scoped TTFT, weighted decode intervals, exact output and

@@ -81,7 +81,7 @@ explicit CPU; no all-backend distributed release claim.
 **Assembled gate:** first complete attempt stopped at the full-default
 test helper compilation (E0425); repaired and rerun from the beginning.
 Full-default strict lint and preceding source-only GPU checks now pass.
-The complete isolated gate remains pending until terminal success.
+Retry reached actual CPU workspace execution after GPU feature-boundary and CPU strict lint passed: 1191 passed, 2 failed, 56 ignored across 116 completed Rust result lines. Exit 101 in zerogravity-serving cold_server: bearer_configuration_refuses_empty_oversized_and_header_control_bytes expects Malformed, while current auth::validate_key returns InvalidInput; cold_builder_reports_configuration_and_unconfigured_runtime_refuses_start expects Limit, but start returns a different refusal. Inspect exact typed admission and shutdown refusals and update only demonstrably obsolete expectations; do not weaken assertions. Remaining workspace stages not reached. Implementation checkpoint 53cc7ec3e8ef316de1cbc21121f4db069f57b8d4. Next: focused cold_server qualification, then complete isolated gate from beginning. Evidence target/ux-p4b-workspace-gate-retry.log.
 Do not close P4B until complete actual isolated gate passes. Prior UX-1–10
 and bounded Phase 1 remain accepted. Public serving follows P4B; optional
 M2 is not a blocker. Actual local evidence in target/ux-p4b-*.log
