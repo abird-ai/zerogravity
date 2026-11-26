@@ -4,7 +4,7 @@ Author: Project owner
 Co-authors: GPT-6.2
 Owner: @pvl
 Decision: 26 Nov 2026 — polish before public serving
-Status: UX-P1/P2/P3 and UX-P4A1/P4A2 focused-qualified (26 Nov); full acceptance P4B next.
+Status: UX-P1/P2/P3 and UX-P4A1/P4A2 focused-qualified; user follow-up [live model performance](LIVE_MODEL_PERFORMANCE.md) before P4B full acceptance (26 Nov).
 
 This is the follow-on to the accepted UX-1–10 iteration at `1b8de1cb`.
 It supersedes only the relevant interaction/presentation details of

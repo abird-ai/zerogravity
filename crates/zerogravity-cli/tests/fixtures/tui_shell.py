@@ -754,7 +754,12 @@ def lifecycle(root, expected):
         terminal.send(b"\x1b[200~" + prompt.encode() + b"\x1b[201~" + click(105,24), b"length", 90)
         assert b"Response" in terminal.transcript
         terminal.send(alt(b"2"), b"registration")
-        terminal.send(b"\x1bOR",b"capacity:")
+        terminal.send(b"\x1bOR",b"TTFT")
+        terminal.until(b"capacity:")
+        terminal.send(alt(b"D"),b"first-token")
+        terminal.send(b"\x1b[6~",b"zero-based")
+        os.write(terminal.master,b"\x1b")
+        time.sleep(0.2)
         terminal.send(b"\x1bOR",b"Response")
         terminal.send(alt(b"p"), b"Prompt")
         terminal.send(b"\x1b[200~" + prompt.encode() + b"\x1b[201~\r", b"length", 30)
@@ -779,6 +784,20 @@ def lifecycle(root, expected):
             assert registered[0]["aliases"] == [loaded_alias]
             assert isinstance(registered[0]["registration_id"], str)
             registration = registered[0]["registration_id"]
+            measured = client.observed(lambda row: row["runtime"]["models"][0]["admitted_requests"] == 0)["runtime"]["models"][0]
+            performance = measured["performance"]
+            # Two native invocations and one direct HTTP request under
+            # this exact registration; no client-delivery estimates.
+            assert performance["completed_requests"] == 3, performance
+            assert performance["output_tokens"] == 3 * result["usage"]["completion_tokens"], performance
+            assert performance["ttft_samples"] == 3 and performance["avg_ttft_ms"] >= 0
+            assert performance["decode_intervals"] == performance["output_tokens"] - performance["ttft_samples"]
+            assert performance["avg_decode_tps"] > 0
+            placement = measured["capabilities"]["layer_placement"]
+            assert placement["total_layers"] > 0 and placement["spans"] == [
+                {"start":0, "end":placement["total_layers"], "execution":{"kind":"host_cpu"}}
+            ], placement
+
             generation = observed["serving"]["generation"]
             assert observed["serving"]["address"] == address
             assert observed["configuration"]["profile"] == "local"
@@ -801,6 +820,9 @@ def lifecycle(root, expected):
             assert output["owner"] == {"alias": loaded_alias, "registration_id": registration}
             assert output["usage"]["completion_tokens"] == result["usage"]["completion_tokens"]
             assert output["usage"]["prompt_tokens"] == result["usage"]["prompt_tokens"]
+            updated = client.observed(lambda row: row["runtime"]["models"][0]["performance"]["completed_requests"] == 4)["runtime"]["models"][0]["performance"]
+            assert updated["output_tokens"] == performance["output_tokens"] + output["usage"]["completion_tokens"]
+
             assert client.snapshot()["runtime"]["models"][0]["registration_id"] == registration
             client.post({"kind": "cancel", "id": generated["id"]}, status=409)
             # Both editors retain exact observed bytes, not a writable alias
@@ -899,6 +921,9 @@ def lifecycle(root, expected):
             assert generated["response"]["text"] == expected
             second = client.snapshot()["runtime"]["models"][0]
             assert second["aliases"] == ["configured"] and second["registration_id"] != registration
+            assert second["performance"]["completed_requests"] == 1
+            assert second["performance"]["output_tokens"] == generated["response"]["usage"]["completion_tokens"]
+
             assert generated["response"]["owner"]["registration_id"] == second["registration_id"]
             terminal.send(alt(b"2"), b"configured", 30)
             # Stale selected owner cannot retire a replacement even when the

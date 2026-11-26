@@ -124,7 +124,8 @@ impl PreparedModel for Model {
     fn describe(&self) -> crate::Result<zerogravity_engine::diagnostics::ModelDetails> {
         use zerogravity_core::provider::PreparedExecutable;
         use zerogravity_engine::diagnostics::{
-            ArtifactDescription, ModelDetails, ModelMemory, SourceRevision,
+            ArtifactDescription, LayerDevice, LayerPlacement, ModelDetails, ModelMemory,
+            SourceRevision,
         };
         let resident = self.resident().map_err(ServiceError::into_core)?;
         let prepared = resident.prepared_text().ok_or_else(|| {
@@ -153,6 +154,15 @@ impl PreparedModel for Model {
             state_policy: Some(resident.state_policy()),
             prefix_sharing: Some(prefix_sharing),
             source_host_reserved_bytes: None,
+            // Original whole-text plan is prepared by the one retained
+            // resident service. This is layer execution, not a claim
+            // that every weight or host operation lives on the GPU.
+            layer_placement: LayerPlacement::single(
+                self.source.plan.boundaries().len(),
+                LayerDevice::Device {
+                    device: resident.admission().device.clone(),
+                },
+            ),
             memory: Some(ModelMemory::ResidentText {
                 admission: resident.admission().clone(),
                 resident_bytes: resident.resident_bytes()?,

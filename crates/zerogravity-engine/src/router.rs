@@ -4,6 +4,7 @@ mod error;
 pub mod event_channel;
 mod host;
 pub mod pending;
+pub mod performance;
 mod registry;
 pub mod statistics;
 pub mod token_metrics;

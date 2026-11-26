@@ -489,6 +489,15 @@ Retain accepted UX-1–10 ownership and keyboard behavior.
     opt-in details and safe native/Web operational log metadata.
     Core/engine/serving, SDK, CLI/config/pipeline focused regressions and
     full default cargo check passed. Full-GPU lint debt remains separate.
+  - [x] UX-P-M1: registration-owned measured live TPS/TTFT and bounded
+    client-local trend, exact selected performance details and reported
+    layer execution/lease bounds, native and Web. Focused engine 109,
+    CLI 64/0/3, JS 4, strict lint/default check; actual cached CPU/
+    Firefox/native/HTTP 1/0/0 (55.61s), exact counters, CPU layer map
+    and reset on re-registration. GPU placement compile-only. See
+    [live performance design](../cli-ux/LIVE_MODEL_PERFORMANCE.md).
+  - [ ] UX-P-M2 optional exact per-request/phase and detailed layer
+    observations; keep profiling explicit and capability-bound.
   - [ ] P4B full simultaneous owner regressions and isolated gate.
 
 Deferred public serving until UX-P exit. Optional terminal background

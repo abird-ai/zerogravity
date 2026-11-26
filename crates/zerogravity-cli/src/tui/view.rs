@@ -1212,7 +1212,7 @@ impl Navigation {
             Char('D')
                 if matches!(
                     self.view,
-                    View::Models | View::Devices | View::Config | View::Profiles
+                    View::Models | View::Devices | View::Config | View::Profiles | View::Running
                 ) =>
             {
                 Action::ShowDetails
@@ -1644,12 +1644,16 @@ fn content(app: &App, theme: Theme) -> Content {
                     .selected
                     .as_ref()
                     .is_some_and(|owner| owner.registration == model.registration_id);
+                let busy = if model.admitted_requests > 0 {
+                    format!(" · {} admitted", model.admitted_requests)
+                } else {
+                    String::new()
+                };
                 let line = text(format!(
-                    "{} {} · {:?} · {} admitted",
+                    "{} {} · {:?}{busy}",
                     if selected { ">" } else { " " },
-                    model.aliases.join(", "),
-                    model.lifecycle,
-                    model.admitted_requests
+                    super::performance::model_name(model),
+                    model.lifecycle
                 ));
                 rows.push(if selected {
                     line.style(theme.selected())
@@ -1671,57 +1675,36 @@ fn content(app: &App, theme: Theme) -> Content {
                 rows.push(label(
                     format!(
                         "{} · registration {}",
-                        selected.alias, selected.registration
+                        super::performance::model_name(model),
+                        selected.registration
                     ),
                     theme,
                 ));
+                rows.extend(super::performance::summary(model, &app.performance, theme));
+                rows.push(Line::default());
                 if let Some(capability) = &model.capabilities {
+                    let provider = capability.details.execution.as_ref().map_or_else(
+                        || "Not reported".into(),
+                        |execution| format!("{:?}", execution.selected.provider),
+                    );
                     rows.push(text(format!(
-                        "Context capacity: {} · vocabulary {}",
-                        capability.max_context, capability.vocabulary_size
+                        "Context capacity: {} · {provider}",
+                        capability.max_context
                     )));
-                    if let Some(execution) = &capability.details.execution {
-                        rows.push(text(format!("Backend: {:?}", execution.selected.provider)));
-                    }
                     if let Some(memory) = &capability.details.memory {
                         use zerogravity::models::ModelMemory;
                         match memory {
-                            ModelMemory::Host {
-                                session_state_bytes,
-                                session_scratch_bytes,
-                            } => rows.push(text(format!(
-                                "Host state {} · scratch {}",
-                                format::bytes(*session_state_bytes),
-                                format::bytes(*session_scratch_bytes)
+                            ModelMemory::Resident(memory) => rows.push(text(format!(
+                                "Resident: {}",
+                                format::bytes(memory.resident_bytes as u64)
                             ))),
-                            ModelMemory::Resident(memory) => {
-                                rows.push(text(format!("Device: {}", memory.device.device)))
-                            }
-                            ModelMemory::ResidentText {
-                                admission,
-                                resident_bytes,
-                            } => rows.push(text(format!(
-                                "Device: {} · {} resident",
-                                admission.device.device,
-                                format::bytes(*resident_bytes as u64)
-                            ))),
+                            ModelMemory::ResidentText { resident_bytes, .. } => rows.push(text(
+                                format!("Resident: {}", format::bytes(*resident_bytes as u64)),
+                            )),
+                            ModelMemory::Host { .. } => {}
                         }
                     }
-                    if let Some(bytes) = capability.details.source_host_reserved_bytes {
-                        rows.push(text(format!(
-                            "Source host reservation: {}",
-                            format::bytes(bytes)
-                        )));
-                    }
                 }
-            }
-            if let Some(scheduler) = &runtime.scheduler {
-                rows.push(text(format!(
-                    "Runtime requests: {} active / {} queued · {} output tokens",
-                    scheduler.counters.active,
-                    scheduler.queue.pending,
-                    scheduler.counters.output_tokens
-                )));
             }
         }
         View::Serve => {
@@ -3426,6 +3409,16 @@ fn render_response(frame: &mut Frame<'_>, area: Rect, app: &mut App, theme: Them
 }
 
 fn render_workspace(frame: &mut Frame<'_>, area: Rect, app: &mut App, theme: Theme) {
+    if app.navigation.view == View::Running {
+        app.performance
+            .observe(app.selected.as_ref().and_then(|owner| {
+                app.snapshot
+                    .runtime
+                    .catalog
+                    .iter()
+                    .find(|model| model.registration_id == owner.registration)
+            }));
+    }
     match app.navigation.view {
         View::Models => {
             render_library(frame, area, app, Kind::Models, theme);
@@ -3696,6 +3689,7 @@ mod tests {
             selected: None,
             response: None,
             running_query: String::new(),
+            performance: super::super::performance::History::default(),
             library: super::super::library::Library::new(
                 super::super::work::Document::test_default().target,
             ),

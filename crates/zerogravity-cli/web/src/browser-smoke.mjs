@@ -352,6 +352,11 @@ try {
     await waitFor(() => contains("Listener stopped; loaded models retained"), "listener stopped", 90000);
     await go("Running");
     await waitFor(() => evaluate("!!document.querySelector('#owner-prompt')"), "running owner");
+    await waitFor(() => evaluate("!!document.querySelector('.model-performance') && document.querySelector('.model-performance').textContent.includes('Avg TTFT') && !document.querySelector('.metric-number').textContent.includes('—')"), "observed performance");
+    assert.equal(await evaluate("document.querySelector('.layer-map').textContent.includes('Host CPU')"), true);
+    await evaluate("document.querySelector('.performance-details > summary').click()");
+    assert.equal(await evaluate("document.querySelector('.performance-details').open"), true);
+    assert.equal(await evaluate("document.querySelector('.performance-details').textContent.includes('First-token samples')"), true);
     await click("Unload owner");
     await click("Cancel");
     assert.equal(await evaluate("!!document.querySelector('#owner-prompt')"), true);

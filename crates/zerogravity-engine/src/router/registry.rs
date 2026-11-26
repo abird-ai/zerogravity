@@ -1,6 +1,10 @@
 //! One immutable alias table; aliases share the exact typed prepared owner.
 //! Locks occur at admission, request handoff and retirement, never per token.
-use super::{ServiceError, worker::SchedulerSnapshot};
+use super::{
+    ServiceError,
+    performance::{RegistrationPerformance, RequestTiming},
+    worker::SchedulerSnapshot,
+};
 use crate::model_instance::{
     ModelInstance, PreparedModel,
     execution::{Executor, ModelHandle, ModelRetirement},
@@ -41,6 +45,7 @@ pub(super) struct Route<A: Executor> {
     state: Mutex<OwnerState<A::Model>>,
     drained: Condvar,
     retire: Option<ModelRetirement<A::Model>>,
+    performance: RegistrationPerformance,
 }
 impl<A: Executor> Route<A> {
     fn new(model: A::Model) -> Result<Self> {
@@ -61,6 +66,7 @@ impl<A: Executor> Route<A> {
             }),
             drained: Condvar::new(),
             retire: A::selective_retirement(),
+            performance: RegistrationPerformance::new(std::time::Instant::now()),
         })
     }
     fn state(&self) -> MutexGuard<'_, OwnerState<A::Model>> {
@@ -95,7 +101,10 @@ impl<A: Executor> Route<A> {
         state.readers = state.readers.checked_add(1).ok_or_else(|| {
             ServiceError::new(503, "model_readers", "model request reader count exhausted")
         })?;
-        Ok((model, ModelRead(self.clone())))
+        Ok((
+            model,
+            ModelRead(self.clone(), RequestTiming::new(std::time::Instant::now())),
+        ))
     }
     fn close(self: &Arc<Self>) -> Result<SelectiveRetirement> {
         // Only a concrete executor that can retire one independent owner
@@ -115,11 +124,15 @@ impl<A: Executor> Route<A> {
 }
 
 trait RouteControl: Send + Sync {
+    fn performance(&self) -> &RegistrationPerformance;
     fn release(&self);
     fn retire(&self) -> Result<()>;
     fn failed_retirement(&self);
 }
 impl<A: Executor> RouteControl for Route<A> {
+    fn performance(&self) -> &RegistrationPerformance {
+        &self.performance
+    }
     fn release(&self) {
         let mut state = self.state();
         state.readers -= 1;
@@ -169,7 +182,15 @@ impl<A: Executor> RouteControl for Route<A> {
 
 /// Original registry reader, moved from admitted request to active row.
 /// The last field of each owner, after its session/physical/decoder readers.
-pub struct ModelRead(Arc<dyn RouteControl>);
+pub struct ModelRead(Arc<dyn RouteControl>, RequestTiming);
+impl ModelRead {
+    pub(super) fn observe_token(&mut self, committed: std::time::Instant) {
+        self.0.performance().observe(&mut self.1, committed);
+    }
+    pub(super) fn complete(&mut self) {
+        self.0.performance().complete(&mut self.1);
+    }
+}
 impl Drop for ModelRead {
     fn drop(&mut self) {
         self.0.release();
@@ -348,6 +369,7 @@ impl<A: Executor> Models for Registry<A> {
                     .collect(),
                 lifecycle,
                 admitted_requests,
+                performance: route.performance.snapshot(std::time::Instant::now()),
                 independent_retirement: route.retire.is_some(),
                 capabilities,
             });

@@ -96,6 +96,7 @@ impl PreparedModel for Model {
             prefix_sharing: Some(false),
             source_host_reserved_bytes: self.source_host_reserved_bytes,
             memory: Some(ModelMemory::Resident(resident.memory_snapshot()?)),
+            layer_placement: None,
         })
     }
 }

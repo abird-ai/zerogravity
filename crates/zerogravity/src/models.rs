@@ -139,10 +139,11 @@ pub use zerogravity_core::provider::{
 };
 pub use zerogravity_core::source::{ProgramSource, RegionSource, SourceTensorRef, TensorSource};
 pub use zerogravity_engine::diagnostics::{
-    ArtifactDescription, ModelCapabilities, ModelDetails, ModelLifecycle, ModelMemory,
-    ModelSnapshot, SourceRevision,
+    ArtifactDescription, LayerDevice, LayerPlacement, LayerSpan, ModelCapabilities, ModelDetails,
+    ModelLifecycle, ModelMemory, ModelSnapshot, SourceRevision,
 };
 pub use zerogravity_engine::model_instance::{ModelInstance, PreparedModel};
+pub use zerogravity_engine::router::performance::{ModelPerformance, RequestPerformance};
 pub use zerogravity_engine::{
     executable::ExecutableBundle,
     prepare::{prepare as prepare_executable, prepare_region},

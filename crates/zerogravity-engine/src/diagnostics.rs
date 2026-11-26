@@ -81,6 +81,40 @@ pub enum ModelMemory {
     },
 }
 
+/// Exact reported transformer-layer compute placement, not a weight
+/// residence or device-utilization claim. Ranges use zero-based layer IDs.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum LayerDevice {
+    HostCpu,
+    Device {
+        device: zerogravity_core::resource_arbiter::PhysicalDeviceKey,
+    },
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct LayerSpan {
+    pub start: usize,
+    pub end: usize,
+    pub execution: LayerDevice,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct LayerPlacement {
+    pub total_layers: usize,
+    pub spans: Vec<LayerSpan>,
+}
+impl LayerPlacement {
+    pub fn single(total_layers: usize, execution: LayerDevice) -> Option<Self> {
+        (total_layers != 0).then(|| Self {
+            total_layers,
+            spans: vec![LayerSpan {
+                start: 0,
+                end: total_layers,
+                execution,
+            }],
+        })
+    }
+}
+
 /// Adapter-supplied facts, not guessed from the hardware, a route name or
 /// the requested configuration. Unreported facts stay absent.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
@@ -94,6 +128,8 @@ pub struct ModelDetails {
     /// include separate tokenizer, backend or request credits.
     pub source_host_reserved_bytes: Option<u64>,
     pub memory: Option<ModelMemory>,
+    /// Only the prepared adapter can report actual layer placement.
+    pub layer_placement: Option<LayerPlacement>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -117,6 +153,7 @@ pub struct ModelSnapshot {
     pub lifecycle: ModelLifecycle,
     /// Readers spanning admission, queued work and active session destruction.
     pub admitted_requests: usize,
+    pub performance: crate::router::performance::ModelPerformance,
     pub independent_retirement: bool,
     /// Observe prepared facts only while the owner is available for admission.
     /// Draining/retiring entries never retain an extra executable reader.

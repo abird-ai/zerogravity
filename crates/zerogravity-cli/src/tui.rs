@@ -8,6 +8,7 @@ mod input;
 mod layout;
 pub(crate) mod library;
 mod logs;
+mod performance;
 pub(crate) mod settings;
 mod terminal;
 mod theme;
@@ -92,6 +93,7 @@ fn session(
         selected: None,
         response: None,
         running_query: String::new(),
+        performance: performance::History::default(),
     };
     app.reconcile_owner();
     #[cfg(all(feature = "acquisition", target_os = "linux"))]
@@ -289,6 +291,7 @@ struct App {
     selected: Option<Owner>,
     response: Option<Response>,
     running_query: String,
+    performance: performance::History,
     library: Library,
 }
 
@@ -529,6 +532,14 @@ impl App {
             }
             Action::Search(edit) => self.edit_search(edit),
             Action::ShowDetails => {
+                if self.navigation.view()==View::Running {
+                    if let Some(model)=self.selected.as_ref().and_then(|owner|
+                        self.snapshot.runtime.catalog.iter().find(|model|model.registration_id==owner.registration)) {
+                        let title=format!("Performance · registration {}",model.registration_id);
+                        self.navigation.details(title,performance::details(model));
+                    }
+                    return false;
+                }
                 let kind=match self.navigation.view() {
                     View::Models=>Kind::Models,
                     View::Devices=>Kind::Devices,

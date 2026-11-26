@@ -162,6 +162,24 @@ tail or F9 resumes. Selected item/registration and log sequence
 anchors preserve scroll through refresh and resize; model shelves
 keep their own positions.
 
+Running shows the selected registration's average decode TPS, engine
+TTFT, recent aggregate-output trend, committed output tokens and completed
+requests. Averages are since registration; the trend samples actual
+counter changes over elapsed wall time, so it includes idle and concurrent
+requests. TTFT runs from engine request acquisition to first committed
+non-EOS token (queue/prefill included), not HTTP first byte. Decode uses
+within-request commit intervals, including active and ended requests.
+Unavailable measurements are shown as an em dash, not a fake zero.
+Aliases share a registration's observations; reload resets them.
+Performance details (Alt+D or selected-row context menu) shows sample
+counts, last completed request, reported layer execution and original
+memory bounds. Web provides the same details in a disclosure. CPU and
+original prepared single-device Qwen routes report exact layer ranges;
+unknown maps stay unreported. Compute placement does not imply weight
+residency or GPU utilization. Trends are client-local, bounded, and not
+persistent benchmark logs.
+
+
 In Config, Edit from the context menu or Alt+e opens a finite setting
 picker when available; choose a row and apply explicitly. F2 opens its
 selected value in the original YAML form. Enter retains direct YAML

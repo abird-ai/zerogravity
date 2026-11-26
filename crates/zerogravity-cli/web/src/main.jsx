@@ -7,6 +7,8 @@ import { createInventory } from "./inventory-state.js";
 import { Models, Devices } from "./library.jsx";
 import { Profiles, Config, Logs } from "./settings.jsx";
 import { QuickRun, OwnerActions, ServeActions, ActionPanel } from "./resident.jsx";
+import { Performance } from "./performance.jsx";
+import { modelName } from "./performance.js";
 import "./styles.css";
 
 const views = [
@@ -104,12 +106,13 @@ function Running(props) {
     <div class="split">
       <section class="panel entries"><h2>Owners</h2><For each={models()}>{model =>
         <button classList={{ row: true, selected: model.registration_id === props.selection() }} onClick={() => props.select(model.registration_id)}>
-          <span class="row-main">{model.aliases.join(", ")}</span><State text={model.lifecycle} good={model.lifecycle === "ready"}/><span class="subtle">Registration {model.registration_id}</span>
+          <span class="row-main">{modelName(model)}</span><State text={model.lifecycle} good={model.lifecycle === "ready"}/><span class="subtle">Registration {model.registration_id}</span>
         </button>
       }</For></section>
       <Show when={chosen()}>{model => <section class="panel">
-        <h2>{model().aliases.join(", ")}</h2>
-        <Facts items={[["Registration", model().registration_id], ["Lifecycle", human(model().lifecycle)], ["Admitted requests", count(model().admitted_requests)], ["Provider", model().capabilities?.provider ?? "Not reported"], ["Family", model().capabilities?.family ?? "Not reported"], ["Context capacity", count(model().capabilities?.context)], ["Host source reservation", bytes(model().capabilities?.source_host_reserved_bytes)]]}/>
+        <h2>{modelName(model())}</h2>
+        <Performance model={model()} bytes={bytes}/>
+        <Facts items={[["Lifecycle", human(model().lifecycle)], ["Admitted readers", count(model().admitted_requests)], ["Provider", model().capabilities?.provider ?? "Not reported"], ["Context capacity", count(model().capabilities?.context)]]}/>
         <OwnerActions model={model()} chat={props.value.configuration.chat} work={props.work}/>
       </section>}</Show>
     </div>

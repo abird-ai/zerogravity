@@ -742,8 +742,10 @@ UX-1–10 remains accepted; this is additional presentation work.
   compact scrollable dialogs/editor drag edges focused-qualified
   (91/0/3 and native/shared transfer PTY). User follow-up: CLI Cargo
   default full production, preserve typed errors and safe public/opt-in
-  authenticated diagnostic projection and structured logs. P4B final
-  full gate remains next.
+  authenticated diagnostic projection and structured logs. User follow-up:
+  [live model performance and layer inspection](cli-ux/LIVE_MODEL_PERFORMANCE.md),
+  registration-owned TPS/TTFT and selected object details before P4B.
+  Optional deeper profiling follows actual provider capabilities.
 
 No new runtime, cache, configuration or execution owner. No inference
 protocol or backend performance work until this bounded polish exit.

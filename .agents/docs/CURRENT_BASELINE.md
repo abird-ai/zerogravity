@@ -5,6 +5,17 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 26 Nov — UX-P-M1 live model performance
+
+Registration-scoped TTFT, weighted decode intervals, exact output and
+completed receipt counts; bounded client trend and selected read-only
+layer/lease details. Engine 109/0/0, combined CPU CLI 64/0/3, Web 4/0,
+strict focused lint and full default cargo check pass. Actual approved
+cached CPU/browser/native/HTTP 1/0/0 (55.61s), exact shared counters and
+reset, 24 CPU layers, original admission/output and owner checks retained.
+GPU placement compile-only, no new performance or overhead comparison
+claim. Optional M2 and full P4B gate pending.
+
 ## 26 Nov — full native CLI defaults and typed error diagnostics
 
 Default Cargo CLI production all; explicit embedded/portable CPU profiles

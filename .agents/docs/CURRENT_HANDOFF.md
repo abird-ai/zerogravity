@@ -27,7 +27,61 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — full native CLI defaults and typed error diagnostics (26 Nov)
+### Current checkpoint — UX-P-M1 live model performance (26 Nov)
+
+User asked for elegant live TPS/TTFT averages and optional deeper layer/
+device performance inspection. Owning design: [LIVE_MODEL_PERFORMANCE.md](../plans/cli-ux/LIVE_MODEL_PERFORMANCE.md).
+
+- Existing exact registry Route owns fixed registration counters;
+  original ModelRead carries request-local timing, no new reader, registry,
+  scheduler or execution grant. Existing observed committed non-EOS
+  timestamp and generated ID frontier drive measurement, once per token;
+  no extra per-token clock, allocation, mutex or GPU synchronization.
+  Relaxed atomic output/interval sums and first-token sums; terminal
+  receipt records completed count and last sample once. Existing
+  sizeof-based admission prices route/queued/active additions.
+  TTFT = engine acquire to first commit (queue/prefill included), not
+  wire delivery; decode = token-weighted within-request intervals,
+  active/ended samples incl partial, no idle across requests. Zero-token
+  completion has no TTFT/rate sample. Alias shares registration; reload
+  resets. Snapshot fields may advance between observations.
+- Running selected pane and Web: two prominent metrics, monotonic
+  registration age, total output/completions, recent aggregate-output
+  sparkline at existing client sampling cadence, <=24 selected-owner
+  samples, reset on >6s gap, regression or replacement. No persistence/
+  extra timer. No toolbar or duplicate nav; digest-only labels shortened
+  with observed family, full exact aliases and secondary technical facts
+  in Details. F3 response switch unchanged. Alt-D/context opens read-only
+  performance details; Web disclosure. Last completed is registration
+  sample, not attributed to an unrelated visible local response.
+- Adapter ModelDetails.layer_placement: actual zero-based half-open
+  layer ranges. CPU Qwen uses verified geometry on Host CPU; original
+  whole-text single-device prepared source uses exact plan boundaries
+  and resident device. Older resident adapter does not report a map.
+  Layer compute distinct from weights/state/admission; safe memory
+  bounds and metrics projected explicitly into authenticated Web
+  snapshot, no change to public inference protocol.
+- Focused engine 109/0/0, combined CPU CLI 64/0/3, Web 4/0 and asset
+  build, strict engine/minimal/combined CPU lint, full default cargo
+  check passed (known GPU warnings). Actual approved cached Qwen CPU/
+  browser/native/HTTP 1/0/0 (55.61s, five filtered), original 8 GiB
+  admission, exact output and stale owner/shared settings retained.
+  Actual two native + HTTP requests share counts, Web increments same
+  registration, reload resets, exact 24 CPU layers, native F3 and
+  scrollable details/Firefox visible metrics. Initial fixture failures
+  corrected for differential terminal output and capitalization;
+  substantive counters/placement assertions passed. Logs
+  target/ux-live-performance-final.log, target/ux-live-performance-web-final.log,
+  target/ux-live-performance-resident-final.log. GPU placement
+  compiled only, no new GPU performance/physical qualification claim.
+- Remaining M2 optional exact per-request/response and phase timings,
+  actual additional adapter layer maps and explicit detailed profiling
+  if justified; no imaginary offload or default per-layer sync. P4B
+  full offline isolated gate and assembled owner acceptance; linked
+  full production launch from prior checkpoint remains pending. No
+  public serving acceptance yet.
+
+### Previous checkpoint — full native CLI defaults and typed error diagnostics (26 Nov; c0e4794d)
 
 User requested sane full-production Cargo defaults and accurate failure
 classification after pvl-a1 original-source load reported missing CUDA/ROCm

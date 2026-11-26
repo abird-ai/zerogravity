@@ -59,7 +59,7 @@ impl PreparedModel for Model {
         use zerogravity_core::provider::{
             ExecutionDescription, ExecutionMode, ProviderKind, SelectedMode,
         };
-        use zerogravity_engine::diagnostics::ModelDetails;
+        use zerogravity_engine::diagnostics::{LayerDevice, LayerPlacement, ModelDetails};
         Ok(ModelDetails {
             artifact: Some(super::local::artifact_description(
                 self.weights.cache_snapshot().map(str::to_owned),
@@ -75,6 +75,10 @@ impl PreparedModel for Model {
                 program: None,
                 region: None,
             }),
+            layer_placement: LayerPlacement::single(
+                self.weights.model().geometry().layers.len(),
+                LayerDevice::HostCpu,
+            ),
             prefix_sharing: Some(false),
             source_host_reserved_bytes: Some(self.weights.host_reserved_bytes()?),
             ..Default::default()

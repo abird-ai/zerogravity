@@ -193,6 +193,18 @@ impl<A: Executor> Active<A> {
             scratch_bytes: 32 * 1024 * 1024,
         }
     }
+    fn observe_output(&mut self, before: usize, committed: Instant) {
+        if self.output.generated_token_count() > before
+            && let Some(reader) = &mut self._model_reader
+        {
+            reader.observe_token(committed);
+        }
+    }
+    fn complete_output(&mut self) {
+        if let Some(reader) = &mut self._model_reader {
+            reader.complete();
+        }
+    }
     pub fn present(&mut self, stats: &WorkStats) -> Result<Presentation, ServiceError> {
         if matches!(self.policy, WorkPolicy::Sequential) {
             let id = A::selected(&mut self.state)?;
@@ -203,10 +215,14 @@ impl<A: Executor> Active<A> {
             let presented = self
                 .output
                 .accept_observed(id, committed, self.token_observation);
+            self.observe_output(before, committed);
             stats.output_tokens.fetch_add(
                 (self.output.generated_token_count() - before) as u64,
                 Ordering::Relaxed,
             );
+            if matches!(presented, Ok(true)) {
+                self.complete_output();
+            }
             return presented.map(|done| {
                 if done {
                     Presentation::Finished
@@ -225,7 +241,9 @@ impl<A: Executor> Active<A> {
                 .ok_or_else(missing_observation)?;
             let shown = self
                 .output
-                .present_observed(id, committed, self.token_observation)?;
+                .present_observed(id, committed, self.token_observation);
+            self.observe_output(before, committed);
+            let shown = shown?;
             stats.output_tokens.fetch_add(
                 (self.output.generated_token_count() - before) as u64,
                 Ordering::Relaxed,
@@ -233,6 +251,9 @@ impl<A: Executor> Active<A> {
             self.packet_presented = true;
             shown
         };
+        if shown == Presentation::Finished {
+            self.complete_output();
+        }
         if shown == Presentation::Blocked {
             let since = self.blocked_since.get_or_insert_with(Instant::now);
             if since.elapsed() >= Duration::from_secs(30) {

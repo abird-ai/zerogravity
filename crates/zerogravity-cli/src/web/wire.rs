@@ -20,6 +20,26 @@ pub(super) fn snapshot(
             "family": cap.details.artifact.as_ref().map(|artifact| &artifact.family),
             "snapshot": cap.details.artifact.as_ref().and_then(|artifact| artifact.cache_snapshot.as_ref()),
             "source_host_reserved_bytes": cap.details.source_host_reserved_bytes,
+            "layer_placement": cap.details.layer_placement,
+            "memory": cap.details.memory.as_ref().map(|memory| {
+                use zerogravity::models::ModelMemory;
+                match memory {
+                    ModelMemory::Host { session_state_bytes, session_scratch_bytes } =>
+                        json!({"host_state_bytes":session_state_bytes,"host_scratch_bytes":session_scratch_bytes}),
+                    ModelMemory::Resident(memory) => json!({
+                        "device":memory.device,"resident_bytes":memory.resident_bytes,
+                        "model_capacity_bytes":memory.model_capacity_bytes,
+                    }),
+                    ModelMemory::ResidentText{admission,resident_bytes} => json!({
+                        "device":admission.device,"resident_bytes":resident_bytes,
+                        "resident_weight_bytes":admission.resident_weight_bytes,
+                        "state_reserve_bytes":admission.state_reserve_bytes,
+                        "model_capacity_bytes":admission.admitted_model_capacity_bytes,
+                        "context_device_budget_bytes":admission.context_device_budget_bytes,
+                    }),
+                }
+            }),
+
         }));
         json!({
             // Exact opaque IDs cannot round-trip through a JS number.
@@ -27,6 +47,19 @@ pub(super) fn snapshot(
             "aliases": model.aliases,
             "lifecycle": model.lifecycle,
             "admitted_requests": model.admitted_requests,
+            "performance": {
+                "loaded_ms":model.performance.loaded_ms,
+                "output_tokens":model.performance.output_tokens,
+                "completed_requests":model.performance.completed_requests,
+                "avg_decode_tps":model.performance.decode_tps(),
+                "avg_ttft_ms":model.performance.mean_ttft_ms(),
+                "ttft_samples":model.performance.ttft_samples,
+                "decode_intervals":model.performance.decode_intervals,
+                "last_completed":model.performance.last_completed.map(|sample|json!({
+                    "decode_tps":sample.decode_tps(),"ttft_ms":sample.ttft_ms(),
+                    "output_tokens":sample.output_tokens,
+                })),
+            },
             "capabilities": capability,
         })
     }).collect();

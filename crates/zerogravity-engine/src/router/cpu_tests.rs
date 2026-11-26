@@ -608,6 +608,17 @@ fn selective_catalog_retirement_preserves_other_workers_and_shutdown_order() {
             assert_eq!(retired[0].lifecycle, ModelLifecycle::Retired);
             assert_eq!(retired[0].admitted_requests, 0);
             assert!(retired[0].capabilities.is_none());
+            // The two aliases share exact registration timing. The
+            // cancelled queued request contributes no invented token or
+            // completion; the other owner has its independent samples.
+            let measured = retired[0].performance;
+            assert_eq!(measured.output_tokens, 4);
+            assert_eq!(measured.ttft_samples, 2);
+            assert_eq!(measured.decode_intervals, 2);
+            assert_eq!(measured.completed_requests, 2);
+            assert_eq!(measured.last_completed.unwrap().output_tokens, 2);
+            assert_eq!(retired[1].performance.output_tokens, 4);
+
             assert_eq!(retired[1].source, other.source());
             assert!(!runtime.status().closed);
             assert_eq!(runtime.models().list().unwrap().len(), 1);

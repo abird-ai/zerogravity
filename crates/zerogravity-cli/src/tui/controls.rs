@@ -227,6 +227,7 @@ impl Scope {
                 if self.owner.is_some() {
                     add(C::Run, "Run", "p", self.run());
                     add(C::Unload, "Unload", "u", self.busy().or(choose_owner));
+                    add(C::Details, "Performance details", "D", None);
                 } else if self.phase == RuntimePhase::Empty {
                     add(C::Load, "Load", "l", self.load());
                 }
