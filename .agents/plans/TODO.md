@@ -185,8 +185,14 @@ typed actions and latest Web receipt, actual browser forms and output,
 native-private results, explicit cancellation. Focused/strict lint/
 HTTP/Firefox cold smoke pass; real optimized cached browser/TUI/Web/
 HTTP lifecycle passed (46.14s); full isolated gate 2,489/0/109,
-release Web/TUI/installer/scripts. UX-9B accepted. Next UX-9C Web
-Models / Downloads / Devices.
+release Web/TUI/installer/scripts. UX-9B accepted.
+UX-9C Web Models / Downloads / Devices implemented: shared original
+cache/pull/device authorities, exact-digest and physical device actions,
+cold authenticated shelves, pinned acquisition preview/explicit consent,
+live transfer controls and terminal invalidations from either client.
+Strict feature/lint isolation, JS, actual cold HTTP/Firefox, controlled
+HTTP/native PTY and Firefox transfer pass. UX-9C optimized cached integration passed 1/0/0 (48.13s, five filtered); full isolated gate 2,489/0/109 (318 Rust suites), release Web/TUI/installer/scripts passed. UX-9C accepted.
+Next: UX-9D Web Profiles / Config / Logs.
 General UMA/foreign backing, device-write host read, unqualified model/
 backend/media and other expansion holds remain explicit. Historical
 CPU cache gate corrected at 00f57e7a/9374e0ca.

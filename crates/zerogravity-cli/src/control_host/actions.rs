@@ -100,6 +100,14 @@ impl Slot {
         let response = job.sample(None);
         let (state, message) = match job.join() {
             Ok(Completed::Message(message)) => ("completed", message),
+            #[cfg(all(feature = "cache", target_os = "linux"))]
+            Ok(Completed::Refused {
+                message,
+                native_detail,
+            }) => {
+                let _ = native_detail;
+                ("failed", message)
+            }
             #[cfg(feature = "tui")]
             Ok(Completed::Settings(_)) => ("failed", "Unsupported control result".into()),
             Err(error) => ("failed", safe_error(&error).into()),
@@ -165,7 +173,9 @@ impl Actions {
         let worker = thread::Builder::new()
             .name("zg-control-action".into())
             .spawn(move || {
-                work::perform(&runtime, &selection, &document, request, &flag, &output)
+                work::perform(
+                    &runtime, &selection, &document, request, &flag, &output, origin,
+                )
             })?;
         slot.next = id;
         #[cfg(feature = "web")]

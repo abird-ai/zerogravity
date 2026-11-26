@@ -11,10 +11,11 @@ const binary = resolve(process.argv[2]);
 const root = await mkdtemp(join(tmpdir(), "zg-browser-"));
 const residentRoot = process.argv[3] === "--resident" ? resolve(process.argv[4]) : null;
 const expected = process.argv[5];
+const downloadFixture = process.argv[3] === "--download-fixture";
 const children = [];
 let ws;
-function child(command, args, env) {
-  const process = spawn(command, args, { cwd: root, env, stdio: ["ignore", "pipe", "pipe"] });
+function child(command, args, env, input = "ignore") {
+  const process = spawn(command, args, { cwd: root, env, stdio: [input, "pipe", "pipe"] });
   children.push(process);
   return process;
 }
@@ -56,7 +57,11 @@ try {
     ...env, HOME: residentRoot, XDG_CONFIG_HOME: join(residentRoot,"config"), XDG_CACHE_HOME: join(residentRoot,"cache"),
     ZEROGRAVITY_API_KEY: "fixture-inference-only",
   } : env;
-  const host = child(binary, residentRoot ? ["--offline","--profile","local","web"] : ["--offline", "web"], hostEnv);
+  const host = downloadFixture
+    ? child(binary, ["--ignored", "--exact", "pull::monitor::tests::monitor_child", "--nocapture"], {
+        ...hostEnv, ZG_MONITOR_FIXTURE:join(root,"cache/abird/zerogravity/models"), ZG_MONITOR_MODE:"web",
+      }, "pipe")
+    : child(binary, residentRoot ? ["--offline","--profile","local","web"] : ["--offline", "web"], hostEnv);
   const privateUrl = await line(host, /Web UI: (http:\/\/127\.0\.0\.1:\d+\/ui\/#control=[a-f0-9]{64})/);
   const origin = new URL(privateUrl).origin;
   const profile = join(root,"firefox");
@@ -144,9 +149,81 @@ try {
   await fill("#quick-source", "/tmp/invalid-browser-model.gguf");
   await click("Load model");
   await waitFor(() => contains("The control action or input was refused"), "typed POST rejection");
+  await go("Models");
+  await waitFor(async () => await contains("Model inventory") && await contains("Cached") && !await contains("Waiting for cold model inventory"), "cold model shelf");
+  await click("Catalog");
+  await waitFor(() => contains("qwen3.5-0.8b"), "catalog inventory");
+  await fill("#model-search", "qwen3.5-0.8b");
+  await waitFor(() => evaluate("document.querySelectorAll('.entries .row').length === 1"), "catalog search");
+  await viewport(390,844);
+  await waitFor(() => evaluate("document.documentElement.scrollWidth <= innerWidth + 1"), "catalog responsive width");
+  await viewport(1440,900);
+  await click("Partial");
+  await waitFor(() => contains("No matching observations."), "partial shelf");
+  await go("Devices");
+  await waitFor(async () => await contains("cpu:0") && await contains("Physical inventory"), "physical owner inventory");
+  await go("Downloads");
+  if (downloadFixture) {
+    await waitFor(() => evaluate("document.querySelector('.panel-title .state')?.textContent==='paused'"), "original safe pause");
+    await click("Resume download");
+    await waitFor(() => evaluate("document.querySelector('progress')?.value > 0"), "accepted transfer prefix");
+    await click("Pause download");
+    await waitFor(() => evaluate("document.querySelector('.panel-title .state')?.textContent==='paused'"), "range checkpoint");
+    await click("Resume download");
+    await waitFor(() => evaluate("document.querySelector('.panel-title .state')?.textContent==='durable'"), "durable original publication");
+    await go("Models");
+    await waitFor(() => contains("fixture/monitor"), "published cache observation");
+    console.log("Browser download: original operation pause, exact-range resume, durable publication and cold cache observation");
+  } else {
+    await waitFor(async () => await contains("No download operation") || await contains("Acquisition is not compiled"), "empty transfer");
+  }
+  await go("Models");
+  if (await evaluate("!!document.querySelector('#pull-source')")) {
+    await fill("#pull-source", "hf:fixture/model@" + "1".repeat(40));
+    await fill("#pull-selection", "model.gguf");
+    await click("Preview pull");
+    await waitFor(async () => await contains("1 exact files") && await contains("model.gguf"), "pinned acquisition preview");
+    await waitFor(() => evaluate("Array.from(document.querySelectorAll('button')).some(b=>b.textContent.trim()==='Confirm pull' && b.disabled)"), "offline consent refusal");
+    await fill("#pull-selection", "quant:Q4_K_M");
+    await waitFor(() => evaluate(`!document.querySelector('[aria-label="Confirm acquisition"]')`), "changed draft invalidates consent");
+    await click("Preview pull");
+    await waitFor(() => contains("GGUF quant: Q4_K_M"), "exact quant preview");
+  }
+  if (residentRoot) {
+    await click("Cached");
+    await waitFor(() => contains("fixture/serve"), "original cached snapshot shelf");
+    await click("Inspect");
+    await waitFor(() => contains("Manifest identity checked"), "exact digest inspection");
+    await click("Verify payloads");
+    await waitFor(() => contains("Payloads verified"), "original digest verification", 90000);
+    await fill("#cache-alias", "web-fixture");
+    await click("Create alias");
+    await waitFor(() => contains("by-name:web-fixture"), "non-replacing alias");
+    await click("Preview removal");
+    await waitFor(() => contains("Removal preview; no mutation"), "removal preview");
+    await click("Remove snapshot");
+    await click("Cancel");
+    assert.equal(await contains("fixture/serve"), true);
+    await click("Choose device");
+    await waitFor(() => contains("cpu:0"), "cached source device selection");
+    await waitFor(() => evaluate("document.querySelector('#device-source')?.value.length===64"), "exact source carried from Models");
+    await evaluate("Array.from(document.querySelectorAll('.entries .row')).find(b=>b.textContent.includes('cpu:0')).click()");
+    await click("Check source / device");
+    await waitFor(() => contains("Cold source/device policy accepted"), "original resident device check", 90000);
+    await click("Load on device");
+    await waitFor(() => contains("Model route set loaded"), "exact device load", 90000);
+    await go("Running");
+    await click("Unload owner");
+    await click("Confirm");
+    await waitFor(() => contains("No model owners"), "device-selected owner retired", 90000);
+    console.log("Browser library: cached/catalog/partial shelves, exact inspect/verify/alias/removal preview, offline consent, physical device check and load");
+  }
+  await go("Home");
   if (residentRoot) {
     // Real action buttons, original cached fixture, actual inference output.
+    // Wait for the authoritative empty route phase after retirement.
     // No test transport or injected frontend state.
+    await waitFor(() => evaluate("!!document.querySelector('#quick-source')"), "empty route phase");
     await fill("#quick-source", "");
     await click("Load model");
     await waitFor(() => contains("Model route set loaded"), "model load", 90000);
@@ -200,7 +277,8 @@ try {
   await bidi("session.end");
   ws.close();
   assert.equal((await fetch(origin + "/ui/")).status, 200);
-  host.kill("SIGTERM");
+  if (downloadFixture) host.stdin.end("done\n");
+  else host.kill("SIGTERM");
   await Promise.race([new Promise(resolve => host.once("exit",resolve)), delay(15000,undefined,{ref:false})]);
   assert.equal(host.exitCode, 0, "foreground host did not retire successfully");
   console.log("Embedded browser: authenticated Home, desktop/tablet/mobile, navigation/palette, reload/lock, browser retirement independent of host");

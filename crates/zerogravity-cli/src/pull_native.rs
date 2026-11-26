@@ -1,4 +1,4 @@
-//! Explicit native-client acquisition intent. No terminal or secondary runtime.
+//! Explicit interactive-client acquisition intent. No terminal or secondary runtime.
 use super::*;
 use zerogravity::{
     Runtime,
@@ -15,7 +15,7 @@ pub(crate) enum Intent {
 }
 
 impl Intent {
-    /// A native pull is explicit and immutable. No branch/tag guesses, raw
+    /// An interactive pull is explicit and immutable. No branch/tag guesses, raw
     /// URLs, shell flags, credentials, or auto-selected quantization.
     pub(crate) fn parse(source: &str, selection: &str) -> Result<Self> {
         let (provider, value) = match SourceSelector::parse(source.trim())? {
@@ -42,7 +42,7 @@ impl Intent {
                         .all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c))
             })
             .ok_or_else(|| {
-                Error::Malformed("Native pull requires a full lowercase commit SHA".into())
+                Error::Malformed("Interactive pull requires a full lowercase commit SHA".into())
             })?;
         if let Some(quant) = selection.trim().strip_prefix("quant:") {
             return Ok(Self::Quant(acquisition::GgufQuantRequest::new(

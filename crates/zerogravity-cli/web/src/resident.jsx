@@ -5,7 +5,7 @@ import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 const textBytes = value => new TextEncoder().encode(value).length;
 const promptValid = value => !!value.trim() && textBytes(value) <= 32768 && !value.includes("\0");
 
-function ConfirmButton(props) {
+export function ConfirmButton(props) {
   const [intent, setIntent] = createSignal(null);
   return <div class="confirm-action">
     <Show when={intent()} fallback={
@@ -14,7 +14,7 @@ function ConfirmButton(props) {
       <div class="confirmation" role="group" aria-label="Confirm action">
         <p>{pending().label}</p>
         <div class="form-actions">
-          <button class="danger" disabled={!props.work.ready()} onClick={() => {
+          <button class="danger" disabled={!props.work.ready() || props.disabled} onClick={() => {
             const request = pending().request;
             setIntent(null);
             props.work.dispatch(request);
@@ -26,7 +26,7 @@ function ConfirmButton(props) {
   </div>;
 }
 
-function PromptField(props) {
+export function PromptField(props) {
   const [prompt, setPrompt] = createSignal("");
   const [chat, setChat] = createSignal(true);
   const configuredChat = createMemo(() => props.defaultChat);

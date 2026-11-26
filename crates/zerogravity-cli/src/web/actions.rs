@@ -41,9 +41,104 @@ enum Input {
         generation: String,
         confirm: bool,
     },
+    Inspect {
+        digest: String,
+    },
+    Verify {
+        digest: String,
+    },
+    RemovalPreview {
+        digest: String,
+    },
+    Remove {
+        digest: String,
+        confirm: bool,
+    },
+    Alias {
+        digest: String,
+        name: String,
+    },
+    CheckFit {
+        digest: String,
+        device: String,
+    },
+    LoadOnDevice {
+        digest: String,
+        device: String,
+    },
+    #[cfg(all(feature = "acquisition", target_os = "linux"))]
+    PullPreview {
+        source: String,
+        selection: String,
+    },
+    #[cfg(all(feature = "acquisition", target_os = "linux"))]
+    Pull {
+        source: String,
+        selection: String,
+        confirm: bool,
+    },
+    #[cfg(all(feature = "acquisition", target_os = "linux"))]
+    Download {
+        operation_id: String,
+        command: DownloadCommand,
+    },
     Cancel {
         id: String,
     },
+}
+
+#[cfg(all(feature = "acquisition", target_os = "linux"))]
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum DownloadCommand {
+    Pause,
+    Resume,
+    Cancel,
+}
+#[cfg(all(feature = "acquisition", target_os = "linux"))]
+impl From<DownloadCommand> for zerogravity::control::DownloadCommand {
+    fn from(command: DownloadCommand) -> Self {
+        match command {
+            DownloadCommand::Pause => Self::Pause,
+            DownloadCommand::Resume => Self::Resume,
+            DownloadCommand::Cancel => Self::Cancel,
+        }
+    }
+}
+
+fn digest(value: String) -> Option<String> {
+    (cfg!(all(feature = "cache", target_os = "linux"))
+        && SourceSelector::is_snapshot_digest(&value))
+    .then_some(value)
+}
+fn device(value: String) -> Option<String> {
+    // Only an exact physical inventory identity. No ordinal remapping, node
+    // path, remote host, or selection of a different backend by browser input.
+    let valid = value == "cpu:0"
+        || value.strip_prefix("pci:").is_some_and(|pci| {
+            zerogravity::devices::normalize_pci(pci).is_ok_and(|canonical| canonical == pci)
+        });
+    valid.then_some(value)
+}
+#[cfg(all(feature = "acquisition", target_os = "linux"))]
+fn pull(source: &str, selection: &str) -> Option<crate::pull::native::Intent> {
+    if source.len() > 4096
+        || selection.len() > 64 * 1024
+        || selection
+            .chars()
+            .any(|c| c.is_control() && !matches!(c, '\r' | '\n' | '\t'))
+    {
+        return None;
+    }
+    let valid = match SourceSelector::parse(source).ok()? {
+        SourceSelector::Name(_) => true,
+        SourceSelector::HuggingFace(value) | SourceSelector::GitHub(value) => pinned(&value),
+        _ => false,
+    };
+    if !valid {
+        return None;
+    }
+    crate::pull::native::Intent::parse(source, selection).ok()
 }
 
 fn id(value: &str) -> Option<u64> {
@@ -113,6 +208,8 @@ fn source(value: String) -> Option<String> {
 enum Intent {
     Start(Request),
     Cancel(u64),
+    #[cfg(all(feature = "acquisition", target_os = "linux"))]
+    Download(u64, zerogravity::control::DownloadCommand),
 }
 impl Input {
     fn validate(self) -> Option<Intent> {
@@ -166,6 +263,56 @@ impl Input {
                 generation,
                 confirm: true,
             } if cfg!(feature = "serve") => Request::Stop(id(&generation)?),
+            Self::Inspect { digest: value } => Request::Inspect(digest(value)?),
+            Self::Verify { digest: value } => Request::Verify(digest(value)?),
+            Self::RemovalPreview { digest: value } => Request::Reclaim {
+                digest: digest(value)?,
+                apply: false,
+            },
+            Self::Remove {
+                digest: value,
+                confirm: true,
+            } => Request::Reclaim {
+                digest: digest(value)?,
+                apply: true,
+            },
+            Self::Alias {
+                digest: value,
+                name,
+            } if SourceSelector::is_human_name(&name) => Request::Alias {
+                digest: digest(value)?,
+                name,
+            },
+            Self::CheckFit {
+                digest: value,
+                device: selected,
+            } => Request::CheckFit {
+                source: format!("sha256:{}", digest(value)?),
+                device: device(selected)?,
+            },
+            Self::LoadOnDevice {
+                digest: value,
+                device: selected,
+            } => Request::Load {
+                source: format!("sha256:{}", digest(value)?),
+                device: Some(device(selected)?),
+                prompt: None,
+            },
+            #[cfg(all(feature = "acquisition", target_os = "linux"))]
+            Self::PullPreview { source, selection } => {
+                Request::PullPreview(pull(&source, &selection)?)
+            }
+            #[cfg(all(feature = "acquisition", target_os = "linux"))]
+            Self::Pull {
+                source,
+                selection,
+                confirm: true,
+            } => Request::Pull(pull(&source, &selection)?),
+            #[cfg(all(feature = "acquisition", target_os = "linux"))]
+            Self::Download {
+                operation_id,
+                command,
+            } => return Some(Intent::Download(id(&operation_id)?, command.into())),
             Self::Cancel { id: value } => return Some(Intent::Cancel(id(&value)?)),
             _ => return None,
         };
@@ -187,6 +334,10 @@ pub(super) fn submit(
     }
     match intent {
         Intent::Start(request) => {
+            #[cfg(all(feature = "acquisition", target_os = "linux"))]
+            if matches!(&request, Request::Pull(_)) && shared.selection.snapshot().offline {
+                return Err("403 Forbidden");
+            }
             let id = shared
                 .actions
                 .start(runtime, &shared.selection, request, Origin::Web)
@@ -195,6 +346,16 @@ pub(super) fn submit(
                     _ => "503 Service Unavailable",
                 })?;
             Ok(("202 Accepted", json!({"id": id.to_string()})))
+        }
+        #[cfg(all(feature = "acquisition", target_os = "linux"))]
+        Intent::Download(id, command) => {
+            // Direct control of the original active transfer, independent of
+            // the shared action slot and its private native/Web receipts.
+            runtime
+                .control()
+                .control_download(id, command)
+                .map_err(|_| "409 Conflict")?;
+            Ok(("202 Accepted", json!({"operation_id": id.to_string()})))
         }
         Intent::Cancel(id) => {
             shared

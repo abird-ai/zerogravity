@@ -363,14 +363,25 @@ build or general model/backend grant. Historical failures keep their source scop
   Full isolated gate 2,489/0/109 plus release Web/TUI/installer/scripts.
   UX-9B accepted.
 
+### Phase 2.1 UX-9C — Web model/download/device management (26 Nov)
+
+- [x] Shared original cache/pull/device worker and cold observations;
+  authenticated separate model/device inventory, exact digest inspect/
+  verify/alias/reclaim and cached load/run/serve, pinned pull preview/
+  consent, exact original transfer pause/resume/cancel, physical device
+  and source policy check/load. No new runtime, queue, cache or policy.
+- [x] Native/Web relevant owner invalidations incl terminal download status
+  at emission, visible cold reads rather than progress scans. Web-only
+  build remains terminal-free; strict lint/JS/cold HTTP/Firefox and
+  actual controlled HTTP/native PTY/Firefox transfer pass.
+- [x] UX-9C optimized cached integration passed 1/0/0 (48.13s, five filtered); full isolated gate 2,489/0/109 (318 Rust suites), release Web/TUI/installer/scripts passed. UX-9C accepted.
+
 ## Uncommitted
 
-- [ ] UX-9C Web Models / Downloads / Devices: same original shared
-  cache/pull/device owners, typed exact digest/operation/physical IDs,
-  explicit acquisition consent, live transfer controls while worker
-  owns action. UX-9D/E and UX-10 remain ordered; no new runtime, cache
-  or scheduler. Broader catalog presets, conversation history and
-  unsupported routes remain explicit.
+- [ ] UX-9D Web Profiles / Config / Logs; UX-9E
+  simultaneous TUI/Web acceptance and UX-10 remain ordered. Broader
+  catalog presets, conversation history and unsupported routes remain
+  explicit.
 - [ ] Extend advanced direct provider forced interactive/JSONL presentation
   and aggregate component download control without changing independently
   published receipts; existing direct provider progress and legacy sequential

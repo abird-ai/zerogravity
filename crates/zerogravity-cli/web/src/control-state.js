@@ -16,6 +16,12 @@ export function createControl(key, unauthorized) {
   const [status, setStatus] = createSignal("locked");
   const [eventStatus, setEventStatus] = createSignal("disconnected");
   const [updated, setUpdated] = createSignal(null);
+  const [modelsRevision, setModelsRevision] = createSignal(0);
+  const [devicesRevision, setDevicesRevision] = createSignal(0);
+  const invalidate = kind => {
+    if (kind === "models" || kind === "resync") setModelsRevision(n => n + 1);
+    if (kind === "devices" || kind === "resync") setDevicesRevision(n => n + 1);
+  };
   let manual = () => {};
   createEffect(() => {
     const credential = key();
@@ -65,7 +71,13 @@ export function createControl(key, unauthorized) {
       if (closed) return;
       setEventStatus("connecting");
       try {
-        await api.events(credential, abort.signal, refresh, () => setEventStatus("connected"));
+        await api.events(credential, abort.signal, kind => {
+          invalidate(kind);
+          if (kind === "refresh" || kind === "resync") refresh();
+        }, () => {
+          setEventStatus("connected");
+          invalidate("resync");
+        });
       } catch (error) {
         failure(error);
       }
@@ -94,5 +106,9 @@ export function createControl(key, unauthorized) {
       manual = () => {};
     });
   });
-  return { value, status, eventStatus, updated, refresh: () => manual() };
+  return {
+    value, status, eventStatus, updated, refresh: () => manual(),
+    inventoryRevision: kind => kind === "models" ? modelsRevision() : devicesRevision(),
+    refreshInventory: () => invalidate("resync"),
+  };
 }

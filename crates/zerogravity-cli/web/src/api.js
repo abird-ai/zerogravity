@@ -32,6 +32,7 @@ export class ControlError extends Error {
     super(status === 401 ? "Control credential is invalid or expired."
       : status === 409 ? "An action is busy or the selected identity is stale. Refresh and try explicitly."
       : status === 400 ? "The control action or input was refused."
+      : status === 403 ? "The host policy refused this action (including offline acquisition)."
       : status === 404 ? "This action result is no longer retained."
       : "Control request failed (" + status + ").");
     this.status = status;
@@ -70,7 +71,9 @@ export function eventDecoder(onRefresh) {
     while ((end = pending.indexOf("\n\n")) >= 0) {
       const frame = pending.slice(0, end);
       pending = pending.slice(end + 2);
-      if (frame.startsWith("event: refresh\n") || frame.startsWith("event: resync\n")) onRefresh();
+      for (const kind of ["refresh", "resync", "models", "devices"]) {
+        if (frame.startsWith("event: " + kind + "\n")) { onRefresh(kind); break; }
+      }
     }
   };
 }
@@ -104,5 +107,12 @@ export async function submit(key, signal, action) {
 export async function actionResult(key, signal, id) {
   if (!/^(0|[1-9][0-9]{0,19})$/.test(id)) throw new Error("Invalid action identity.");
   const response = await request("/zg/control/actions/" + id, key, signal);
+  return response.json();
+}
+
+// An authenticated cold read, deliberately separate from hot runtime snapshots.
+export async function inventory(key, signal, kind) {
+  if (!["models", "devices"].includes(kind)) throw new Error("Unknown inventory.");
+  const response = await request("/zg/control/inventory/" + kind, key, signal);
   return response.json();
 }

@@ -2,11 +2,9 @@
 
 Canonical cross-window entry point for `/home/pvl/spaces/abird/src/zerogravity`.
 
-**Full takeover (26 Nov, through accepted UX-9B):**
+**Full historical takeover (26 Nov, through accepted UX-9B):**
 [FULL_COMPREHENSIVE_HANDOFF_2026-11-26_UX9B_EXIT.md](FULL_COMPREHENSIVE_HANDOFF_2026-11-26_UX9B_EXIT.md).
-Read §§0–13 first; §11 is the next coherent unit (UX-9C), §13 the starting
-prompt, and Appendix D the exact Phase 2 landing narratives.
-[Standalone next-agent prompt](NEXT_AGENT_2026-11-26_UX9C.md).
+Read §§0–13 first; §11/§13 and the [standalone UX-9C prompt](NEXT_AGENT_2026-11-26_UX9C.md) describe the original UX-9C implementation scope. Appendix D retains the exact earlier Phase 2 landing narratives. Resume from the live checkpoint below.
 The [25 Nov Phase 1 exit pack](FULL_COMPREHENSIVE_HANDOFF_2026-11-25_PHASE1_EXIT.md)
 and earlier foundation packs retain the complete original architecture,
 foundation chronology, exact evidence and rejected experiments. Their
@@ -29,7 +27,76 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — Phase 2.1 UX-9B (26 Nov)
+### Current checkpoint — Phase 2.1 UX-9C (26 Nov)
+
+Models / Downloads / Devices now use the original cache, transfer and
+resident device authorities from either client. No new scheduler,
+runtime, cache registry, transfer queue, persistent config or filesystem
+authority. One shared Actions slot; exact download commands bypass only
+the action slot and address the original active operation.
+
+- control_host/inventory.rs shares original XDG cache observations and
+  native/Web invalidation predicates. Cold authenticated inventory GET
+  /zg/control/inventory/{models,devices}, bounded one Web read at a time;
+  models expose exact cached manifest metadata, static target/catalog
+  recipe metadata and original partial checkpoints. Device inventory uses
+  ControlPlane::devices, not execution eligibility. Safe remote labels
+  only; no arbitrary local source paths/raw errors. Partial keys and
+  listing are observations, not verification or admission.
+- Shared worker promotes inspect/verify, exact-digest dry-run/apply
+  reclamation, additive by-name aliases, original CheckFit and load.
+  Busy/Referenced/Incomplete remain failures with accurate safe messages;
+  incomplete effects are not reported rolled back. Actual removal
+  revalidates original cache activity, references and readers. Resident
+  materialization may release cache readers: a loaded registration alone
+  is not a cache lock. Typed Web grammar rejects arbitrary paths,
+  noncanonical digest/device IDs, missing consent, credentials and
+  unknown fields. Explicit source/device actions require exact canonical
+  cpu:0 or pci identity, not an ordinal or backend override.
+- Original interactive pull Intent now shared by Web/native; pinned
+  HF/GitHub full commits with exact files or explicit GGUF quant, or
+  approved Qwen recipe. Preview does not acquire, confirm must apply
+  to the captured intent, offline policy checked before admission and
+  in executor. Original quota/recipe expected snapshot/source/transfer
+  admission and publication unchanged. No implicit pull, auto-load,
+  eviction or quota mutation. Download pause/resume/cancel uses exact
+  decimal operation ID, not action ID; accepted command is not terminal.
+- SDK DownloadChanged carries observed status at emission so a replaced
+  operation cannot hide the earlier terminal invalidation. Native and
+  Web observe relevant cache/terminal transfer and load/unload events;
+  Web SSE models/devices invalidation or resync, visible shelf refresh,
+  one coalesced cold request, no progress/token-triggered cache scans.
+  Native private receipts, independent control/inference authentication,
+  exact action identities and foreground joined retirement preserved.
+- Solid cached/catalog/partial searchable shelves, inspect/verify,
+  alias, load/run/serve, removal preview/confirm, pinned pull draft and
+  consent, live transfer phase/bytes/checkpoint/rate/ETA and controls,
+  physical-device source check/explicit load; settings/logs remain UX-9D.
+  Browser selection is client-local and never changes persistent policy.
+  Cancelled previews cannot authorize later effects.
+- Strict TUI-only/Web-only/Web-only CPU+acquisition/combined lint,
+  terminal-free Web dependency graph, JS 3/0, actual cold HTTP/Firefox,
+  controlled HTTP transfer (range resume/durable and cancel/partial,
+  stale IDs, referenced retirement refusal), native transfer PTY and
+  real Firefox pause/range-resume/publication passed. Fixture corrections:
+  resident registration is not an artificial cache lock; PTY pause
+  waits for a prefix; browser waits for actual empty route phase after
+  retirement; PTY count accepts ANSI cell positioning and confirms the
+  still-active Web host quit. Final real cached browser/TUI/Web/HTTP
+  lifecycle passes with the unchanged 8 GiB envelope. No changed admission envelope or live remote acquisition.
+
+UX-9C optimized cached integration passed 1/0/0 (48.13s, five filtered); full isolated gate 2,489/0/109 (318 Rust suites), release Web/TUI/installer/scripts passed. UX-9C accepted.
+No new GPU or performance claim.
+
+**Next: UX-9D — Web Profiles / Config / Logs.** Promote original
+ConfigFile typed/raw atomic snapshot/validation/edit, profile copy/
+protected remove/activation and bounded operational observations to the
+same authenticated control seam. No second configuration store,
+arbitrary browser path/credential authority or invented durable logs.
+Then UX-9E simultaneous native/Web mutation acceptance, UX-10 and
+public serving; the ordered performance roadmap is unchanged.
+
+### Previous checkpoint — Phase 2.1 UX-9B (26 Nov; 4f23983a)
 
 Browser Home / Running / Serve actions now use the native resident
 planner, OutputStream and inference transport, one shared host slot.
@@ -101,7 +168,7 @@ No alternate model executor, action queue, runtime or server registry.
   installer/script checks. UX-9B accepted. No remote download/physical
   GPU/public exposure or measured performance claim.
 
-**Next: UX-9C — Web Models / Downloads / Devices.**
+**Historical next (implemented in UX-9C above): Web Models / Downloads / Devices.**
 Lift existing cache/pull/device actions and observations out of native
 presentation into shared host. Exact digest and operation identity,
 explicit pinned acquisition consent, original pause/resume/cancel
@@ -184,8 +251,8 @@ management views are UX-9B–E, not fake actions or another runtime.
   2,485/0/109, release Web/TUI, installer and scripts. UX-9A accepted.
   No physical GPU/remote transfer, performance or public exposure claim.
 
-Historical next UX-9B is implemented at the current checkpoint.
-UX-9C–E follow the live order.
+Historical next UX-9B and UX-9C are implemented above.
+UX-9D/E follow the live order.
 
 ### Previous checkpoint — Phase 2.1 UX-8D (26 Nov; 71e36933)
 

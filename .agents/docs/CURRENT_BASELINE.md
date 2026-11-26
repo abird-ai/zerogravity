@@ -5,6 +5,18 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 26 Nov — Web model, download and device management (UX-9C)
+
+Original cache and device observations shared by both frontends;
+authenticated cold inventory, exact digest and physical device actions,
+explicit pinned files/quant/approved recipe consent, exact original
+transfer controls, shared status-at-emission invalidation. Strict
+feature/lint and terminal dependency isolation, JS 3/0, cold HTTP/
+Firefox, controlled HTTP transfer and native transfer PTY, real Firefox
+pause/range-resume/publication pass. Original cache and admission
+authority unchanged; no new dependency, live remote acquisition, GPU
+qualification or performance claim. UX-9C optimized cached integration passed 1/0/0 (48.13s, five filtered); full isolated gate 2,489/0/109 (318 Rust suites), release Web/TUI/installer/scripts passed. UX-9C accepted.
+
 ## 26 Nov — Web resident model and listener actions (UX-9B)
 
 One shared native/Web host action slot, original resident planner and

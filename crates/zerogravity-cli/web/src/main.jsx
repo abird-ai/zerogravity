@@ -3,6 +3,8 @@ import { createEffect, createMemo, createSignal, For, onCleanup, Show, Switch, M
 import { takeKey, storeKey, validKey } from "./api.js";
 import { createControl } from "./control-state.js";
 import { createWork } from "./work-state.js";
+import { createInventory } from "./inventory-state.js";
+import { Models, Devices } from "./library.jsx";
 import { QuickRun, OwnerActions, ServeActions, ActionPanel } from "./resident.jsx";
 import "./styles.css";
 
@@ -45,11 +47,26 @@ function Serve(props) {
   </section>;
 }
 function Download(props) {
+  const eta = row => {
+    if (row.terminal || row.status !== "running" || row.logical_bytes_per_second <= 0 || !row.logical_bytes_per_second || row.total_expected_bytes == null) return "Unknown";
+    const seconds = Math.ceil(Math.max(0, row.total_expected_bytes - row.total_bytes) / row.logical_bytes_per_second);
+    return seconds < 60 ? seconds + " s" : seconds < 3600 ? Math.ceil(seconds/60) + " min" : (seconds/3600).toFixed(1) + " h";
+  };
+  const enabled = () => props.work?.connected() && !props.work.pending();
+  const command = (row, command) => props.work.dispatch({kind:"download",operation_id:row.id,command});
   return <section class="panel">
-    <div class="panel-title"><h2>Transfer</h2><Show when={props.value.download}>{row => <State text={row().status} good={row().status === "durable"} warn={row().status === "durability_unknown"}/>}</Show></div>
+    <div class="panel-title"><h2>Transfer</h2><Show when={props.value.download}>{row => <State text={row().status} good={row().status === "durable"} warn={row().status === "durability_unknown" || row().status === "failed"}/>}</Show></div>
     <Show when={props.value.download} fallback={<p class="subtle">{props.value.capabilities.acquisition ? "No download operation in this runtime." : "Acquisition is not compiled into this binary."}</p>}>{row =>
-      <><Facts items={[["Operation", row().id], ["Phase", human(row().phase)], ["Files", count(row().completed_files) + " / " + count(row().selected_files)], ["Accepted", bytes(row().total_bytes)], ["Expected", bytes(row().total_expected_bytes)], ["Cached / resumed", bytes(row().cached_bytes) + " / " + bytes(row().resumed_bytes)], ["Accepted logical rate", row().logical_bytes_per_second == null ? "Unknown" : bytes(row().logical_bytes_per_second) + "/s"]]}/>
+      <><Facts items={[["Operation", row().id], ["Phase", human(row().phase)], ["Files", count(row().completed_files) + " / " + count(row().selected_files)], ["Accepted", bytes(row().total_bytes)], ["Expected", bytes(row().total_expected_bytes)], ["Maximum", bytes(row().total_maximum_bytes)], ["Cached / resumed", bytes(row().cached_bytes) + " / " + bytes(row().resumed_bytes)], ["Observed checkpoint", bytes(row().checkpoint_bytes)], ["Accepted logical rate", row().logical_bytes_per_second == null ? "Unknown" : bytes(row().logical_bytes_per_second) + "/s"], ["Estimated remaining",eta(row())]]}/>
       <Show when={row().total_expected_bytes > 0}><progress aria-label="Accepted transfer bytes" value={Math.min(row().total_bytes, row().total_expected_bytes)} max={row().total_expected_bytes}/></Show>
+      <Show when={props.work && !row().terminal}>
+        <div class="form-actions">
+          <button disabled={!enabled() || row().cancel_requested || row().phase === "publishing" || row().status !== "running"} onClick={() => command(row(),"pause")}>Pause download</button>
+          <button disabled={!enabled() || row().cancel_requested || !["pause_requested","paused"].includes(row().status)} onClick={() => command(row(),"resume")}>Resume download</button>
+          <button class="danger" disabled={!enabled() || row().cancel_requested} onClick={() => command(row(),"cancel")}>Cancel download</button>
+        </div>
+        <p class="field-hint">Commands target the observed transfer, not a new action. Pause/cancel requests are not completion acknowledgements.</p>
+      </Show>
       <Show when={row().cancel_requested}><p class="note">Cancellation requested; terminal outcome not inferred.</p></Show>
       <Show when={row().snapshot}><p class="mono wrap">{row().snapshot}</p></Show></>
     }</Show>
@@ -124,11 +141,14 @@ function App() {
   const [nav, setNav] = createSignal(false);
   const [selection, select] = createSignal("");
   const [light, setLight] = createSignal(false);
+  const deviceSource = createSignal("");
   let previousFocus;
-  const lock = () => { storeKey(""); setKey(""); setInput(""); };
+  const lock = () => { storeKey(""); setKey(""); setInput(""); deviceSource[1](""); };
   const control = createControl(key, lock);
   const work = createWork(key, control, lock);
+  const inventory = createInventory(key, control, view, lock);
   const navigate = name => { setView(name); setNav(false); };
+  const chooseDevice = digest => { deviceSource[1](digest); navigate("Devices"); };
   const openPalette = () => { previousFocus = document.activeElement; setPalette(true); };
   const closePalette = () => { setPalette(false); queueMicrotask(() => previousFocus?.focus()); };
   const keyboard = event => {
@@ -172,7 +192,7 @@ function App() {
       <div class="rail-bottom"><span class="dot"/> Same-process runtime</div>
     </aside>
     <main>
-      <div class="workspace-title"><div><div class="eyebrow">ZeroGravity / {view()}</div><h1>{view()}</h1></div><button class="quiet" onClick={control.refresh} disabled={!key()}>Refresh</button></div>
+      <div class="workspace-title"><div><div class="eyebrow">ZeroGravity / {view()}</div><h1>{view()}</h1></div><button class="quiet" onClick={() => { control.refresh(); control.refreshInventory(); }} disabled={!key()}>Refresh</button></div>
       <Show when={key()} fallback={
         <section class="panel unlock"><h2>Unlock local control</h2><p class="subtle">Open the private URL printed by the ZeroGravity host, or enter its 64-character control credential. Inference API keys do not grant control access.</p>
           <form onSubmit={event => { event.preventDefault(); if (validKey(input().trim())) { const token = input().trim(); storeKey(token); setKey(token); setInput(""); } }}>
@@ -185,15 +205,15 @@ function App() {
             <Match when={view() === "Home"}><Home value={row()} navigate={navigate} work={work} selection={selection} select={select}/></Match>
             <Match when={view() === "Running"}><Running value={row()} selection={selection} select={select} work={work}/></Match>
             <Match when={view() === "Serve"}><Serve value={row()} work={work}/></Match>
-            <Match when={view() === "Downloads"}><Download value={row()}/></Match>
+            <Match when={view() === "Downloads"}><Download value={row()} work={work}/><Show when={row().capabilities.acquisition}><button class="quiet" onClick={() => navigate("Models")}>Acquire or resume from Models</button></Show></Match>
             <Match when={view() === "Profiles" || view() === "Config"}>
               <section class="panel"><h2>Active configuration</h2><Facts items={[["Selection", row().configuration.profile ?? "Portable file"], ["Acquisition", row().configuration.offline ? "Offline" : "Explicit consent required"]]}/><p class="note">Editing and profile management are available in the native client. This browser shell does not expose raw documents.</p></section>
             </Match>
-            <Match when={view() === "Models"}><Empty title="Model management">{row().capabilities.cache ? "Cached source inventory and mutations are not yet exposed in this browser slice. Use Models in the native client." : "Cache support is not compiled into this binary."}</Empty></Match>
-            <Match when={view() === "Devices"}><Empty title="Device inventory">Physical device management remains in the native client. No backend or execution eligibility is inferred here.</Empty></Match>
+            <Match when={view() === "Models"}><Models value={row()} inventory={inventory} work={work} navigate={navigate} chooseDevice={chooseDevice}/></Match>
+            <Match when={view() === "Devices"}><Devices value={row()} inventory={inventory} work={work} source={deviceSource}/></Match>
             <Match when={view() === "Logs"}><Empty title="Operational logs">The native client's bounded operational log is not yet exposed to this browser. Model output is never used as log history.</Empty></Match>
           </Switch>
-          <Show when={["Running","Serve"].includes(view())}><ActionPanel value={row()} work={work}/></Show></>
+          <Show when={["Running","Serve","Models","Downloads","Devices"].includes(view())}><ActionPanel value={row()} work={work}/></Show></>
         }</Show>
       </Show>
     </main>

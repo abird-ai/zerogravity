@@ -364,7 +364,9 @@ fn two_control_clients_share_pause_resume_cancel_and_durable_outcome() {
                     panic!("worker did not acknowledge a safe pause: {row:?}");
                 }
                 if let ControlPoll::Event(event) = events.poll(Duration::from_millis(20)) {
-                    assert_eq!(event.kind, ControlEventKind::DownloadChanged { id: row.id });
+                    assert!(
+                        matches!(event.kind, ControlEventKind::DownloadChanged { id, .. } if id == row.id)
+                    );
                 }
             }
             // A request alone did not publish. The first completed ref, if

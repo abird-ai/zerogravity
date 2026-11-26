@@ -27,6 +27,8 @@ pub enum ControlEventKind {
     #[cfg(all(feature = "acquisition", target_os = "linux"))]
     DownloadChanged {
         id: u64,
+        // Status at emission; a later operation may replace this observation.
+        status: super::DownloadStatus,
     },
     ModelLoadFinished {
         success: bool,

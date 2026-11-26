@@ -370,22 +370,13 @@ impl Library {
     }
 }
 
-#[cfg(all(feature = "cache", target_os = "linux"))]
-pub(crate) fn cache_root() -> Result<std::path::PathBuf> {
-    zerogravity::cache::paths::resolve_root(
-        None,
-        std::env::var_os("XDG_CACHE_HOME").as_deref(),
-        std::env::var_os("HOME").as_deref(),
-    )
-}
-
 fn models(control: ControlPlane<'_>) -> Models {
     #[cfg(all(feature = "cache", target_os = "linux"))]
     {
         let result = (|| {
-            let root = cache_root()?;
-            let cached = control
-                .cached_models(&root)?
+            let observation = crate::control_host::inventory::cache(control)?;
+            let cached = observation
+                .cached
                 .into_iter()
                 .map(|model| Row {
                     key: Key::Snapshot(model.snapshot.clone()),
@@ -400,7 +391,7 @@ fn models(control: ControlPlane<'_>) -> Models {
                 .collect();
             // A malformed/contended checkpoint record must not hide good
             // canonical snapshots or the static intent catalog.
-            let (partial, warning) = match control.cached_partials(&root) {
+            let (partial, warning) = match observation.partial {
                 Ok(partials) => (
                     partials
                         .into_iter()

@@ -1,6 +1,7 @@
 //! Small HTTP/1.1 control boundary, not the inference wire parser. Explicit
 //! route allowlist, numeric Host, same-origin bearer, finite socket owners.
 use super::{EVENT_STREAMS, Shared, actions, wire};
+use crate::control_host::inventory;
 use std::{
     io::{self, Read, Write},
     net::TcpStream,
@@ -162,7 +163,11 @@ pub(super) fn connection(
     let action_id = path.strip_prefix("/zg/control/actions/");
     let control = matches!(
         path,
-        "/zg/control/snapshot" | "/zg/events" | "/zg/control/actions"
+        "/zg/control/snapshot"
+            | "/zg/events"
+            | "/zg/control/actions"
+            | "/zg/control/inventory/models"
+            | "/zg/control/inventory/devices"
     ) || action_id.is_some();
     if control {
         let origin = format!("http://{}", shared.authority);
@@ -229,6 +234,21 @@ pub(super) fn connection(
                 match wire::snapshot(runtime, &shared.selection, &shared.actions) {
                     Ok(value) => json_response(&mut socket, "200 OK", &value),
                     Err(_) => error(&mut socket, "503 Service Unavailable"),
+                }
+            }
+            "/zg/control/inventory/models" | "/zg/control/inventory/devices" => {
+                // Bound cold IO across Web clients independently of the
+                // action slot. Native and Web borrow the same original owners.
+                let Ok(_read) = shared.inventory_read.try_lock() else {
+                    return error(&mut socket, "503 Service Unavailable");
+                };
+                if path.ends_with("/models") {
+                    json_response(&mut socket, "200 OK", &wire::models(runtime))
+                } else {
+                    match wire::devices(runtime) {
+                        Ok(value) => json_response(&mut socket, "200 OK", &value),
+                        Err(_) => error(&mut socket, "503 Service Unavailable"),
+                    }
                 }
             }
             _ if action_id.is_some() => {
@@ -300,10 +320,16 @@ fn events(socket: &mut TcpStream, runtime: &Runtime, shared: &Shared) -> io::Res
     while !shared.stop.load(Ordering::Acquire) && Instant::now() < deadline {
         let mut changed = false;
         let mut resync = false;
+        let mut models = false;
+        let mut devices = false;
         for i in 0..64 {
             match cursor.poll(if i == 0 { POLL } else { Duration::ZERO }) {
                 ControlPoll::Pending => break,
-                ControlPoll::Event(_) => changed = true,
+                ControlPoll::Event(event) => {
+                    changed = true;
+                    models |= inventory::models_changed(event.kind);
+                    devices |= inventory::devices_changed(event.kind);
+                }
                 ControlPoll::Resync { .. } => {
                     resync = true;
                     break;
@@ -327,6 +353,14 @@ fn events(socket: &mut TcpStream, runtime: &Runtime, shared: &Shared) -> io::Res
             } else {
                 b"event: refresh\ndata: {}\n\n"
             })?;
+            if !resync {
+                if models {
+                    socket.write_all(b"event: models\ndata: {}\n\n")?;
+                }
+                if devices {
+                    socket.write_all(b"event: devices\ndata: {}\n\n")?;
+                }
+            }
             heartbeat = Instant::now();
             thread_pause();
         } else if heartbeat.elapsed() >= Duration::from_secs(5) {

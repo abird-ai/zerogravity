@@ -641,7 +641,13 @@ demand. Preserve the existing detailed
   JS/focused/cold HTTP/Firefox pass; real optimized cached browser/
   TUI/Web/HTTP lifecycle passed (46.14s), full isolated gate
   2,489/0/109 plus release Web/TUI/installer/scripts. Accepted.
-  **Next: UX-9C Web Models / Downloads / Devices (§46A.28).**
+- [x] UX-9C Web Models / Downloads / Devices: accepted;
+  shared cache/pull/device actions, authenticated cold inventory, exact
+  identities, explicit pinned acquisition/consent and offline refusal,
+  original transfer pause/resume/cancel and native/Web invalidations.
+  Actual controlled HTTP/native PTY/Firefox transfer, cold browser and
+  strict lint/dependency isolation passed. UX-9C optimized cached integration passed 1/0/0 (48.13s, five filtered); full isolated gate 2,489/0/109 (318 Rust suites), release Web/TUI/installer/scripts passed. UX-9C accepted.
+  **Next: UX-9D Web Profiles / Config / Logs (§46A.28).**
 
 - [ ] Close typed command tree, ConfigDocument/profile merge and shared
   presentation/action/snapshot/event model. One resolver for local paths,

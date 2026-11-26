@@ -107,3 +107,71 @@ pub(super) fn snapshot(
         "web_action": last_web.map(|id| id.to_string()),
     }))
 }
+
+/// Cold inventory is a separate authenticated read. Progress/token events
+/// never force cache scans; the browser requests it on entry/invalidation.
+pub(super) fn models(runtime: &Runtime) -> Value {
+    let catalog: Vec<_> = zerogravity::targets::MODEL_TARGETS.iter().map(|target| {
+        #[cfg(all(feature = "acquisition", feature = "model-qwen35", target_os = "linux"))]
+        let recipe = (!target.payload_hold).then(|| zerogravity::models::QwenPullRecipe::for_target(target.slug).ok()).flatten().map(|recipe| json!({
+            "snapshot": recipe.snapshot(), "bytes": recipe.bytes(),
+            "repository": recipe.repository(), "revision": recipe.revision(),
+        }));
+        #[cfg(not(all(feature = "acquisition", feature = "model-qwen35", target_os = "linux")))]
+        let recipe: Option<Value> = None;
+        json!({
+            "slug": target.slug, "task": target.task.label(),
+            "repository": target.repository, "source_layout": target.source_layout.label(),
+            "source_status": target.source_status.label(), "execution_status": target.execution_status.label(),
+            "payload_hold": target.payload_hold, "note": target.note, "recipe": recipe,
+        })
+    }).collect();
+
+    let mut result = json!({"cached": [], "catalog": catalog, "partial": [], "warning": null});
+    #[cfg(all(feature = "cache", target_os = "linux"))]
+    {
+        use crate::control_host::inventory;
+        match inventory::cache(runtime.control()) {
+            Ok(observation) => {
+                result["cached"] = json!(observation.cached.iter().map(|model| json!({
+                    "digest": model.snapshot,
+                    "provider": model.provider,
+                    "repository": inventory::public_repository(&model.provider, &model.repository),
+                    "revision": inventory::public_revision(&model.provider, &model.revision),
+                    "files": model.files, "bytes": model.bytes, "payload_verified": model.payload_verified,
+                })).collect::<Vec<_>>());
+                match observation.partial {
+                    Ok(partial) => result["partial"] = json!(partial),
+                    Err(_) => {
+                        result["warning"] = json!(
+                            "Partial inventory unavailable; cached snapshot metadata remains visible."
+                        )
+                    }
+                }
+            }
+            Err(_) => {
+                result["warning"] = json!(
+                    "Cache observation unavailable; inspect the host cache in the native client."
+                )
+            }
+        }
+    }
+    #[cfg(not(all(feature = "cache", target_os = "linux")))]
+    {
+        let _ = runtime;
+        result["warning"] = json!("Cache inspection is unavailable in this build.");
+    }
+    result
+}
+
+pub(super) fn devices(runtime: &Runtime) -> Result<Value> {
+    let inventory = runtime.control().devices()?;
+    Ok(json!({
+        "observed_unix_ms": inventory.observed_unix_ms.to_string(),
+        "devices": inventory.devices.into_iter().map(|row| json!({
+            "id": row.id, "class": row.class, "vendor": row.vendor,
+            "backends": row.backends, "ceiling": row.ceiling, "available": row.available,
+            "provenance": row.provenance, "exclusion": row.exclusion,
+        })).collect::<Vec<_>>(),
+    }))
+}

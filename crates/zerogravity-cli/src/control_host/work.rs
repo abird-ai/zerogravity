@@ -59,27 +59,24 @@ pub(crate) enum Request {
     Stop(u64),
     #[cfg(feature = "tui")]
     Settings(settings::Action),
-    #[cfg(feature = "tui")]
     Inspect(String),
-    #[cfg(feature = "tui")]
     Verify(String),
-    #[cfg(feature = "tui")]
     Reclaim {
         digest: String,
         apply: bool,
     },
-    #[cfg(feature = "tui")]
     Alias {
         digest: String,
         name: String,
     },
-    #[cfg(feature = "tui")]
     CheckFit {
         source: String,
         device: String,
     },
-    #[cfg(all(feature = "tui", feature = "acquisition", target_os = "linux"))]
+    #[cfg(all(feature = "acquisition", target_os = "linux"))]
     Pull(crate::pull::native::Intent),
+    #[cfg(all(feature = "web", feature = "acquisition", target_os = "linux"))]
+    PullPreview(crate::pull::native::Intent),
 }
 impl Request {
     pub fn title(&self) -> &'static str {
@@ -94,20 +91,16 @@ impl Request {
             Self::Stop(_) => "Stop listener",
             #[cfg(feature = "tui")]
             Self::Settings(action) => action.title(),
-            #[cfg(feature = "tui")]
             Self::Inspect(_) => "Inspect snapshot",
-            #[cfg(feature = "tui")]
             Self::Verify(_) => "Verify snapshot",
-            #[cfg(feature = "tui")]
             Self::Reclaim { apply: false, .. } => "Removal preview",
-            #[cfg(feature = "tui")]
             Self::Reclaim { apply: true, .. } => "Remove snapshot",
-            #[cfg(feature = "tui")]
             Self::Alias { .. } => "Create alias",
-            #[cfg(feature = "tui")]
             Self::CheckFit { .. } => "Check device policy",
-            #[cfg(all(feature = "tui", feature = "acquisition", target_os = "linux"))]
+            #[cfg(all(feature = "acquisition", target_os = "linux"))]
             Self::Pull(_) => "Pull model",
+            #[cfg(all(feature = "web", feature = "acquisition", target_os = "linux"))]
+            Self::PullPreview(_) => "Pull preview",
         }
     }
     pub fn generates(&self) -> bool {
@@ -162,6 +155,11 @@ impl Response {
 
 pub(crate) enum Completed {
     Message(String),
+    #[cfg(all(feature = "cache", target_os = "linux"))]
+    Refused {
+        message: String,
+        native_detail: Option<String>,
+    },
     #[cfg(feature = "tui")]
     Settings(Box<settings::Outcome>),
 }
@@ -208,6 +206,7 @@ pub(super) fn perform(
     request: Request,
     cancel: &Arc<AtomicBool>,
     output: &Mutex<Response>,
+    origin: super::Origin,
 ) -> Result<Completed> {
     #[cfg(feature = "tui")]
     if let Request::Settings(action) = request {
@@ -224,10 +223,38 @@ pub(super) fn perform(
     }
     #[cfg(not(feature = "tui"))]
     let _ = selection;
-    execute(runtime, document, request, cancel, output).map(Completed::Message)
+    if cancel.load(Ordering::Acquire) {
+        return Ok(Completed::Message("Cancelled before starting".into()));
+    }
+    let control = runtime.control();
+    let browser = match origin {
+        #[cfg(feature = "web")]
+        super::Origin::Web => true,
+        #[cfg(feature = "tui")]
+        super::Origin::Native => false,
+    };
+    match request {
+        Request::Inspect(digest) => {
+            cache_action(control, CacheAction::Inspect, &digest, cancel, browser)
+        }
+        Request::Verify(digest) => {
+            cache_action(control, CacheAction::Verify, &digest, cancel, browser)
+        }
+        Request::Reclaim { digest, apply } => cache_action(
+            control,
+            CacheAction::Reclaim(apply),
+            &digest,
+            cancel,
+            browser,
+        ),
+        Request::Alias { digest, name } => {
+            cache_action(control, CacheAction::Alias(name), &digest, cancel, browser)
+        }
+        other => execute(runtime, document, other, cancel, output).map(Completed::Message),
+    }
 }
 
-pub(super) fn execute(
+fn execute(
     runtime: &Runtime,
     document: &Document,
     request: Request,
@@ -241,19 +268,10 @@ pub(super) fn execute(
     match request {
         #[cfg(feature = "tui")]
         Request::Settings(_) => unreachable!("settings worker dispatch"),
-        #[cfg(feature = "tui")]
-        Request::Inspect(digest) => cache_action(control, CacheAction::Inspect, &digest, cancel),
-        #[cfg(feature = "tui")]
-        Request::Verify(digest) => cache_action(control, CacheAction::Verify, &digest, cancel),
-        #[cfg(feature = "tui")]
-        Request::Reclaim { digest, apply } => {
-            cache_action(control, CacheAction::Reclaim(apply), &digest, cancel)
-        }
-        #[cfg(feature = "tui")]
-        Request::Alias { digest, name } => {
-            cache_action(control, CacheAction::Alias(name), &digest, cancel)
-        }
-        #[cfg(feature = "tui")]
+        Request::Inspect(_)
+        | Request::Verify(_)
+        | Request::Reclaim { .. }
+        | Request::Alias { .. } => unreachable!("cache worker dispatch"),
         Request::CheckFit { source, device } => {
             let (request, settings) = resolve_request(document, &source, Some(&device))?;
             let plan = resident::prepare(
@@ -275,8 +293,10 @@ pub(super) fn execute(
                 Ok("Cancelled before device policy check completed".into())
             }
         }
-        #[cfg(all(feature = "tui", feature = "acquisition", target_os = "linux"))]
+        #[cfg(all(feature = "acquisition", target_os = "linux"))]
         Request::Pull(intent) => intent.execute(runtime, cancel, document.offline),
+        #[cfg(all(feature = "web", feature = "acquisition", target_os = "linux"))]
+        Request::PullPreview(intent) => intent.confirmation(),
         Request::Load {
             source,
             prompt,
@@ -401,27 +421,26 @@ pub(super) fn execute(
     }
 }
 
-#[cfg(feature = "tui")]
 enum CacheAction {
     Inspect,
     Verify,
     Reclaim(bool),
     Alias(String),
 }
-#[cfg(feature = "tui")]
 fn cache_action(
     control: zerogravity::control::ControlPlane<'_>,
     action: CacheAction,
     digest: &str,
     cancel: &AtomicBool,
-) -> Result<String> {
+    browser: bool,
+) -> Result<Completed> {
     #[cfg(all(feature = "cache", target_os = "linux"))]
     {
         use zerogravity::{
             cache::{ReclaimMode, ReclaimOutcome},
             run_policy::SourceSelector,
         };
-        let root = crate::tui::library::cache_root()?;
+        let root = super::inventory::cache_root()?;
         let selector = SourceSelector::Snapshot(digest.to_owned());
         match action {
             CacheAction::Inspect | CacheAction::Verify => {
@@ -432,7 +451,7 @@ fn cache_action(
                 };
                 let manifest = detail.manifest;
                 let source = manifest.source();
-                Ok(format!(
+                Ok(Completed::Message(format!(
                     "{}\nSnapshot: {}\n{}:{}@{}\n{} files · {} bytes\nNo execution or remote freshness qualification.",
                     if detail.payload_verified {
                         "Payloads verified"
@@ -441,15 +460,23 @@ fn cache_action(
                     },
                     detail.snapshot,
                     source.provider(),
-                    source.repository(),
-                    source.revision(),
+                    if browser {
+                        super::inventory::public_repository(source.provider(), source.repository())
+                    } else {
+                        source.repository()
+                    },
+                    if browser {
+                        super::inventory::public_revision(source.provider(), source.revision())
+                    } else {
+                        source.revision()
+                    },
                     manifest.entries().len(),
                     manifest.total_bytes()
-                ))
+                )))
             }
             CacheAction::Alias(name) => {
                 let result = control.alias_cached(&root, digest, &name)?;
-                Ok(format!(
+                Ok(Completed::Message(format!(
                     "Alias by-name:{} {}\nSnapshot: {}{}",
                     result.name(),
                     if result.changed() {
@@ -463,7 +490,7 @@ fn cache_action(
                     } else {
                         ""
                     }
-                ))
+                )))
             }
             CacheAction::Reclaim(apply) => {
                 let result = control.reclaim_cached(
@@ -477,12 +504,12 @@ fn cache_action(
                     cancel,
                 )?;
                 match result {
-                    ReclaimOutcome::DryRun(report) => Ok(format!(
+                    ReclaimOutcome::DryRun(report) => Ok(Completed::Message(format!(
                         "Removal preview; no mutation\n{} candidate files · {} candidate directories\nApply revalidates exact target.",
                         report.candidate_files(),
                         report.candidate_directories()
-                    )),
-                    ReclaimOutcome::Durable(report) => Ok(format!(
+                    ))),
+                    ReclaimOutcome::Durable(report) => Ok(Completed::Message(format!(
                         "Removal durable\n{} removed files · {} removed directories{}",
                         report.removed_files(),
                         report.removed_directories(),
@@ -491,16 +518,17 @@ fn cache_action(
                         } else {
                             ""
                         }
-                    )),
-                    ReclaimOutcome::Busy => Err(Error::State(
-                        "Cache removal busy; retry after active readers close".into(),
-                    )),
-                    ReclaimOutcome::Referenced { references } => Err(Error::State(format!(
-                        "Snapshot retained by {references} references; none removed"
                     ))),
-                    ReclaimOutcome::Incomplete { cause, .. } => Err(Error::State(format!(
-                        "Removal incomplete; inspect and retry the same digest. Completed changes were not rolled back: {cause}"
-                    ))),
+                    ReclaimOutcome::Busy => Ok(Completed::Refused {
+                        message: "Cache removal busy; retry after active readers close".into(), native_detail: None,
+                    }),
+                    ReclaimOutcome::Referenced { references } => Ok(Completed::Refused {
+                        message: format!("Snapshot retained by {references} references; none removed"), native_detail: None,
+                    }),
+                    ReclaimOutcome::Incomplete { cause, .. } => Ok(Completed::Refused {
+                        message: "Removal incomplete; inspect and retry the same digest. Completed changes were not rolled back".into(),
+                        native_detail: Some(cause.to_string()),
+                    }),
                 }
             }
         }
@@ -516,7 +544,7 @@ fn cache_action(
             }
             _ => {}
         }
-        let _ = (control, digest, cancel);
+        let _ = (control, digest, cancel, browser);
         Err(Error::Unsupported(
             "Cache operations require Linux and cache feature".into(),
         ))

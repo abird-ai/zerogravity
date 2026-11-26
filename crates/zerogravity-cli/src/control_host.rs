@@ -1,5 +1,6 @@
 //! Foreground interactive host policy, shared by native and browser clients.
 mod actions;
+pub(crate) mod inventory;
 pub(crate) mod work;
 #[cfg(feature = "tui")]
 pub(crate) use actions::ActionSummary;

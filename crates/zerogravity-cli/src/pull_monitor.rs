@@ -385,7 +385,75 @@ mod tests {
         let runtime = Runtime::builder().build().unwrap();
         let control = runtime.control();
         let operation = control.begin_resolved_download(cancel.clone()).unwrap();
-        let transport = Transport(AtomicUsize::new(0), mode.starts_with("tui"));
+        let transport = Transport(
+            AtomicUsize::new(0),
+            mode.starts_with("tui") || mode.starts_with("web"),
+        );
+        #[cfg(feature = "web")]
+        if matches!(mode.as_str(), "web" | "web-cancel") {
+            use crate::control_host::{Actions, Document, Selection, Target};
+            use zerogravity::control::DownloadCommand;
+            // Park before serving the fixture. The real protected transfer
+            // cannot complete while the HTTP client attaches.
+            control
+                .control_download(operation.id(), DownloadCommand::Pause)
+                .unwrap();
+            let actions = Actions::default();
+            let document = Document::from_config(
+                Target {
+                    path: root.join("unused.yaml"),
+                    profile: None,
+                    allow_missing: true,
+                },
+                Default::default(),
+                true,
+            );
+            let host = crate::web::Host::start(
+                &runtime,
+                "127.0.0.1:0".parse().unwrap(),
+                Selection::new(document),
+                actions.clone(),
+            )
+            .unwrap();
+            println!("Web UI: {}", host.private_url());
+            io::stdout().flush().unwrap();
+            let result = operation.execute_plan(
+                &store,
+                &plan,
+                &transport,
+                &admission,
+                Some("fixture"),
+                &mut |_| {},
+            );
+            if mode == "web-cancel" {
+                assert!(result.is_err());
+                assert_eq!(
+                    control.download().unwrap().status,
+                    DownloadStatus::Cancelled
+                );
+                assert!(store.resolve_ref("fixture").is_err());
+                assert!(!control.cached_partials(&root).unwrap().is_empty());
+            } else {
+                assert!(result.is_ok());
+                assert_eq!(control.download().unwrap().status, DownloadStatus::Durable);
+                assert_eq!(transport.0.load(Ordering::Relaxed), 2);
+                assert_eq!(
+                    store
+                        .resolve_ref("fixture")
+                        .unwrap()
+                        .manifest()
+                        .total_bytes(),
+                    SIZE as u64
+                );
+            }
+            // Keep the original host alive for terminal observations until
+            // the test client explicitly releases its owned child.
+            let _ = io::stdin().read_line(&mut String::new()).unwrap();
+            host.close().unwrap();
+            actions.shutdown().unwrap();
+            runtime.shutdown().unwrap();
+            return;
+        }
         #[cfg(feature = "tui")]
         if matches!(mode.as_str(), "tui" | "tui-cancel") {
             use zerogravity::control::DownloadCommand;

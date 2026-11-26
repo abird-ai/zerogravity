@@ -355,6 +355,23 @@ Git history; current source and this TODO supersede their archived checklists.
   recreation refuses. Recipe and synthetic expected-digest mismatch tests
   pass; no live remote acquisition or new provider qualification.
 
+### Phase 2.1 UX-9C — Web acquisition and cache control (26 Nov)
+
+- [x] Original interactive intent shared with native. Explicit full pinned
+  HF/GitHub file selection, GGUF quant or approved Qwen recipe preview
+  and consent, unchanged offline/admission/expected snapshot/publication.
+  No implicit pull or load, extra quota, eviction, arbitrary URL, provider
+  credentials or new provider qualification.
+- [x] Exact download operation commands directly address the original
+  transfer; preserve pause-requested vs paused, safe range revalidation,
+  cancellation and original terminal outcome. Status at emission supports
+  native/Web terminal invalidation even after replacement. Real controlled
+  HTTP and native PTY pause/resume/cancel, Firefox pause/range-resume/
+  durable publication and original referenced removal refusal pass.
+  Cold partial metadata never authorizes a new transfer; repeat the exact
+  pinned intent to revalidate. No live remote downloads.
+- [x] UX-9C optimized cached integration passed 1/0/0 (48.13s, five filtered); full isolated gate 2,489/0/109 (318 Rust suites), release Web/TUI/installer/scripts passed. UX-9C accepted.
+
 ## Uncommitted
 
 - [ ] Extend advanced forced interactive/JSONL and aggregate component

@@ -16,13 +16,15 @@ test("private fragment consumed without query or persistent local authority", ()
 });
 
 test("coalesced event frames survive fragmented delivery and resync", () => {
-  let refreshes = 0;
-  const decode = eventDecoder(() => refreshes++);
+  const refreshes = [];
+  const decode = eventDecoder(kind => refreshes.push(kind));
   decode("event: re");
   decode("fresh\ndata: {}\n\n: keepalive\n\n");
   decode("event: resync\ndata: {}");
   decode("\n\n");
-  assert.equal(refreshes, 2);
+  decode("event: models\ndata: {}\n\nevent: dev");
+  decode("ices\ndata: {}\n\n");
+  assert.deepEqual(refreshes, ["refresh", "resync", "models", "devices"]);
   assert.throws(() => decode("x".repeat(16385)), /bound/);
 });
 

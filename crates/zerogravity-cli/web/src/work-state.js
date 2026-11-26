@@ -75,8 +75,9 @@ export function createWork(key, control, unauthorized) {
     try {
       const receipt = await api.submit(owned.credential, owned.abort.signal, action);
       if (owned.abort.signal.aborted || session !== owned) return;
-      if (action.kind !== "cancel") setSubmitted(receipt.id);
+      if (action.kind !== "cancel" && action.kind !== "download") setSubmitted(receipt.id);
       control.refresh();
+      return receipt;
     } catch (error) {
       if (owned.abort.signal.aborted || session !== owned) return;
       if (error.status === 401) unauthorized();
@@ -92,6 +93,7 @@ export function createWork(key, control, unauthorized) {
   const ready = () => control.status() === "connected" && !!control.value() && !busy();
   return {
     result, pending, notice, ready, busy, dispatch,
+    connected: () => control.status() === "connected",
     cancel: id => dispatch({kind: "cancel", id}),
   };
 }

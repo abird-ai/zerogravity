@@ -6,8 +6,9 @@ dist/; the default product includes this feature. The native and Web
 clients share the same foreground runtime and active configuration
 selection and one host-owned action slot. Home / Running / Serve support
 explicit resident load, invoke, load-and-run, unload, and inference start/
-stop. Models / Downloads / Devices and Profiles / Config / Logs mutation
-surfaces follow in UX-9C–D.
+stop. Models / Downloads / Devices also expose original cache, acquisition
+and physical-device owners. Profiles / Config / Logs management follows
+in UX-9D.
 
 Run **zerogravity web** (or **zerogravity --profile NAME --offline web**).
 The host prints a private loopback URL; open it in your browser. Use
@@ -40,6 +41,29 @@ is never implicit. Unload and stop require explicit confirmation and the
 observed registration or generation. The inference key is host-configured
 and never accepted or exposed by the control API.
 
+Authenticated GET /zg/control/inventory/models and /devices are cold
+owner observations, not execution/admission leases. Relevant cache
+mutation and terminal download events invalidate model inventory;
+load/unload events invalidate device observations. Resync and explicit
+refresh reread the visible shelf. Progress and token events do not scan
+the cache.
+
+Cached snapshots support exact-digest inspect, verify, load, load-and-run,
+load for serving, additive aliases and preview/confirmed removal. The
+original cache decides busy/referenced/incomplete/durable outcomes.
+Listing is metadata only; a partial checkpoint key cannot authorize a
+transfer. Repeat the exact pinned acquisition intent to revalidate a
+partial. Explicit acquisition uses hf:/gh:OWNER/REPO@FULL_COMMIT plus
+exact relative filenames or quant:NAME, or an approved catalog recipe.
+Preview is non-mutating; actual pull requires confirmation and respects
+offline and original admission/publication policy. No automatic download,
+quota increase, eviction or implicit load. Direct exact-operation
+pause/resume/cancel addresses the original transfer, even while the
+shared worker owns the pull. The operation ID is distinct from an action
+receipt ID. Device selection requires an exact observed physical ID and
+cached digest for a policy check or explicit load, not a persistent
+configuration change or implicit fallback.
+
 ## Development / reproducible build
 
 From this directory:
@@ -57,8 +81,14 @@ After building the Rust CLI, run the real Firefox smoke:
 
 Use installed Firefox in a private loopback network namespace. The existing
 cached model release regression can additionally exercise actual browser
-load/run/serve/unload with ZG_TEST_BROWSER=1 and the original approved
-fixture (no download). The usual Rust gate runs the embedded HTTP and native terminal fixtures without
+model/cache/device actions and load/run/serve/unload with ZG_TEST_BROWSER=1
+and the original approved fixture (no download). The existing ignored
+pull monitor child can also exercise live transfer buttons in Firefox:
+
+    node src/browser-smoke.mjs PATH_TO_COMBINED_TEST_BINARY --download-fixture
+
+The child uses a deterministic protected transfer, not a remote provider
+or live-cache mutation. The usual Rust gate runs the embedded HTTP and native terminal fixtures without
 requiring Node or Firefox.
 
 The bundled third-party notice is served at /ui/licenses.txt.

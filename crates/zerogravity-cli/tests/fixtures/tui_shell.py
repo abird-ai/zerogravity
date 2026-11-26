@@ -44,10 +44,11 @@ class Terminal:
         fcntl.ioctl(self.slave, termios.TIOCSWINSZ,
                     struct.pack("HHHH", self.height, width, 0, 0))
 
-    def until(self, needle, seconds=10):
+    def until(self, needle, seconds=10, *, pattern=False):
+        matcher = re.compile(needle if pattern else re.escape(needle))
         deadline = time.monotonic() + seconds
         next_repaint = time.monotonic() + 0.8
-        while needle not in self.pending:
+        while (match := matcher.search(self.pending)) is None:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise AssertionError(f"missing {needle!r}: {self.transcript[-4000:]!r}")
@@ -62,7 +63,7 @@ class Terminal:
                 data = os.read(self.master, 65536)
                 self.pending.extend(data)
                 self.transcript.extend(data)
-        del self.pending[:self.pending.index(needle) + len(needle)]
+        del self.pending[:match.end()]
 
     def send(self, value, expected, seconds=10):
         self.pending.clear()
@@ -321,6 +322,13 @@ def lifecycle(root, expected):
             assert client.request("/v1/models")[0] == 404
             assert observed["web_action"] is None  # native inference is private
             os.write(terminal.master, b"\r")
+            cached = client.inventory("models")["cached"]
+            assert len(cached) == 1 and cached[0]["digest"] == loaded_alias
+            # A loaded resident may release its cache readers after materialization.
+            # Do not assume resident ownership is a cache-retirement lock.
+            checked = client.action({"kind": "inspect", "digest": loaded_alias})
+            assert "checked" in checked["message"].lower()
+            assert client.snapshot()["runtime"]["models"][0]["registration_id"] == registration
             generated = client.action({"kind": "invoke", "alias": loaded_alias,
                                        "registration_id": registration, "prompt": prompt, "chat": False})
             output = generated["response"]
@@ -429,12 +437,40 @@ def lifecycle(root, expected):
     assert json.loads(alias.stdout)["snapshot"] == loaded_alias
     with Terminal(root, ["--profile", "local"], width=150, height=40) as terminal:
         terminal.check_started()
-        terminal.send(b"4", b"fixture/serve")
-        terminal.send(b"X", b"preview;", 30)
-        terminal.send(b"x", b"confirm")
-        terminal.send(b"y", b"durable", 60)
-        os.write(terminal.master, b"q")
+        if os.environ.get("ZG_TEST_WEB") == "1":
+            from web_shell import Client
+            client = Client(terminal.private_web_url())
+            os.write(terminal.master, b"\r")
+            terminal.send(b"4", b"fixture/serve")
+            preview = client.action({"kind": "removal_preview", "digest": loaded_alias})
+            assert "no mutation" in preview["message"]
+            assert len(client.inventory("models")["cached"]) == 1
+            with client.events() as events:
+                removed = client.action({"kind": "remove", "digest": loaded_alias, "confirm": True})
+                assert "durable" in removed["message"]
+                for _ in range(20):
+                    if events.readline() == b"event: models\n":
+                        break
+                else:
+                    raise AssertionError("missing cache invalidation")
+            assert client.inventory("models")["cached"] == []
+            terminal.repaint_on_wait = True
+            # A full paint may move the cursor across the blank between
+            # the count and label, rather than emitting a literal space.
+            terminal.until(rb"0(?: |\x1b\[\d+;\d+H)entries", 15, pattern=True)
+        else:
+            terminal.send(b"4", b"fixture/serve")
+            terminal.send(b"X", b"preview;", 30)
+            terminal.send(b"x", b"confirm")
+            terminal.send(b"y", b"durable", 60)
+        if os.environ.get("ZG_TEST_WEB") == "1":
+            terminal.send(b"q", b"confirm")
+            os.write(terminal.master, b"y")
+        else:
+            os.write(terminal.master, b"q")
         terminal.finish()
+        if os.environ.get("ZG_TEST_WEB") == "1":
+            client.closed()
     listing = subprocess.run([binary, "model", "list", "--format=json"], cwd=root,
                              env=environment(root), capture_output=True, check=True)
     assert json.loads(listing.stdout) == []
@@ -458,6 +494,10 @@ elif sys.argv[2] == "--download-fixture":
                 terminal.check_started()
                 terminal.send(b"5", b"Paused", 15)
                 terminal.send(b"s", b"Running", 15)
+                # The existing fixture body accepts 128 bytes per 40 ms.
+                # Allow a prefix before asking for the safe range checkpoint;
+                # the child asserts that an actual second request was made.
+                time.sleep(0.35)
                 terminal.send(b"p", b"Pause", 15)
                 # Ratatui may emit only the final changed cell of "Paused".
                 # Change views after the safe body boundary to read a newly
@@ -473,7 +513,12 @@ elif sys.argv[2] == "--download-fixture":
                     terminal.send(b"1", b"Quick", 15)
                     terminal.send(b"5", b"Cancelled", 15)
                 os.write(terminal.master, b"q")
-                terminal.finish()
+                try:
+                    terminal.finish()
+                except AssertionError:
+                    while select.select([terminal.master], [], [], 0)[0]:
+                        terminal.transcript.extend(os.read(terminal.master, 65536))
+                    raise AssertionError(f"owned {mode} fixture exit: {terminal.transcript[-4000:]!r}")
                 assert b"NOT_IN_OUTPUT" not in terminal.transcript
     print("Native download PTY: actual safe pause, resume/durable and cancel outcomes over one shared owner")
 else:

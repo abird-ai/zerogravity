@@ -6,7 +6,7 @@ scaffolding), CLI/TUI/Web and serving, ROCm, CUDA, Vulkan, then concrete
 compiled providers. Native Hugging Face/Safetensors and GGUF are primary.
 Older ordering below is context; valid owner constraints remain authoritative.
 
-Status (26 Nov): **Phase 2.1 UX-1 through UX-9B accepted; UX-9C Web Models / Downloads / Devices next (§46A.28).**
+Status (26 Nov): **Phase 2.1 UX-1 through UX-9C accepted; UX-9D Web Profiles / Config / Logs next (§46A.28).**
 The bounded Phase 1 minimum exit is accepted at `d5030ad4`.
 See the [Phase 1 exit takeover](../../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-25_PHASE1_EXIT.md)
 and [live full plan](../FULL_IMPLEMENTATION_PLAN.md). The original design below
@@ -3641,7 +3641,20 @@ work and SSE owner/action invalidation. Strict lint, focused Rust/JS,
 actual cold HTTP/Firefox pass; optimized real cached Firefox and
 TUI-attached Web/HTTP lifecycle passed (46.14s), full isolated
 workspace gate 2,489/0/109 and release Web/TUI/installer/scripts.
-UX-9B accepted; UX-9C next.
+UX-9B accepted.
+
+UX-9C implementation (26 Nov): shared original cache/pull/device action
+and observation seam, authenticated bounded cold model/device inventory,
+cached/catalog/partial shelves, exact digest inspect/verify/load/run/
+serve/alias/preview and confirmed removal, explicit pinned files/quant/
+approved recipe preview and consent, original live transfer controls,
+source/physical device policy check and explicit load. No browser local
+path, arbitrary URL, credential or persistent policy authority. Native
+and Web share terminal transfer status-at-emission and relevant owner
+invalidations, not progress-triggered cache scans. Strict feature/lint/
+dependency isolation, JS, cold HTTP/Firefox, controlled HTTP/native PTY
+and real Firefox transfer pass. UX-9C optimized cached integration passed 1/0/0 (48.13s, five filtered); full isolated gate 2,489/0/109 (318 Rust suites), release Web/TUI/installer/scripts passed. UX-9C accepted.
+UX-9D next.
 
 Build TUI before Web so the shared control surface proves it is not browser-shaped.
 

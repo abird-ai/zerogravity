@@ -99,25 +99,15 @@ fn session(
             dirty |= app.library.poll(runtime);
             let mut changed = false;
             let mut cache_changed = false;
-            #[cfg(all(feature = "acquisition", target_os = "linux"))]
-            let mut download_changed = false;
+            let mut devices_changed = false;
             let mut resync = false;
             // Bounded transient invalidations, not a second runtime history.
             for _ in 0..64 {
                 match events.poll(Duration::ZERO) {
                     ControlPoll::Pending => break,
                     ControlPoll::Event(event) => {
-                        use zerogravity::control::ControlEventKind;
-                        cache_changed |= matches!(
-                            event.kind,
-                            ControlEventKind::CacheAliasFinished { .. }
-                                | ControlEventKind::CacheReclamationFinished { .. }
-                        );
-                        #[cfg(all(feature = "acquisition", target_os = "linux"))]
-                        {
-                            download_changed |=
-                                matches!(event.kind, ControlEventKind::DownloadChanged { .. });
-                        }
+                        cache_changed |= control_host::inventory::models_changed(event.kind);
+                        devices_changed |= control_host::inventory::devices_changed(event.kind);
                         app.logs.event(event);
                         changed = true;
                     }
@@ -136,16 +126,10 @@ fn session(
                     && sampled.elapsed() >= Duration::from_secs(1))
             {
                 app.refresh(control);
-                #[cfg(all(feature = "acquisition", target_os = "linux"))]
+                if resync
+                    || (cache_changed && app.navigation.view() == View::Models)
+                    || (devices_changed && app.navigation.view() == View::Devices)
                 {
-                    cache_changed |= download_changed
-                        && app
-                            .snapshot
-                            .download
-                            .as_ref()
-                            .is_some_and(|download| download.status.terminal());
-                }
-                if resync || (cache_changed && app.navigation.view() == View::Models) {
                     app.refresh_cold(runtime, control);
                 }
                 sampled = Instant::now();
@@ -344,9 +328,18 @@ impl App {
             return changed;
         };
         let mut job = self.job.take().expect("finished native ticket");
-        self.logs.finish(job.log_id, job.title, result.is_ok());
+        let success = result.is_ok();
+        #[cfg(all(feature = "cache", target_os = "linux"))]
+        let success = success && !matches!(&result, Ok(Completed::Refused { .. }));
+        self.logs.finish(job.log_id, job.title, success);
         let message = match result {
             Ok(Completed::Message(message)) => message,
+            #[cfg(all(feature = "cache", target_os = "linux"))]
+            Ok(Completed::Refused {
+                message,
+                native_detail,
+            }) => native_detail
+                .map_or_else(|| message.clone(), |detail| format!("{message}: {detail}")),
             Ok(Completed::Settings(outcome)) => {
                 self.color = output::document_color(self.document.snapshot().ui);
                 if let Some(editor) = outcome.editor {

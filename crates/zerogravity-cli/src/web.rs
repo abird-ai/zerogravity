@@ -26,6 +26,7 @@ struct Shared {
     key: String,
     stop: AtomicBool,
     streams: AtomicUsize,
+    inventory_read: std::sync::Mutex<()>,
     selection: Selection,
     actions: Actions,
 }
@@ -67,6 +68,7 @@ impl Host {
             key,
             stop: AtomicBool::new(false),
             streams: AtomicUsize::new(0),
+            inventory_read: std::sync::Mutex::new(()),
             selection,
             actions,
         });

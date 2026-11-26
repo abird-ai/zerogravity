@@ -42,6 +42,12 @@ class Client:
         assert self.key.encode() not in body
         return json.loads(body)
 
+    def inventory(self, name):
+        status, _, data = self.request("/zg/control/inventory/" + name)
+        assert status == 200
+        assert self.key.encode() not in data
+        return json.loads(data)
+
     def post(self, value, *, status=202, auth=True, headers=None):
         body = value if isinstance(value, bytes) else json.dumps(value).encode()
         fields = {"Origin": self.origin, "Content-Type": "application/json"}
@@ -124,7 +130,7 @@ def smoke(binary):
                 assert client.key.encode() not in body
             status, _, license_text = client.request("/ui/licenses.txt", auth=False)
             assert status == 200 and b"MIT License" in license_text
-            for path in ["/zg/control/snapshot", "/zg/events"]:
+            for path in ["/zg/control/snapshot", "/zg/events", "/zg/control/inventory/models", "/zg/control/inventory/devices"]:
                 assert client.request(path, auth=False)[0] == 401
                 assert client.request(path, headers={"Authorization": "Bearer fixture-inference-only"})[0] == 401
                 assert client.request(path, headers={"Host": "rebinding.invalid"})[0] == 400
@@ -153,6 +159,33 @@ def smoke(binary):
             assert "fixture-inference-only" not in json.dumps(value)
             assert value["capabilities"]["actions"] is True
             assert value["action"] is None and value["web_action"] is None
+            models = client.inventory("models")
+            assert models["cached"] == models["partial"] == []
+            assert any(row["slug"] == "qwen3.5-0.8b" for row in models["catalog"])
+            devices = client.inventory("devices")
+            assert any(row["id"] == "cpu:0" for row in devices["devices"])
+            assert devices["observed_unix_ms"].isdecimal()
+            assert client.request("/zg/control/inventory/models", method="POST")[0] == 405
+            digest = "a" * 64
+            for invalid in [
+                {"kind": "inspect", "digest": "a" * 12},
+                {"kind": "verify", "digest": digest.upper()},
+                {"kind": "alias", "digest": digest, "name": "../alias"},
+                {"kind": "remove", "digest": digest, "confirm": False},
+                {"kind": "check_fit", "digest": digest, "device": "/dev/dri/renderD128"},
+                {"kind": "load_on_device", "digest": digest, "device": "gpu:0"},
+                {"kind": "pull", "source": "https://example.invalid/model", "selection": "model.gguf", "confirm": True},
+                {"kind": "pull", "source": "hf:fixture/model@main", "selection": "model.gguf", "confirm": True},
+                {"kind": "download", "operation_id": 1, "command": "cancel"},
+            ]:
+                client.post(invalid, status=400)
+            if value["capabilities"]["acquisition"]:
+                source = "hf:fixture/model@" + "1" * 40
+                client.post({"kind": "pull", "source": source, "selection": "model.gguf", "confirm": False}, status=400)
+                client.post({"kind": "pull", "source": source, "selection": "../model.gguf", "confirm": True}, status=400)
+                client.post({"kind": "pull", "source": source, "selection": "model.gguf", "confirm": True}, status=403)
+                client.post({"kind": "download", "operation_id": "1", "command": "cancel"}, status=409)
+                assert client.snapshot()["download"] is None
             # No untrusted body effects before the independent credential,
             # exact same-origin and bounded typed grammar checks.
             load = {"kind": "load", "source": ""}
@@ -183,6 +216,19 @@ def smoke(binary):
             client.post({"kind": "cancel", "id": identity}, status=409)
             assert "PRIVATE_WEB_PROMPT_NOT_IN_WIRE" not in json.dumps(client.snapshot())
             assert client.snapshot()["runtime"]["status"]["phase"] == "empty"
+            if value["capabilities"]["cache"]:
+                client.action({"kind": "inspect", "digest": digest}, state="failed")
+            if value["capabilities"]["acquisition"]:
+                preview = client.action({"kind": "pull_preview", "source": source, "selection": "model.gguf"})
+                assert source.removeprefix("hf:") in preview["message"]
+                assert "model.gguf" in preview["message"]
+                assert client.snapshot()["download"] is None
+                quant = client.action({"kind": "pull_preview", "source": source, "selection": "quant:Q4_K_M"})
+                assert "Q4_K_M" in quant["message"]
+                recipe = next((row for row in models["catalog"] if row["recipe"]), None)
+                if recipe:
+                    preview = client.action({"kind": "pull_preview", "source": recipe["slug"], "selection": ""})
+                    assert recipe["recipe"]["snapshot"] in preview["message"]
             # Four SSE slots leave capacity for snapshots and refuse excess
             # streams; process retirement joins every stream and slow reader.
             with contextlib.ExitStack() as active:
@@ -197,7 +243,7 @@ def smoke(binary):
             client.closed()
             assert profile.read_text() == original
             assert not (root / "cache").exists()
-            print("Web control HTTP: assets, independent bearer and same-origin typed POST, bounded bodies/stale refusal, owner snapshot/SSE and joined retirement")
+            print("Web control HTTP: assets, independent bearer, bounded typed POST, cold model/device inventory, offline/stale refusal, owner snapshot/SSE and joined retirement")
         finally:
             if process.poll() is None:
                 process.terminate()
@@ -210,5 +256,100 @@ def smoke(binary):
             process.stderr.close()
 
 
+def controlled_download(binary):
+    # The ignored child executes the real protected transfer with the
+    # existing deterministic transport fixture. There is no production
+    # URL override and no external network or provider credentials.
+    for mode in ("web", "web-cancel"):
+        with tempfile.TemporaryDirectory(prefix="zg-web-download-") as tmp:
+            root = Path(tmp)
+            cache = root / "cache/abird/zerogravity/models"
+            env = dict(os.environ, HOME=tmp, XDG_CONFIG_HOME=str(root / "config"),
+                       XDG_CACHE_HOME=str(root / "cache"),
+                       ZG_MONITOR_FIXTURE=str(cache), ZG_MONITOR_MODE=mode)
+            process = subprocess.Popen(
+                [binary, "--ignored", "--exact", "pull::monitor::tests::monitor_child", "--nocapture"],
+                env=env, cwd=root, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0)
+            try:
+                deadline = time.monotonic() + 10
+                while time.monotonic() < deadline:
+                    assert select.select([process.stdout], [], [], 10)[0], "owned child did not report Web URL"
+                    line = process.stdout.readline().decode().strip()
+                    assert line or process.poll() is None, "owned child terminated"
+                    if "Web UI: " in line:
+                        client = Client(line.split("Web UI: ", 1)[1])
+                        break
+                else:
+                    raise AssertionError("owned child did not start its Web host")
+                paused = client.observed(lambda row: row["download"]["status"] == "paused")["download"]
+                identity = paused["id"]
+
+                def command(name, *, status=202, operation=identity):
+                    result = client.post({"kind": "download", "operation_id": operation, "command": name},
+                                         status=status)
+                    if status == 202:
+                        assert result == {"operation_id": identity}
+                    return result
+
+                command("resume", status=409, operation=str(int(identity) + 1))
+                command("resume")
+                client.observed(lambda row: row["download"]["total_bytes"] > 0)
+                command("pause")
+                second_pause = client.observed(lambda row: row["download"]["status"] == "paused")["download"]
+                assert second_pause["id"] == identity
+                assert second_pause["total_bytes"] > 0
+                assert not second_pause["terminal"]
+                assert second_pause["checkpoint_bytes"] > 0
+                # Checkpoint observation is not a grant to resume arbitrary
+                # files. The live operation remains the only command target.
+                assert client.inventory("models")["cached"] == []
+                command("pause", status=409)
+                with client.events() as events:
+                    command("cancel" if mode == "web-cancel" else "resume")
+                    terminal = client.observed(lambda row: row["download"]["terminal"], timeout=15)["download"]
+                    assert terminal["id"] == identity
+                    assert terminal["status"] == ("cancelled" if mode == "web-cancel" else "durable")
+                    for _ in range(80):
+                        if events.readline() == b"event: models\n":
+                            break
+                    else:
+                        raise AssertionError("terminal transfer did not invalidate cold model inventory")
+                models = client.inventory("models")
+                if mode == "web-cancel":
+                    assert models["cached"] == []
+                    assert models["partial"] and models["partial"][0]["bytes"] > 0
+                else:
+                    assert len(models["cached"]) == 1
+                    digest = terminal["snapshot"]
+                    assert models["cached"][0]["digest"] == digest
+                    assert models["cached"][0]["payload_verified"] is False
+                    assert "verified" in client.action({"kind": "verify", "digest": digest})["message"]
+                    refused = client.action({"kind": "remove", "digest": digest, "confirm": True}, state="failed")
+                    assert "references" in refused["message"]
+                    assert client.inventory("models")["cached"][0]["digest"] == digest
+                command("cancel", status=409)
+                assert client.snapshot()["action"] is None
+                assert b"NOT_IN_OUTPUT" not in json.dumps(client.snapshot()).encode()
+                process.stdin.write(b"done\n")
+                process.stdin.flush()
+                assert process.wait(timeout=10) == 0, process.stderr.read().decode(errors="replace")
+                client.closed()
+            finally:
+                if process.poll() is None:
+                    process.terminate()
+                    try:
+                        process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait()
+                process.stdin.close()
+                process.stdout.close()
+                process.stderr.close()
+    print("Web controlled transfer: exact-operation pause/resume/cancel, checkpoint/terminal observations, stale refusal, owner invalidation and referenced cache protection")
+
+
 if __name__ == "__main__":
-    smoke(str(Path(sys.argv[1]).resolve()))
+    if len(sys.argv) > 2 and sys.argv[2] == "--download-fixture":
+        controlled_download(str(Path(sys.argv[1]).resolve()))
+    else:
+        smoke(str(Path(sys.argv[1]).resolve()))

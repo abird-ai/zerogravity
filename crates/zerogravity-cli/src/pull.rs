@@ -12,7 +12,7 @@ mod components;
 mod gcs;
 #[path = "pull_modelscope.rs"]
 mod modelscope;
-#[cfg(feature = "tui")]
+#[cfg(any(feature = "tui", feature = "web"))]
 #[path = "pull_native.rs"]
 pub(crate) mod native;
 #[path = "pull_object.rs"]
@@ -582,6 +582,7 @@ pub(super) fn acquire_for_run(
     feature = "model-qwen35",
     any(
         feature = "tui",
+        feature = "web",
         all(feature = "text", any(feature = "cuda", feature = "hip"))
     )
 ))]

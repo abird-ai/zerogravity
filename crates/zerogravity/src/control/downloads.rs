@@ -189,7 +189,10 @@ impl ControlPlane<'_> {
             sample: None,
             last_event: Instant::now(),
         });
-        self.emit(ControlEventKind::DownloadChanged { id });
+        self.emit(ControlEventKind::DownloadChanged {
+            id,
+            status: DownloadStatus::Running,
+        });
         Ok(DownloadOperation {
             control: *self,
             id,
@@ -236,7 +239,10 @@ impl ControlPlane<'_> {
                 ));
             }
         }
-        self.emit(ControlEventKind::DownloadChanged { id });
+        self.emit(ControlEventKind::DownloadChanged {
+            id,
+            status: state.status,
+        });
         downloads.changed.notify_all();
         Ok(())
     }
@@ -275,8 +281,10 @@ impl DownloadOperation<'_> {
             .filter(|row| row.summary.id == self.id && !row.summary.status.terminal())
             && update(active)
         {
-            self.control
-                .emit(ControlEventKind::DownloadChanged { id: self.id });
+            self.control.emit(ControlEventKind::DownloadChanged {
+                id: self.id,
+                status: active.summary.status,
+            });
         }
     }
 
@@ -502,8 +510,10 @@ impl PullControl for DownloadOperation<'_> {
             active.summary.status = DownloadStatus::Paused;
             active.summary.logical_bytes_per_second = None;
             active.sample = None;
-            self.control
-                .emit(ControlEventKind::DownloadChanged { id: self.id });
+            self.control.emit(ControlEventKind::DownloadChanged {
+                id: self.id,
+                status: active.summary.status,
+            });
         }
         // Signals use the original atomic flag, so bounded polling also
         // notices external cancellation without signal-handler locking.
