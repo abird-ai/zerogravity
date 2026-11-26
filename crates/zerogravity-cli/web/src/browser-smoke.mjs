@@ -6,12 +6,21 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { createInterface } from "node:readline";
 
 const binary = resolve(process.argv[2]);
 const root = await mkdtemp(join(tmpdir(), "zg-browser-"));
 const residentRoot = process.argv[3] === "--resident" ? resolve(process.argv[4]) : null;
 const expected = process.argv[5];
 const downloadFixture = process.argv[3] === "--download-fixture";
+const attached = process.argv[3] === "--attached-download";
+const input = attached ? createInterface({input:process.stdin, crlfDelay:Infinity}) : null;
+const commands = input?.[Symbol.asyncIterator]();
+async function readCommand() {
+  const row = await commands.next();
+  if (row.done) throw new Error("Attached fixture input closed");
+  return row.value;
+}
 const children = [];
 let ws;
 function child(command, args, env, input = "ignore") {
@@ -57,12 +66,12 @@ try {
     ...env, HOME: residentRoot, XDG_CONFIG_HOME: join(residentRoot,"config"), XDG_CACHE_HOME: join(residentRoot,"cache"),
     ZEROGRAVITY_API_KEY: "fixture-inference-only",
   } : env;
-  const host = downloadFixture
+  const host = attached ? null : downloadFixture
     ? child(binary, ["--ignored", "--exact", "pull::monitor::tests::monitor_child", "--nocapture"], {
         ...hostEnv, ZG_MONITOR_FIXTURE:join(root,"cache/abird/zerogravity/models"), ZG_MONITOR_MODE:"web",
       }, "pipe")
     : child(binary, residentRoot ? ["--offline","--profile","local","web"] : ["--offline", "web"], hostEnv);
-  const privateUrl = await line(host, /Web UI: (http:\/\/127\.0\.0\.1:\d+\/ui\/#control=[a-f0-9]{64})/);
+  const privateUrl = attached ? await readCommand() : await line(host, /Web UI: (http:\/\/127\.0\.0\.1:\d+\/ui\/#control=[a-f0-9]{64})/);
   const origin = new URL(privateUrl).origin;
   const profile = join(root,"firefox");
   await mkdir(profile);
@@ -116,7 +125,35 @@ try {
   await waitFor(() => evaluate("document.body.innerText.includes('Local process') && document.body.innerText.includes('connected')"), "authenticated Home");
   assert.equal(await evaluate("location.hash"), "");
   assert.equal(await evaluate("document.querySelector('h1').textContent"), "Home");
-  assert.equal(await evaluate("document.body.innerText.includes('offline')"), true);
+  if (!attached) assert.equal(await evaluate("document.body.innerText.includes('offline')"), true);
+  if (attached) {
+    const go = name => evaluate("document.querySelector(" + JSON.stringify('nav button[title="' + name + '"]') + ").click()");
+    const state = () => evaluate("document.querySelector('.panel-title .state')?.textContent");
+    const operation = () => evaluate("Array.from(document.querySelectorAll('.facts dt')).find(node=>node.textContent==='Operation')?.nextElementSibling.textContent");
+    const fact = name => evaluate("Array.from(document.querySelectorAll('.facts dt')).find(node=>node.textContent===" + JSON.stringify(name) + ")?.nextElementSibling.textContent");
+    await go("Downloads");
+    await waitFor(async () => await state() === "paused", "attached initial safe pause");
+    const identity = await operation();
+    assert.match(identity, /^[1-9][0-9]*$/);
+    console.log("Attached browser ready");
+    assert.equal(await readCommand(), "native-paused");
+    // The native client has resumed and paused after accepting a prefix.
+    // Require the observed checkpoint, not just the old paused label.
+    await waitFor(async () => await state() === "paused" && (await fact("Observed checkpoint")) !== "0 B" &&
+      await evaluate("document.querySelector('progress')?.value > 0"), "native pause in attached browser");
+    assert.equal(await operation(), identity);
+    const cancel = process.argv[4] === "cancelled";
+    const label = cancel ? "Cancel download" : "Resume download";
+    await waitFor(() => evaluate("(()=>{const b=Array.from(document.querySelectorAll('button')).find(b=>b.textContent.trim()===" + JSON.stringify(label) + ");if(!b || b.disabled)return false;b.click();return true})()"), "attached exact operation command");
+    await waitFor(async () => await state() === (cancel ? "cancelled" : "durable"), "attached terminal transfer outcome");
+    assert.equal(await operation(), identity);
+    console.log("Attached browser terminal");
+    // Browser retirement must leave the foreground TUI and its host alive.
+    await bidi("session.end");
+    ws.close();
+    assert.equal((await fetch(origin + "/ui/")).status, 200);
+    console.log("Attached browser: native safe pause, browser exact-operation " + (cancel ? "cancel" : "resume") + ", same terminal identity and independent browser retirement");
+  } else {
   for (const [width,height] of [[1440,900],[900,700],[390,844]]) {
     await viewport(width,height);
     await waitFor(() => evaluate("document.documentElement.scrollWidth <= innerWidth + 1"), "responsive width " + width);
@@ -328,7 +365,9 @@ try {
   await Promise.race([new Promise(resolve => host.once("exit",resolve)), delay(15000,undefined,{ref:false})]);
   assert.equal(host.exitCode, 0, "foreground host did not retire successfully");
   console.log("Embedded browser: authenticated Home, desktop/tablet/mobile, navigation/palette, reload/lock, browser retirement independent of host");
+  }
 } finally {
+  input?.close();
   ws?.close();
   for (const process of children.reverse()) {
     if (process.exitCode === null && process.signalCode === null) {

@@ -27,10 +27,54 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — Phase 2.1 UX-9D implementation (26 Nov)
+### Current checkpoint — Phase 2.1 UX-9E acceptance (26 Nov)
 
-Profiles / Config / Logs are implemented for both foreground clients; the
-focused qualification is complete. Full phase acceptance remains pending.
+UX-9D and UX-9E accepted. Same foreground runtime, one action slot,
+original ConfigFile/cache/transfer/listener owners. No new dependencies,
+model execution paths, admission changes or performance claims.
+
+- Native Logs redraw follows the shared bounded ring revision while visible;
+  a fast Web-only validation cannot disappear between active-action samples.
+  Existing event cursor and per-client filters remain unchanged.
+- Actual native PTY and attached Firefox share one original protected
+  transfer (existing deterministic fixture, no provider access): native
+  resume then safe pause after an accepted prefix, browser observes that
+  checkpoint and resumes to durable publication or cancels to a preserved
+  partial. Exact operation identity, stale control refusal and original
+  range reopen; closing browser leaves native host alive, native quit
+  joins host/worker. Same test child and original transfer owner.
+- Actual approved cached Qwen 0.8B GGUF optimized lifecycle: original
+  browser cache/device and resident/HTTP checks; native edit of active
+  run.task.context 64 -> 128 with live admitted model/listener, stale Web
+  draft refused, fresh Web restore to 64 seen in native editor; admitted
+  scheduler capacity, registration, generation and exact HTTP text
+  unchanged. Original 8 GiB host admission retained. Native/Web logs
+  share safe success/failure correlation, no private prompts or drafts.
+  Existing stale registration/generation, cache retirement, cancellation
+  and joined shutdown checks pass.
+- Combined release CLI unit tests 50/0/3; controlled shared Firefox/PTY
+  durable and cancelled scenarios pass; real cached combined integration
+  1/0/0 (54.16s, five filtered); idle native log repaint after Web
+  validation passed without resize/navigation after command. Initial
+  settings fixture assertion corrected for ANSI cursor-separated spaces;
+  no production behavior relaxed.
+- The interrupted UX-9D gate was rerun across the assembled D/E source
+  (UI change before CPU compilation). HIP/Vulkan/CUDA feature boundary,
+  strict CPU/optional feature checks, all 318 Rust suites 2,491/0/109,
+  native/Web release, offline installer and scripts passed. No physical
+  GPU or public serving qualification inferred.
+
+**Next:** UX-10 doctor/pipeline/device presentation polish and compatibility
+cleanup. Audit normal help/docs against original direct typed commands;
+retain hidden compatibility aliases and remove duplicate normal paths only
+after their replacements are proven. Then public serving and ordinary
+benchmarks, ROCm vs optimized vLLM, CUDA, Vulkan, optional compiled providers
+in the ordered full plan. No return to accepted foundations or UX owners.
+
+### Previous checkpoint — Phase 2.1 UX-9D (26 Nov; 543194ac)
+
+Profiles / Config / Logs are implemented for both foreground clients;
+focused and comprehensive acceptance passed with the UX-9E gate above.
 
 - The original native configuration actions and typed observations now live
   in control_host/settings.rs. One ConfigFile snapshot/validation/atomic
@@ -57,16 +101,13 @@ focused qualification is complete. Full phase acceptance remains pending.
   Firefox profile/config/log and responsive smoke pass. Fixed fixture SSE
   response closure and a real cold-read navigation/receipt refresh race.
   No live acquisition, new dependency, model or GPU/performance change.
-- Full isolated gate began after strict lint; stopped intentionally at the
-  turn boundary during unchanged Vulkan feature-boundary compilation,
-  not a reported test failure. Do not count it as passed. The original
-  UX-9C cached-model and transfer evidence remains unchanged.
+- The initial full gate stopped intentionally at the turn boundary during
+  Vulkan feature-boundary compilation, not a reported failure. The
+  complete private-network scripts/check.sh rerun in UX-9E above passed
+  2,491/0/109 (318 suites), release Web/TUI/installer/scripts; UX-9D accepted.
+  The original UX-9C evidence remains valid.
 
-**Next:** complete the private-network scripts/check.sh gate for this
-checkpoint, then accept UX-9D and proceed to UX-9E simultaneous native/Web
-mutation acceptance, including real admitted owners and controlled transfer.
-No further configuration or runtime store; UX-10 and the ordered public
-serving/performance roadmap remain unchanged.
+Historical next UX-9E completed above; UX-10 follows.
 
 ### Previous checkpoint — Phase 2.1 UX-9C (26 Nov; a6744b12)
 

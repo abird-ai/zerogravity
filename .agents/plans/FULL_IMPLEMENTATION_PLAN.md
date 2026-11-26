@@ -647,14 +647,20 @@ demand. Preserve the existing detailed
   original transfer pause/resume/cancel and native/Web invalidations.
   Actual controlled HTTP/native PTY/Firefox transfer, cold browser and
   strict lint/dependency isolation passed. UX-9C optimized cached integration passed 1/0/0 (48.13s, five filtered); full isolated gate 2,489/0/109 (318 Rust suites), release Web/TUI/installer/scripts passed. UX-9C accepted.
-- [ ] UX-9D Web Profiles / Config / Logs: implementation and focused
-  qualification complete. Shared ConfigFile/Selection/action slot, safe
-  typed and normalized raw YAML, protected removal and exact stale refusal;
-  one bounded host operational log, native/Web invalidations. Strict lint,
-  terminal-free Web, JS, actual HTTP/native attached-Web PTY and Firefox
-  pass. Full gate stopped during Vulkan feature-boundary rebuild at turn
-  boundary; resume and pass before phase acceptance.
-  **Next: close UX-9D gate, then UX-9E simultaneous TUI/Web acceptance (§46A.28).**
+- [x] UX-9D Web Profiles / Config / Logs: shared ConfigFile/Selection/action
+  slot, safe typed and normalized raw YAML, protected removal and exact
+  stale refusal; bounded host operational log, native/Web invalidations.
+  Strict lint, terminal-free Web, JS, actual HTTP/native attached-Web PTY
+  and Firefox pass. Initial interrupted gate completed in UX-9E below.
+- [x] UX-9E shared control events and simultaneous TUI/Web acceptance:
+  native log revision redraw, native safe pause -> attached Firefox
+  resume/durable or cancel/partial, same original operation and joined
+  retirement. Real cached combined integration 1/0/0 (54.16s), native
+  active-policy edit/stale Web refusal/Web restore; unchanged admitted
+  scheduler, registration, listener and exact HTTP inference output.
+  Combined release CLI 50/0/3, actual settings PTY, Full isolated workspace gate 2,491/0/109 (318 Rust suites), release Web/TUI/installer/scripts passed.
+  UX-9D/E accepted. **Next: UX-10 doctor/pipeline polish and compatibility
+  cleanup (§46A.28), then public serving.**
 
 - [ ] Close typed command tree, ConfigDocument/profile merge and shared
   presentation/action/snapshot/event model. One resolver for local paths,
@@ -672,11 +678,11 @@ demand. Preserve the existing detailed
 
 ### 2.2 Native TUI, then embedded Web
 
-- [ ] Build native TUI (UX-8A–D): bare interactive command opens a responsive
+- [x] Build native TUI (UX-8A–D): bare interactive command opens a responsive
   shell; Home/Running/Serve, Models/Downloads/Devices, Profiles/Config/Logs.
   Shared events, command palette, keyboard/navigation, cancellation,
   resize/accessibility; no action on mere visual selection.
-- [ ] Build embedded SolidJS/Vite Web (UX-9A–E), following the existing AW
+- [x] Build embedded SolidJS/Vite Web (UX-9A–E), following the existing AW
   reuse/design direction and same visual vocabulary. Same high-value
   views/actions as TUI; `zg web` and opening Web from TUI reuse original
   runtime/control plane. Keep presentation state local; allow simultaneous

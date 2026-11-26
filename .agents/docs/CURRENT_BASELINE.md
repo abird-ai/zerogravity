@@ -5,14 +5,29 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
-## 26 Nov — Web profile, configuration and log implementation (UX-9D)
+## 26 Nov — simultaneous native/Web acceptance (UX-9E)
+
+Combined release CLI 50/0/3; real native PTY/attached Firefox same-operation
+safe pause -> resume/durable and cancellation/partial retention; original
+child exact range reopen, terminal observations and joined host retirement.
+Approved cached Qwen 0.8B GGUF optimized real browser/TUI/Web/HTTP
+integration 1/0/0 (54.16s, five filtered): native active context edit,
+stale Web draft refusal, Web restore, unchanged admitted scheduler/
+registration/listener and exact HTTP output. Idle native log revision
+redraw passed. Complete isolated workspace gate 2,491/0/109
+(318 Rust suites), release Web/TUI/installer/scripts passed. UX-9D/E
+accepted; UX-10 next. No model download, new dependency, performance or
+physical GPU claim.
+
+## 26 Nov — Web profile, configuration and logs (UX-9D)
 
 Shared original ConfigFile/Selection/action slot, safe typed and normalized
 YAML editing, protected profiles and one bounded operational ring; exact
 stale refusal and cross-client invalidation. Strict feature/lint/dependency
 isolation, JS 3/0, actual HTTP/native PTY attached-Web edit and Firefox
-settings/log smoke pass. Full isolated gate interrupted intentionally in
-Vulkan feature-boundary rebuild at turn boundary; acceptance pending.
+settings/log smoke pass. Initial gate interrupted intentionally during
+Vulkan feature-boundary rebuild; complete UX-9E rerun above passed and
+UX-9D accepted.
 No performance, admission, model download or physical GPU claim.
 
 ## 26 Nov — Web model, download and device management (UX-9C)

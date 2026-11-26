@@ -6,7 +6,7 @@ scaffolding), CLI/TUI/Web and serving, ROCm, CUDA, Vulkan, then concrete
 compiled providers. Native Hugging Face/Safetensors and GGUF are primary.
 Older ordering below is context; valid owner constraints remain authoritative.
 
-Status (26 Nov): **Phase 2.1 UX-1 through UX-9C accepted; UX-9D implemented and focused-qualified, full gate pending; UX-9E follows (§46A.28).**
+Status (26 Nov): **Phase 2.1 UX-1 through UX-9E accepted; UX-10 doctor/pipeline polish and compatibility cleanup next (§46A.28).**
 The bounded Phase 1 minimum exit is accepted at `d5030ad4`.
 See the [Phase 1 exit takeover](../../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-25_PHASE1_EXIT.md)
 and [live full plan](../FULL_IMPLEMENTATION_PLAN.md). The original design below
@@ -3662,9 +3662,21 @@ bounded host operational ring, safe correlations, local filters and
 pause/follow. Relevant configuration/log invalidations; finite retry
 only for refused cold reads and post-receipt configuration refresh.
 Strict feature/lint isolation, JS, actual isolated HTTP/native PTY with
-attached Web cross-client settings, real Firefox pass. Full isolated
-gate stopped intentionally during Vulkan feature-boundary rebuild at
-turn boundary; final UX-9D acceptance pending. Next: gate then UX-9E.
+attached Web cross-client settings, real Firefox pass. Initial full
+gate stopped intentionally during Vulkan feature-boundary rebuild;
+complete rerun in UX-9E below accepted UX-9D.
+
+UX-9E implementation and acceptance (26 Nov): native log revision redraw
+even for short Web-only validation without runtime events. Actual native
+PTY with attached Firefox shares original protected transfer: native
+resume/safe pause after prefix, Web resume/durable and cancel/partial,
+same operation, exact stale refusal and joined retirement; no remote
+provider. Actual cached Qwen 0.8B GGUF optimized native/Web/HTTP
+integration 1/0/0 (54.16s, five filtered); active native context edit,
+stale Web draft refused, Web restore observed natively, admitted
+scheduler/registration/listener unchanged and exact HTTP text preserved.
+Original 8 GiB envelope. Combined release CLI 50/0/3; idle native log
+regression passed. Full isolated workspace gate 2,491/0/109 (318 Rust suites), release Web/TUI/installer/scripts passed. UX-9D/E accepted. UX-10 next.
 
 Build TUI before Web so the shared control surface proves it is not browser-shaped.
 

@@ -93,6 +93,7 @@ fn session(
         let mut dirty = true;
         let mut sampled = Instant::now();
         let mut config_revision = app.document.configuration_revision();
+        let mut log_revision = 0;
         while !stop.requested() {
             dirty |= app.poll_job(runtime, control);
             let active = app.actions.active();
@@ -147,6 +148,14 @@ fn session(
                 }
                 sampled = Instant::now();
                 dirty = true;
+            }
+            if app.navigation.view() == View::Logs {
+                // A short Web action can begin and finish between native
+                // samples without a runtime event (e.g. cold validation).
+                // The shared operational ring is the redraw authority here.
+                let observed = app.actions.with_logs(|ring| ring.revision());
+                dirty |= observed != log_revision;
+                log_revision = observed;
             }
             if dirty {
                 terminal

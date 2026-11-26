@@ -15,8 +15,8 @@ concept rather than historical qualification shorthand.
 Cross-window continuation starts at [the canonical current handoff](../docs/CURRENT_HANDOFF.md).
 For the complete current takeover through accepted UX-9B, read the
 [26 Nov comprehensive handoff](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-26_UX9B_EXIT.md) §§0–13;
-the historical continuation was UX-9C (now accepted). UX-9D is implemented and
-focused-qualified; complete its full gate, then UX-9E per the live handoff.
+the historical continuation was UX-9C (now accepted). The live handoff
+records accepted UX-9D/E and the next coherent unit UX-10.
 The [standalone UX-9C prompt](../docs/NEXT_AGENT_2026-11-26_UX9C.md) is historical.
 Appendix D preserves every Phase 2 landing. Appendix E and the
 [25 Nov Phase 1 exit takeover](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-25_PHASE1_EXIT.md)

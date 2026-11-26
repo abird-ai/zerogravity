@@ -113,7 +113,14 @@ pull monitor child can also exercise live transfer buttons in Firefox:
     node src/browser-smoke.mjs PATH_TO_COMBINED_TEST_BINARY --download-fixture
 
 The child uses a deterministic protected transfer, not a remote provider
-or live-cache mutation. The usual Rust gate runs the embedded HTTP and native terminal fixtures without
-requiring Node or Firefox.
+or live-cache mutation. For actual simultaneous TUI and attached Firefox
+pause/resume and cancellation, use the same combined test binary:
+
+    python3 -B ../tests/fixtures/tui_shell.py PATH_TO_COMBINED_TEST_BINARY --shared-download-fixture
+
+The private launch capability is passed to the owned browser fixture over
+stdin; both clients observe the original transfer and native quit joins
+the host. The usual Rust gate runs embedded HTTP and native terminal
+fixtures without requiring Node or Firefox.
 
 The bundled third-party notice is served at /ui/licenses.txt.

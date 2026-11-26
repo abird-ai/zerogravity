@@ -252,6 +252,15 @@ def settings_lifecycle(root):
         terminal.send(b"9", b"Operational")
         terminal.send(b"/", b"visible")
         terminal.send(b"\x15" + paste("Activate profile") + b"\r", b"Activate profile")
+        terminal.send(b"/", b"visible")
+        terminal.send(b"\x15" + paste("Validate config") + b"\r", b"notifications")
+        # No navigation, resize, user input or runtime event after the Web
+        # validation. The shared log revision alone must repaint the TUI.
+        terminal.repaint_on_wait = False
+        client.action({"kind": "settings", "action": {"command": "validate", "snapshot": document["snapshot"]}})
+        terminal.until(b"completed", 10)
+        assert any(row["message"] == "Validate config completed" for row in client.inventory("logs")["entries"])
+        terminal.repaint_on_wait = True
         terminal.send(b"q", b"confirm")
         os.write(terminal.master, b"y")
         terminal.finish()
@@ -362,6 +371,46 @@ def lifecycle(root, expected):
             assert output["usage"]["prompt_tokens"] == result["usage"]["prompt_tokens"]
             assert client.snapshot()["runtime"]["models"][0]["registration_id"] == registration
             client.post({"kind": "cancel", "id": generated["id"]}, status=409)
+            # Both editors retain exact observed bytes, not a writable alias
+            # to the active runtime. Change future policy while an admitted
+            # registration and the original listener remain live.
+            stale = client.config("local")
+            assert stale["active"] and stale["raw"] is None
+            admitted_context = observed["runtime"]["scheduler"]["context"]
+            terminal.send(b"8", b"run.backend")
+            terminal.send(b"/", b"visible")
+            terminal.send(b"run.task.context\r", b"run.task.context")
+            terminal.send(b"\r", b"Ctrl-U")
+            with client.events() as events:
+                terminal.send(b"\x15128\r", b"Saved", 15)
+                for _ in range(24):
+                    if events.readline() == b"event: configuration\n":
+                        break
+                else:
+                    raise AssertionError("native edit did not invalidate browser configuration")
+            def set_context(snapshot, value):
+                return {"kind": "settings", "action": {"command": "set", "snapshot": snapshot["snapshot"],
+                        "key": "run.task.context", "value": value}}
+            client.action(set_context(stale, "96"), state="failed")
+            fresh = client.config("local")
+            assert next(row for row in fresh["rows"] if row["key"] == "run.task.context")["value"].strip() == "128"
+            assert client.snapshot()["runtime"]["scheduler"]["context"] == admitted_context
+            client.action(set_context(fresh, "64"))
+            terminal.until(b"run.task.context = 64", 15)
+            observed = client.snapshot()
+            assert observed["runtime"]["models"][0]["registration_id"] == registration
+            assert observed["serving"]["generation"] == generation
+            assert observed["runtime"]["scheduler"]["context"] == admitted_context
+            assert http("/models") == models
+            replay = http("/completions", {"model": loaded_alias, "prompt": prompt,
+                                           "max_tokens": 2, "stream": False})
+            assert replay["choices"][0]["text"] == expected
+            # Both origins' outcomes share one bounded ring, never raw drafts
+            # or native response text. A rejected stale mutation is a failure.
+            log = client.inventory("logs")["entries"]
+            assert any(row["message"] == "Save config returned error" for row in log)
+            assert any(row["message"] == "Save config completed" for row in log)
+            print("Shared admitted settings: native edit, stale Web refusal, Web restore observed by native, unchanged scheduler/registration/listener and exact HTTP output")
         # Activate a different startup profile without reconfiguring the
         # existing listener/scheduler. Restore the original for later load.
         terminal.repaint_on_wait = True
@@ -501,6 +550,80 @@ def lifecycle(root, expected):
     print("TUI cached lifecycle: inspect/verify, alias, declined removal, exact-digest run, repeated invoke, HTTP equality, active profile switching retains listener, stop/unload/reload/quit, preview and durable removal")
 
 
+def shared_download():
+    from web_shell import Client
+    smoke = Path(__file__).resolve().parents[2] / "web/src/browser-smoke.mjs"
+
+    def browser_line(browser, expected):
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            assert select.select([browser.stdout], [], [], max(0, deadline - time.monotonic()))[0], expected
+            line = browser.stdout.readline()
+            assert line, "attached browser exited before " + expected
+            if line.decode().strip() == expected:
+                return
+        raise AssertionError("attached browser did not report " + expected)
+
+    for mode, outcome in (("tui", "durable"), ("tui-cancel", "cancelled")):
+        with tempfile.TemporaryDirectory(prefix="zg-shared-download-") as tmp:
+            root = Path(tmp)
+            os.environ["ZG_MONITOR_FIXTURE"] = str(root / "cache/abird/zerogravity/models")
+            os.environ["ZG_MONITOR_MODE"] = mode
+            with Terminal(root, ["--ignored", "--exact", "pull::monitor::tests::monitor_child", "--nocapture"],
+                          width=150, height=40) as terminal:
+                terminal.check_started()
+                terminal.repaint_on_wait = True
+                private_url = terminal.private_web_url()
+                client = Client(private_url)
+                os.write(terminal.master, b"\r")
+                identity = client.observed(lambda row: row["download"]["status"] == "paused")["download"]["id"]
+                # Feed the private capability over the owned pipe, not argv
+                # or diagnostics. The actual Solid UI uses SSE and typed POST.
+                with subprocess.Popen(["node", str(smoke), binary, "--attached-download", outcome],
+                                      cwd=root, env=environment(root), stdin=subprocess.PIPE,
+                                      stdout=subprocess.PIPE, bufsize=0) as browser:
+                    try:
+                        browser.stdin.write((private_url + "\n").encode())
+                        browser.stdin.flush()
+                        browser_line(browser, "Attached browser ready")
+                        terminal.send(b"5", b"Paused")
+                        terminal.send(b"s", b"Running")
+                        client.observed(lambda row: row["download"]["total_bytes"] > 0)
+                        terminal.send(b"p", b"Pause")
+                        parked = client.observed(lambda row: row["download"]["status"] == "paused")["download"]
+                        assert parked["id"] == identity and parked["checkpoint_bytes"] > 0
+                        browser.stdin.write(b"native-paused\n")
+                        browser.stdin.flush()
+                        browser_line(browser, "Attached browser terminal")
+                        terminal.until(b"Snapshot:" if outcome == "durable" else b"Cancelled", 15)
+                        assert browser.wait(timeout=15) == 0
+                        ended = client.snapshot()["download"]
+                        assert ended["id"] == identity and ended["status"] == outcome and ended["terminal"]
+                        assert client.snapshot()["action"] is None
+                        inventory = client.inventory("models")
+                        if outcome == "durable":
+                            assert inventory["cached"][0]["digest"] == ended["snapshot"]
+                        else:
+                            assert inventory["cached"] == [] and inventory["partial"][0]["bytes"] > 0
+                        client.post({"kind": "download", "operation_id": identity, "command": "resume"}, status=409)
+                        # The browser closed independently; native quit joins
+                        # the attached host and the original transfer worker.
+                        terminal.send(b"q", b"confirm")
+                        os.write(terminal.master, b"y")
+                        terminal.finish()
+                        client.closed()
+                    finally:
+                        if browser.poll() is None:
+                            browser.terminate()
+                            try:
+                                browser.wait(timeout=5)
+                            except subprocess.TimeoutExpired:
+                                browser.kill()
+                                browser.wait()
+                assert b"NOT_IN_OUTPUT" not in terminal.transcript
+                print("Shared transfer:", outcome, "native safe pause, attached Firefox command, same operation and joined retirement")
+
+
 if len(sys.argv) == 2:
     with tempfile.TemporaryDirectory(prefix="zg-tui-") as tmp:
         shell(Path(tmp))
@@ -508,6 +631,8 @@ if len(sys.argv) == 2:
 elif sys.argv[2] == "--settings-fixture":
     with tempfile.TemporaryDirectory(prefix="zg-tui-settings-") as tmp:
         settings_lifecycle(Path(tmp) / "settings")
+elif sys.argv[2] == "--shared-download-fixture":
+    shared_download()
 elif sys.argv[2] == "--download-fixture":
     for mode in ("tui", "tui-cancel"):
         with tempfile.TemporaryDirectory(prefix="zg-tui-download-") as tmp:

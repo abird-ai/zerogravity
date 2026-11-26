@@ -385,14 +385,25 @@ build or general model/backend grant. Historical failures keep their source scop
 - [x] Strict feature/lint/dependency isolation, JS, actual HTTP, attached
   Web/native PTY cross-client settings and real Firefox smoke pass.
 
+### Phase 2.1 UX-9E — simultaneous native/Web acceptance (26 Nov)
+
+- [x] Native log view observes host ring revision, including fast Web-only
+  validation while native is idle. Real attached settings PTY passes.
+- [x] Native safe pause after accepted prefix, attached Firefox resume to
+  durable or cancel to partial; exact original operation identity,
+  range reopen, stale refusal and joined retirement. Combined release CLI
+  50/0/3; actual two-client transfer scenarios pass.
+- [x] Actual approved cached Qwen 0.8B GGUF optimized native/Web/HTTP
+  integration 1/0/0 (54.16s): native policy edit, stale Web refusal, fresh
+  Web restore; unchanged admitted scheduler, registration, listener and
+  exact output. Original 8 GiB admission unchanged.
+- [x] Full isolated workspace gate 2,491/0/109 (318 Rust suites), release Web/TUI/installer/scripts passed. Initial UX-9D gate interruption recovered; UX-9D/E accepted.
+
 ## Uncommitted
 
-- [ ] UX-9D final isolated workspace gate (interrupted intentionally at
-  turn boundary during Vulkan feature-boundary rebuild); accept only
-  after pass. UX-9E simultaneous TUI/Web acceptance and UX-10 remain
-  ordered. Broader
-  catalog presets, conversation history and unsupported routes remain
-  explicit.
+- [ ] UX-10 doctor/pipeline/device presentation polish and compatibility
+  cleanup; then public serving per full plan. Broader catalog presets,
+  conversation history and unsupported routes remain explicit.
 - [ ] Extend advanced direct provider forced interactive/JSONL presentation
   and aggregate component download control without changing independently
   published receipts; existing direct provider progress and legacy sequential
