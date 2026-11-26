@@ -745,6 +745,9 @@ UX-1–10 remains accepted; this is additional presentation work.
   authenticated diagnostic projection and structured logs. User follow-up:
   [live model performance and layer inspection](cli-ux/LIVE_MODEL_PERFORMANCE.md),
   registration-owned TPS/TTFT and selected object details before P4B.
+  P4B focused real resident/config/listener/transfer regressions, native
+  full-default linked launch/strict lint and actual CUDA layer/counter
+  observations pass; complete isolated gate remains required.
   Optional deeper profiling follows actual provider capabilities.
 
 No new runtime, cache, configuration or execution owner. No inference

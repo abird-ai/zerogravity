@@ -161,7 +161,7 @@ def smoke(binary):
             assert client.request("/zg/control/snapshot", headers={"Content-Length": "1"})[0] == 400
             value = client.snapshot()
             assert value["schema"] == "zerogravity.control.v1"
-            assert value["configuration"] == {"profile": "desk", "offline": True, "chat": True}
+            assert value["configuration"] == {"profile": "desk", "offline": True, "chat": True, "theme": "auto"}
             assert value["runtime"]["status"]["phase"] == "empty"
             assert value["runtime"]["models"] == []
             assert "PRIVATE_PROMPT_NOT_IN_WIRE" not in json.dumps(value)
@@ -283,7 +283,7 @@ def smoke(binary):
             current = client.config("webdesk")
             client.action(setting("validate", snapshot=current["snapshot"]))
             client.action(setting("activate", snapshot=current["snapshot"]))
-            assert client.snapshot()["configuration"] == {"profile": "webdesk", "offline": True, "chat": False}
+            assert client.snapshot()["configuration"] == {"profile": "webdesk", "offline": True, "chat": False, "theme": "auto"}
             client.action(setting("remove", snapshot=current["snapshot"], confirm=True), state="failed")
             client.action(setting("copy", snapshot=current["snapshot"], name="webcopy"))
             copied = profiles / "webcopy.yaml"

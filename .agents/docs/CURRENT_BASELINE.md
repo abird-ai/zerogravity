@@ -5,6 +5,22 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 26 Nov — UX-P4B acceptance progress
+
+Full native default linked/launch and TUI/Web smoke pass. Original
+approved cached CPU native/Firefox/HTTP 6/0/0 (74.24s), actual cached
+SDK listener metadata/redaction 1/0/0 (11.49s), native/shared Firefox
+transfer durable/cancel fixtures and JS 4/0 pass. Original CUDA SDK
+admission refusal/retry 1/0/0 (20.85s); exact 24-layer compute placement
+on admitted PCI 0000:01:00.0, one 3-token completion, one first-token
+sample and two decode intervals. Observed TTFT 2.395s, 2/1.5588s decode;
+short qualification only, not a performance baseline or comparison.
+No new numerical/ownership/admission policy. L5 GPU idle restored.
+HIP/Vulkan unavailable in full-default L5 launch environment; HIP map
+and profiling overhead not requalified. Full production strict all-target
+Clippy and preceding GPU source-only compile checks pass. Full assembled
+isolated gate pending. M2 optional; preserve existing public serving order.
+
 ## 26 Nov — UX-P-M1 live model performance
 
 Registration-scoped TTFT, weighted decode intervals, exact output and

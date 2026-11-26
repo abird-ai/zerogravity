@@ -430,11 +430,14 @@ fn qwen_cuda_public_sdk_population_benchmark() {
 #[test]
 #[ignore = "approved original CUDA source; fresh process, read-only NVML compute-owner observation"]
 fn qwen_cuda_source_preadmission_refuses_peer_then_retries() {
-    use std::{collections::BTreeSet, time::Duration};
+    use std::{
+        collections::BTreeSet,
+        time::{Duration, Instant},
+    };
     use zerogravity::{
         cache::CacheOptions,
         devices::normalize_pci,
-        models::{ModelLoadRequest, QwenServingProfile},
+        models::{LayerDevice, LayerPlacement, ModelLoadRequest, ModelMemory, QwenServingProfile},
         resource_arbiter::{
             AllocationClass, AllocationRequest, PhysicalDeviceKey, ResourceArbiter, ResourceOwner,
         },
@@ -506,6 +509,27 @@ fn qwen_cuda_source_preadmission_refuses_peer_then_retries() {
     drop(peer);
     assert_eq!(arbiter.snapshot(&key).unwrap().reserved, 0);
     runtime.models().load(request()).unwrap();
+    let snapshots = runtime.models().snapshot().unwrap();
+    let [snapshot] = snapshots.as_slice() else {
+        panic!("expected exactly one admitted source registration");
+    };
+    let registration = snapshot.registration_id;
+    let details = &snapshot.capabilities.as_ref().unwrap().details;
+    assert_eq!(
+        details.layer_placement,
+        LayerPlacement::single(
+            24,
+            LayerDevice::Device {
+                device: key.clone()
+            }
+        )
+    );
+    assert!(matches!(
+        &details.memory,
+        Some(ModelMemory::ResidentText { admission, .. }) if admission.device == key
+    ));
+    assert_eq!(snapshot.performance.output_tokens, 0);
+    assert_eq!(snapshot.performance.completed_requests, 0);
     let model = runtime.models().resolve("source").unwrap();
     let events = runtime
         .request_text(Request {
@@ -528,6 +552,29 @@ fn qwen_cuda_source_preadmission_refuses_peer_then_retries() {
         ResponseEvent::Error(error) => panic!("retry source request failed: {error}"),
         _ => panic!("unexpected retry source response"),
     }
+    // The response can reach its consumer before the worker drops the original
+    // request reader. Observe the finished registration, not that race.
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let performance = loop {
+        let snapshots = runtime.models().snapshot().unwrap();
+        let [snapshot] = snapshots.as_slice() else {
+            panic!("source registration disappeared before retirement");
+        };
+        assert_eq!(snapshot.registration_id, registration);
+        if snapshot.admitted_requests == 0 {
+            break snapshot.performance;
+        }
+        assert!(Instant::now() < deadline, "request reader did not retire");
+        std::thread::sleep(Duration::from_millis(10));
+    };
+    assert_eq!(performance.output_tokens, 3);
+    assert_eq!(performance.completed_requests, 1);
+    assert_eq!(performance.ttft_samples, 1);
+    assert_eq!(performance.decode_intervals, 2);
+    assert!(performance.mean_ttft_ms().is_some());
+    assert!(performance.decode_tps().is_some());
+    assert_eq!(performance.last_completed.unwrap().output_tokens, 3);
+    println!("CUDA_SOURCE_OBSERVATIONS layers=24 device={key:?} performance={performance:?}");
     runtime.models().unload(&model).unwrap();
     drop(model);
     runtime.shutdown().unwrap();

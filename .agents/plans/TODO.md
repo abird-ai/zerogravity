@@ -229,8 +229,12 @@ and shared transfer PTY). User follow-up: full production CLI Cargo defaults,
 accurate typed error chain and opt-in authenticated HTTP diagnostics/safe
 operational logs focused-qualified. User follow-up live model TPS/TTFT,
 selected model performance/trend and reported layer placement
-([design](cli-ux/LIVE_MODEL_PERFORMANCE.md)). P4B final full gate next. Complete UX-P before public serving/ordinary benchmarks, then
-ordered performance phases.
+([design](cli-ux/LIVE_MODEL_PERFORMANCE.md)). P4B focused real-owner
+acceptance (CPU/native/Firefox/HTTP, SDK listener, simultaneous transfers,
+actual CUDA layer/counters), full native link/launch and strict lint pass.
+Complete isolated workspace gate remains required; see live handoff.
+Complete UX-P before public serving/ordinary benchmarks, then ordered
+performance phases.
 General UMA/foreign backing, device-write host read, unqualified model/
 backend/media and other expansion holds remain explicit. Historical
 CPU cache gate corrected at 00f57e7a/9374e0ca.

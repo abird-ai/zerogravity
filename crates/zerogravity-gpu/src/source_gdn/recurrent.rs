@@ -297,6 +297,7 @@ pub(crate) fn decayed(
 /// Cached-decode reduction over one or more independent private states. The
 /// decay multiplication stays in the original FP32 order but is not materialized
 /// into a dense state buffer.
+#[allow(clippy::manual_range_contains)] // Scalar CubeCL IR has no std range contains.
 #[cube(launch_unchecked)]
 pub(crate) fn key_reduce_decayed_private(
     p0: &[f32],
@@ -364,6 +365,7 @@ pub(crate) fn key_reduce_decayed_private(
 /// Cached-decode update into each row's original private candidate state. The
 /// decayed prior is recomputed in the same FP32 order, avoiding a dense temporary
 /// and its extra state-sized traffic.
+#[allow(clippy::manual_range_contains)] // Scalar CubeCL IR has no std range contains.
 #[cube(launch_unchecked)]
 pub(crate) fn state_update_decayed_private(
     p0: &[f32],

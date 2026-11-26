@@ -24,7 +24,8 @@ pub(super) fn run_observed(request: Request, inventory: devices::Inventory) -> R
 
 #[cfg(all(
     test,
-    feature = "qwen35-cuda-serving",
+    feature = "model-qwen35",
+    feature = "cuda",
     not(feature = "qwen35-cuda-qualification"),
     target_os = "linux"
 ))]

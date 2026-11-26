@@ -36,6 +36,7 @@ if grep -Eq 'zerogravity-(cli|gpu|model-qwen35|model-gemma4|artifacts|core) feat
   exit 1
 fi
 cargo check --locked --offline -p zerogravity-cli
+cargo clippy --locked --offline -p zerogravity-cli --all-targets -- -D warnings
 
 printf 'Checking ordinary Qwen CUDA serving/refusal feature boundary...\n'
 ordinary_tree="$(cargo tree --locked --offline -p zerogravity-cli --no-default-features \

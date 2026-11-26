@@ -498,20 +498,19 @@ Retain accepted UX-1–10 ownership and keyboard behavior.
     [live performance design](../cli-ux/LIVE_MODEL_PERFORMANCE.md).
   - [ ] UX-P-M2 optional exact per-request/phase and detailed layer
     observations; keep profiling explicit and capability-bound.
-  - [ ] P4B full simultaneous owner regressions and isolated gate.
-    Handoff audit (26 Nov; not an executed new gate): reconcile changed
-    production default with the explicit CPU/cache coverage. At M1 HEAD
-    scripts/check.sh shared CPU cache Clippy/test (lines 131–132) still
-    inherit the old CLI default assumptions; review them and preserve
-    original CPU/cache scope separately from full production checks.
-    Full-default link/launch and strict full GPU lint remain unverified
-    (previous link timed out; previous GPU Clippy 38 errors). Do not
-    remove valid reusable primitives or relax admission/tests. Portable
-    Nix/release CLI still explicitly CPU; reconcile full normal native
-    package intent with platform owner without silently losing portability.
-    Run actual cached SDK ServeRequestFailed generation/metadata case,
-    combined owner regressions and actual supported GPU layer observation
-    where claimed. See [complete takeover §10.2 and §11](../../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-26_UX_PM1.md).
+  - [ ] P4B comprehensive acceptance: actual combined owner regressions
+    passed (CPU CLI 6/0/0, cached listener SDK 1/0/0, real native/shared
+    Firefox transfer durable/cancel, JS 4/0). Full production linked
+    launch/version/help/doctor and TUI/Web smoke passed. Explicit old
+    CPU/cache and acquisition selection preserved; separate default
+    strict lint passes after feature-intersection test helper fix;
+    Web-only gate added. Original physical CUDA SDK
+    admission/retry 1/0/0 with exact 24-layer admitted-device map,
+    registration counters and joined retirement; HIP map not requalified.
+    Portable Nix/release remains explicit CPU. Remaining complete
+    isolated workspace gate pending; do not close P4B before actual pass.
+    See [live checkpoint](../../docs/CURRENT_HANDOFF.md) and
+    [takeover context](../../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-26_UX_PM1.md).
 
 
 Deferred public serving until UX-P exit. Optional terminal background

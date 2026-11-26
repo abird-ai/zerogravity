@@ -62,6 +62,10 @@ impl Geometry {
 
 use crate::dense::{Command, DensePrecision, Gemm, Transpose, UnitLowerSolve};
 
+#[allow(
+    dead_code,
+    reason = "retained direct chunk launch; physical qualification consumer"
+)]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn launch(
     client: &Client,

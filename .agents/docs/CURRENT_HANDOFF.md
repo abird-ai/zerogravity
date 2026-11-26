@@ -34,7 +34,60 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — UX-P-M1 live model performance (26 Nov)
+### Current checkpoint — UX-P4B acceptance progress (26 Nov)
+
+Resume P4B, not M1 or Phase 1. Actual L5 work began from the clean
+`3df31912` handoff; main sole worktree, no source edits on X2/A1.
+Full native default built and linked offline in the mandatory private
+network harness (5m46s); version/help/doctor and real TUI/Web shell passed.
+Doctor observed CUDA binding; ROCm runtime/RTC and Vulkan loader absent
+from the L5 launch environment. Portable Nix/cross-release remains
+explicit CPU; no all-backend distributed release claim.
+
+- Explicit former CPU/cache and acquisition feature selections restored
+  in check.sh; Web-only dependency isolation and strict lint added;
+  separate full-production strict lint in the GPU feature gate.
+- GPU lint fixes gate qualification-only geometry accessors, retain
+  reusable direct chunk wrappers and narrowly annotate CubeCL DSL
+  idioms/explicit flight arity without changing arithmetic or execution.
+  Initial full strict run cleared the GPU crate, then found a nested
+  facade source-selector conditional; simplified with identical refusal.
+  Web fixture updated for exact existing theme field after actual smoke
+  caught obsolete payload expectations. Full-default all-target strict
+  Clippy then exposed an alias-gated test discovery helper; both ordinary
+  CUDA tests and helper now use the production model/backend intersection.
+  Full production check and strict all-target Clippy pass on retry;
+  HIP/Vulkan/CUDA-native source-only compile checks also pass.
+  No wire or ownership changes.
+- Actual isolated release CPU CLI run_unified: 6/0/0 (74.24s), approved
+  cached model, native/Firefox/HTTP, exact output, 8 GiB admission, shared
+  config/selection/lifecycle and registration metrics. Real cached SDK
+  listener event test: 1/0/0 (11.49s), exact failure generation/details
+  for both observers, public 404 redaction. Native and shared Firefox
+  transfer pause/resume/durable and cancellation pass, same operation
+  and joined retirement. Web JS 4/0.
+- Actual existing original Qwen3.5-0.8B CUDA SDK preadmission/refusal/retry
+  fixture: 1/0/0 (20.85s). New assertions check actual admitted PCI
+  0000:01:00.0, 24 compute layers, resident memory admission identity,
+  zero initial counters, one completed 3-token request, one TTFT
+  sample, two decode intervals after request reader retirement.
+  Observed TTFT 2395219198ns, decode intervals 2 / 1558788340ns; these
+  are acceptance observations only, not benchmark/parity/overhead
+  evidence. GPU returned to 37 MiB and no compute owners; temporary
+  existing CUDA include view removed. No download, no hardware reset.
+  HIP layer placement not requalified; unsupported/older adapter maps
+  remain absent. Optional M2 unchanged.
+
+**Assembled gate:** first complete attempt stopped at the full-default
+test helper compilation (E0425); repaired and rerun from the beginning.
+Full-default strict lint and preceding source-only GPU checks now pass.
+The complete isolated gate remains pending until terminal success.
+Do not close P4B until complete actual isolated gate passes. Prior UX-1–10
+and bounded Phase 1 remain accepted. Public serving follows P4B; optional
+M2 is not a blocker. Actual local evidence in target/ux-p4b-*.log
+(ignored build outputs, not required portable evidence).
+
+### Prior checkpoint — UX-P-M1 live model performance (26 Nov)
 
 User asked for elegant live TPS/TTFT averages and optional deeper layer/
 device performance inspection. Owning design: [LIVE_MODEL_PERFORMANCE.md](../plans/cli-ux/LIVE_MODEL_PERFORMANCE.md).

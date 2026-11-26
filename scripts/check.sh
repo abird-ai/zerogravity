@@ -50,6 +50,15 @@ for selected in ["cpu,model-qwen35,text", "cpu,model-qwen35,text,cache"]:
             "zerogravity-gpu", "zerogravity-serving", "ureq", "ureq-proto", "rustls", "url",
             "signal-hook", "signal-hook-registry"
         }, (selected, line)
+web_tree = subprocess.check_output([
+    "cargo", "tree", "--locked", "--offline", "-p", "zerogravity-cli", "--no-default-features",
+    "--features", "web", "--edges", "normal,build", "--prefix", "none", "--format", "{p}"
+], text=True)
+for line in web_tree.splitlines():
+    name = line.split()[0]
+    assert not name.startswith(("cubecl", "tracel-llvm", "ratatui", "crossterm")) and name not in {
+        "zerogravity-gpu", "zerogravity-serving", "zerogravity-cpu", "ureq", "ureq-proto", "rustls"
+    }, ("web", line)
 PYWORKSPACE
 
 echo "Checking CPU clippy (including explicit CPU diagnostics)..."
@@ -104,6 +113,7 @@ cargo check --locked --offline -p zerogravity-model-qwen35 --no-default-features
 cargo check --locked --offline -p zerogravity-model-gemma4 --no-default-features
 cargo test --locked --offline -p zerogravity --no-default-features --features model-gemma4 --test gemma_contract
 cargo check --locked --offline -p zerogravity-cli --no-default-features
+cargo clippy --locked --offline -p zerogravity-cli --no-default-features --features web --all-targets -- -D warnings
 
 echo "Checking optional local artifact-cache transactions and diagnostics..."
 cargo clippy --locked --offline -p zerogravity-artifacts --no-default-features --features cache --all-targets -- -D warnings
@@ -128,8 +138,10 @@ if [[ "$(uname -s)" == Linux ]]; then
   echo "Checking explicit HTTP-free cache loading and shared CPU preparation..."
   cargo clippy --locked --offline -p zerogravity-cli --no-default-features --features cache --all-targets -- -D warnings
   cargo test --locked --offline -p zerogravity-cli --no-default-features --features cache --all-targets
-  cargo clippy --locked --offline -p zerogravity -p zerogravity-cli --features zerogravity-cli/cache --all-targets -- -D warnings
-  cargo test --locked --offline -p zerogravity -p zerogravity-cli --features zerogravity-cli/cache --all-targets
+  # Preserve the former CPU product coverage independently of the full CLI default.
+  cpu_product='zerogravity-cli/cpu,zerogravity-cli/model-qwen35,zerogravity-cli/text,zerogravity-cli/tui,zerogravity-cli/web,zerogravity-cli/cache'
+  cargo clippy --locked --offline -p zerogravity -p zerogravity-cli --no-default-features --features "$cpu_product" --all-targets -- -D warnings
+  cargo test --locked --offline -p zerogravity -p zerogravity-cli --no-default-features --features "$cpu_product" --all-targets
   echo "Checking optional acquisition with isolated loopback fixtures..."
   echo "Checking serving shutdown and owned provider stop evidence..."
   cargo clippy --locked --offline -p zerogravity-cli --no-default-features --features serve --all-targets -- -D warnings
@@ -140,7 +152,7 @@ if [[ "$(uname -s)" == Linux ]]; then
 
   cargo clippy --locked --offline -p zerogravity-artifacts --no-default-features --features acquisition --all-targets -- -D warnings
   cargo clippy --locked --offline -p zerogravity-cli --no-default-features --features acquisition --all-targets -- -D warnings
-  cargo check --locked --offline -p zerogravity-cli --features acquisition
+  cargo check --locked --offline -p zerogravity-cli --no-default-features --features cpu,model-qwen35,text,tui,web,acquisition
   cargo clippy --locked --offline -p zerogravity-artifacts --no-default-features --features acquisition,diagnostic-acquisition,diagnostic-cache --all-targets -- -D warnings
   cargo test --locked --offline -p zerogravity-artifacts --no-default-features --features acquisition,diagnostic-acquisition,diagnostic-cache --all-targets
   cargo clippy --locked --offline -p zerogravity-cli --no-default-features --features acquisition,diagnostic-acquisition --all-targets -- -D warnings

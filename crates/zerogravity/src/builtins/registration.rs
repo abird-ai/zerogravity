@@ -529,16 +529,15 @@ fn original_snapshot(
                 "declared target differs from approved snapshot",
             ));
         }
-        if let Some(source) = &model.source {
-            if !matches!(SourceSelector::parse(source).map_err(ServiceError::inference)?,
+        if let Some(source) = &model.source
+            && !matches!(SourceSelector::parse(source).map_err(ServiceError::inference)?,
                 SourceSelector::HuggingFace(repository) if repository == spec.repository)
-            {
-                return Err(ServiceError::new(
-                    400,
-                    "unsupported",
-                    "HF source selector must match the pinned approved repository",
-                ));
-            }
+        {
+            return Err(ServiceError::new(
+                400,
+                "unsupported",
+                "HF source selector must match the pinned approved repository",
+            ));
         }
         if selected.is_some_and(|prior| prior != spec.snapshot_sha) {
             return Err(ServiceError::new(

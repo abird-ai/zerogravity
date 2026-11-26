@@ -675,7 +675,11 @@ not mark an untested or interrupted phase accepted.
     pass. Full combined final run and comprehensive gate at P4B.
     No new dependency, runtime authority or output/history store.
   - [ ] P4B full offline isolated workspace gate and final real
-    resident/transfer/config acceptance on assembled source. Review
+    resident/transfer/config acceptance on assembled source. Actual
+    combined cached CPU/Firefox/native/HTTP 6/0/0, cached SDK listener
+    1/0/0, native/shared transfer durable/cancel, full default linked
+    TUI/Web shell and strict lint passed (26 Nov). Complete isolated gate
+    still required; see current handoff. Review
     remaining compact affordances and rendered terminal legibility;
     no golden matrix. Native Auto remains conservative hint fallback,
     active probe deferred unless separately approved. No public

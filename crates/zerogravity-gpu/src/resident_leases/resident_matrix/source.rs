@@ -24,9 +24,11 @@ impl Bf16MatrixSource {
     pub(crate) fn matrix(&self) -> &VerifiedMatrix {
         &self.matrix
     }
+    #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
     pub(crate) fn rows(&self) -> usize {
         self.geometry.rows()
     }
+    #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
     pub(crate) fn columns(&self) -> usize {
         self.geometry.row_bytes() / 2
     }

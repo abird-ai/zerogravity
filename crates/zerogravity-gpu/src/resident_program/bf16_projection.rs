@@ -431,6 +431,7 @@ impl PreparedBf16Projection {
             .await
     }
 
+    #[allow(clippy::too_many_arguments)] // Explicit flight, bindings and retained projection modes.
     async fn enqueue_rows_with_options(
         &self,
         flight: &mut Flight<'_>,

@@ -45,6 +45,7 @@ fn rounded_index(
 /// even lane performs the global load, while both lanes keep their original
 /// low/high-half arithmetic. shared_pair=false compiles to the canonical
 /// independent load with no runtime branch.
+#[allow(clippy::manual_is_multiple_of)] // CubeCL scalar IR uses explicit remainder.
 #[cube]
 fn packed_word(values: &[u32], word: usize, lane: usize, #[comptime] shared_pair: bool) -> u32 {
     if comptime!(shared_pair) {
@@ -68,6 +69,7 @@ fn packed_word(values: &[u32], word: usize, lane: usize, #[comptime] shared_pair
 /// shared_pair changes only how the already-packed u32 reaches adjacent lanes;
 /// each lane extracts the same original BF16 and keeps the same FMA and
 /// reduction order.
+#[allow(clippy::assign_op_pattern)] // Preserve exact shared-memory load/store lowering.
 #[cube]
 fn project_value(
     weights: &[u32],
@@ -207,6 +209,7 @@ fn project_value(
 /// the 64-thread kernel: output16 serialized project time was 577.7ms here vs
 /// 561.1ms selected, and whole-model wall time regressed.
 #[allow(dead_code)]
+#[allow(clippy::assign_op_pattern)] // Preserve exact shared-memory load/store lowering.
 #[cube(launch_unchecked)]
 pub(crate) fn project_cpu_bf16_wave32(
     weights: &[u32],
@@ -509,6 +512,7 @@ pub(crate) fn project_cpu_bf16_input_certified(
 /// Current gfx1150 Qwen keeps rows1: the dominant3584x1024 shape flipped sign
 /// between repeats, contraction lost materially, and other expansion gains were small.
 #[allow(dead_code)]
+#[allow(clippy::assign_op_pattern)] // Preserve exact shared-memory load/store lowering.
 #[cube(launch_unchecked)]
 pub(crate) fn project_cpu_bf16_rows2(
     weights: &[u32],
@@ -631,6 +635,7 @@ pub(crate) fn project_cpu_bf16_rows2(
 /// the scalar kernel's FMA order, reduction tree, rounding and status contract.
 /// Current gfx1150 Qwen keeps the scalar row kernel because rows4 loses wall time.
 #[allow(dead_code)]
+#[allow(clippy::assign_op_pattern)] // Preserve exact shared-memory load/store lowering.
 #[cube(launch_unchecked)]
 pub(crate) fn project_cpu_bf16_rows4(
     weights: &[u32],
@@ -755,6 +760,8 @@ pub(crate) fn project_cpu_bf16_rows4(
 /// Gfx1151 retains this alternate without selecting it: tile2/4 loses direct
 /// device time to independent input rows on the measured 8/47-row shapes.
 #[allow(dead_code)]
+#[allow(clippy::assign_op_pattern)] // Preserve exact shared-memory load/store lowering.
+#[allow(clippy::manual_div_ceil)] // CubeCL scalar IR uses explicit tile division.
 #[cube(launch_unchecked)]
 pub(crate) fn project_cpu_bf16_requests(
     weights: &[u32],

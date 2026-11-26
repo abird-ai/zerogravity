@@ -140,8 +140,12 @@ strings, paths, token IDs, credentials or diagnostic history in samples.
 - [ ] UX-P4B comprehensive isolated workspace gate on assembled source,
   actual cached resident and simultaneous transfer/config qualification,
   default full production link/launch; hardware placement qualification
-  on original existing routes before claim. Preserve prior GPU lint debt
-  and feature boundaries. No performance comparison claim from these UX
+  on original existing routes before claim. L5 actual original CUDA
+  source SDK 1/0/0 confirms 24 compute layers on admitted PCI, exact
+  registration counters and retirement; HIP map not requalified. Full
+  production linked launch and strict lint pass, prior CPU cache and
+  Web isolation preserved. Complete isolated gate pending.
+  No performance comparison claim from these UX
   observations. Public serving remains after UX-P exit.
 
 M1 is the minimal useful dashboard; M2 expands detail only on request and

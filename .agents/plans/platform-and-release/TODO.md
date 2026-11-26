@@ -96,5 +96,16 @@ build or general model/backend grant. Historical failures keep their source scop
 
 ## Tests and verification
 
+- [x] Separate full native Cargo CLI product from explicit portable CPU
+  Nix/cross-release assets. Full native source build/install uses the
+  production default; L5 isolated linked debug launch/version/help/doctor
+  and native/Web smoke verified. Existing portable feature selections stay
+  unchanged. Loader availability and qualified execution are distinct from
+  compiled features.
+- [ ] Future all-backend distributed native artifacts: qualify toolchain,
+  runtime library availability, target linkage and installer authenticity
+  independently of the existing portable CPU releases; no silent change to
+  those release definitions or claim of cross-target execution.
+
 - [ ] Qualify all six [CPU release definitions](../../../docs/DEVELOPMENT.md#cpu-cross-release-definitions) with actual target execution, installer checksum/version/refusal cases and platform signing/authenticity policy. Build definitions and same-host checks do not establish other-target support.
 - [ ] Test enabled NixOS service lifecycle and runtime-secret handling after serving is implemented; the currently disabled service definition and module evaluation are not a running-server claim.

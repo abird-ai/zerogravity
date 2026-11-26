@@ -537,7 +537,8 @@ fn every_explicit_device_compatible_before_source_effects() {
 }
 
 #[cfg(all(
-    all(feature = "model-qwen35", feature = "cuda"),
+    feature = "model-qwen35",
+    feature = "cuda",
     not(feature = "qwen35-cuda-qualification"),
     target_os = "linux"
 ))]
@@ -575,7 +576,8 @@ fn ordinary_qwen_cuda_explicit_targets_reach_shared_device_discovery() {
 }
 
 #[cfg(all(
-    feature = "qwen35-cuda-serving",
+    feature = "model-qwen35",
+    feature = "cuda",
     not(feature = "qwen35-cuda-qualification"),
     target_os = "linux"
 ))]

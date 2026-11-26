@@ -255,6 +255,7 @@ impl Cold {
         .await
     }
 
+    #[allow(clippy::too_many_arguments)] // Borrowed state, slot and view bindings share the original flight.
     pub(super) async fn node_views(
         &self,
         flight: &mut Flight<'_>,

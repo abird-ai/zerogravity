@@ -3,6 +3,10 @@ use cubecl::prelude::{AddressType, BufferCompilationArg, ExecutionMode, KernelSe
 use cubecl::{client::Client, prelude::CubeDim};
 use cubecl_server::kernel::CubeKernel;
 use zerogravity_core::Result;
+#[allow(
+    dead_code,
+    reason = "retained direct chunk kernel set; physical qualification consumer"
+)]
 pub(crate) fn kernels(
     client: &Client,
     heads: usize,

@@ -41,14 +41,18 @@ Run the complete repository gate with the approved cached inputs and actual
 user/network isolation:
 
 ```sh
-CARGO_BUILD_JOBS=2 RAYON_NUM_THREADS=4 python3 scripts/native-gpu.py -- bash scripts/check.sh
+CARGO_BUILD_JOBS=2 RAYON_NUM_THREADS=4 python3 scripts/native-gpu.py --require-private-network -- bash scripts/check.sh
 ```
 
-[check.sh](../scripts/check.sh) selects the CPU owners, optional cache tests and
-feature-isolation checks explicitly. A workspace-wide `--all-features` check also
-selects GPU diagnostics and is not the default CPU gate. Trained-model and
-physical-device tests require their actual fixtures, permissions and qualified
-scope; ordinary builds and source-free tests do not replace them.
+[check.sh](../scripts/check.sh) selects CPU owners, optional cache/acquisition
+tests and Web-only isolation explicitly, alongside the separate full-native
+production check and strict lint. A workspace-wide `--all-features` check also
+selects GPU diagnostics and is not equivalent to the normal production default.
+The native Cargo build/install above is the full-product source path; the
+explicit CPU Nix/cross-release definitions below remain portable artifacts,
+not a claim of an all-backend distributed release. Trained-model and physical
+device tests require actual fixtures, permissions and qualified scope; ordinary
+builds and source-free tests do not replace them.
 
 For a smaller or portable product, select features explicitly. For example,
 the CPU-only CLI (the portable Nix/release choice):
