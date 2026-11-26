@@ -962,3 +962,34 @@ fn persistent_wire_budget_is_not_reset_by_next_request() {
     server.shutdown().unwrap();
     assert_eq!(host.serving_bytes(), baseline);
 }
+
+#[test]
+fn multipart_foundation_does_not_publish_media_or_bypass_text_content_policy() {
+    let _lock = test_support::lock();
+    let host = test_support::host();
+    let baseline = host.serving_bytes();
+    let service = Script::new(host.clone());
+    let server = ServerBuilder::from_service(service.clone())
+        .bind("127.0.0.1:0".parse().unwrap())
+        .api_key(Some("secret".into()))
+        .build()
+        .unwrap()
+        .start()
+        .unwrap();
+    let form = "--example\r\nContent-Disposition: form-data; name=\"file\"; filename=\"audio.bin\"\r\n\r\nhello\r\n--example--\r\n";
+    for (path, status) in [("/v1/audio/transcriptions", 404), ("/v1/completions", 415)] {
+        let raw = format!(
+            "POST {path} HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer secret\r\nContent-Type: multipart/form-data; boundary=example\r\nContent-Length: {}\r\n\r\n{form}",
+            form.len()
+        );
+        let response = exchange(server.local_addr(), &raw);
+        assert!(
+            response.starts_with(&format!("HTTP/1.1 {status}")),
+            "{response}"
+        );
+    }
+    assert!(service.requests.lock().unwrap().is_empty());
+    server.shutdown().unwrap();
+    drop(service);
+    assert_eq!(host.serving_bytes(), baseline);
+}

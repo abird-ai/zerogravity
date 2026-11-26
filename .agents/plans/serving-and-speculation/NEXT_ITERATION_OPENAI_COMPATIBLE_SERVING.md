@@ -6,7 +6,7 @@ scaffolding), CLI/TUI/Web and serving, ROCm, CUDA, Vulkan, then concrete
 compiled providers. Native Hugging Face/Safetensors and GGUF are primary.
 Older ordering below is context; valid owner constraints remain authoritative.
 
-Status: **OA-1A and OA-1B ingress/WebSocket primitives accepted; public chunked text accepted** (27 Nov). Multipart remains open; OA-2 and later remain ordered.
+Status: **OA-1 async transport substrate accepted; OA-2 semantic request/model-template boundary next** (27 Nov). OA-3 and later remain ordered.
 
 26 Nov user decision: [UX-P native TUI polish](../cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md)
 was the prerequisite. The assembled P4B gate passed on ad7a4178;
@@ -1215,16 +1215,37 @@ The full isolated retry on 08a9d30e exited 0 (2,546/0/109 across 318
 Rust suites; real cached CPU consumers and SDK passed). Exact Nix
 source-integrity remains unverified because locked inputs are absent.
 
-Remaining multipart blocker: `multer` 3.1.0 is indexed locally; a
-metadata-only offline resolution resolves its 20 registry packages and
-only the multer archive/source is absent. Acquire that pinned archive
-with explicit authorization and checksum verification before review. Cached `form-data 0.6.0` was reviewed and
-rejected: its decoder loops after truncated input and can treat malformed
-boundary suffixes as EOF. Do not substitute that parser or a whole-body
-email MIME decoder for strict streaming form-data. Obtain authorized pinned
-multipart acquisition, then qualify bounded part/aggregate admission and
-cleanup. No automatic download, homegrown parser or fake endpoints.
-OA-1 stays open and OA-2 remains ordered.
+**Multipart foundation (27 Nov).** Acquired only the authorized
+`multer 3.1.0` registry archive; SHA-256 matches the existing cached
+registry index. Other resolved dependencies were already cached.
+Cached form-data 0.6.0 remains rejected (truncated-input loop and invalid
+termination). Multer owns the parser; a narrow vendored patch rejects
+duplicate part headers and requires the initial delimiter at body start
+and final delimiter, optional transport padding/CRLF, and actual decoded
+HTTP EOF before success. Preamble/epilogue are deliberately outside this
+HTTP form subset. No separate handwritten parser. Source/license and
+patch provenance retained under the serving vendor tree.
+
+The existing decoded-body reader feeds the parser cooperatively, one
+frame at a time. Original aggregate byte cap, absolute deadline and
+trailer refusal remain authoritative. Conservative parser headroom and
+bounded retained metadata are admitted before parsing; each part uses the
+same exact charged backing growth as JSON, including old/new overlap.
+Part count and per-part bytes are bounded; completed forms retain bytes
+and metadata together. No filename-to-path interpretation, implicit
+transfer decoding, persistent upload store or detached parser task.
+Private actual TCP fixtures exercise the shared header/auth validation,
+fixed/chunked forms, fragmented delimiters, repeated fields, binary/empty
+fields, invalid/truncated forms, actual host budget refusal, size/count
+bounds, trailers/deadlines and cancellation retirement. Ordinary server
+still refuses media endpoints and multipart on JSON text routes. No new
+model semantics or public Realtime/media claims.
+
+Focused serving 38/0/0 and strict lint passed. Actual cached CLI/TUI/Web
+and SDK passed (76.57s and 14.07s). Full isolated assembled gate passed
+(902.1s): 2,551/0/109 across 318 Rust suites, release TUI/Web, installer
+and scripts. OA-1 accepted; exact Nix source-integrity remains separately
+unverified because four locked inputs are unavailable. OA-2 is next.
 
 ### OA-2 — semantic request model and model template boundary
 

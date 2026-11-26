@@ -41,6 +41,14 @@ impl Reader {
         })
     }
 
+    pub(super) fn limit(&self) -> usize {
+        self.declared.unwrap_or(self.limit)
+    }
+
+    pub(super) fn deadline(&self) -> Instant {
+        self.deadline
+    }
+
     /// The consumer must use a frame before reading the next one or charge
     /// its own retained copy. Hyper's bounded receive buffer is connection
     /// headroom, not another application allocation.
@@ -105,6 +113,56 @@ pub(super) struct Collected {
     charge: ServingCharge,
 }
 impl Collected {
+    pub(super) fn new(
+        initial: usize,
+        service: &dyn TextService,
+        session: &str,
+    ) -> Result<Self, ServiceError> {
+        let charge = service.charge_ingress(session, initial as u64)?;
+        Ok(Self {
+            backing: allocate_bytes(initial)?,
+            used: 0,
+            charge,
+        })
+    }
+
+    pub(super) fn append(
+        &mut self,
+        data: &[u8],
+        limit: usize,
+        service: &dyn TextService,
+        session: &str,
+    ) -> Result<(), ServiceError> {
+        let end = self
+            .used
+            .checked_add(data.len())
+            .filter(|end| *end <= limit)
+            .ok_or_else(|| ServiceError::new(413, "body_too_large", "HTTP body too large"))?;
+        if end > self.backing.len() {
+            let capacity = end
+                .checked_next_power_of_two()
+                .unwrap_or(limit)
+                .max(4096)
+                .min(limit);
+            let charge = service.charge_ingress(session, capacity as u64)?;
+            let mut backing = allocate_bytes(capacity)?;
+            backing[..self.used].copy_from_slice(&self.backing[..self.used]);
+            self.backing = backing;
+            self.charge = charge;
+        }
+        self.backing[self.used..end].copy_from_slice(data);
+        self.used = end;
+        Ok(())
+    }
+
+    #[allow(
+        dead_code,
+        reason = "multipart staging remains internal until modality routes are installed"
+    )]
+    pub(super) fn bytes(&self) -> &[u8] {
+        &self.backing[..self.used]
+    }
+
     pub(super) fn into_parts(self) -> (Box<[u8]>, usize, ServingCharge) {
         (self.backing, self.used, self.charge)
     }
@@ -114,30 +172,10 @@ pub(super) async fn collect(
     mut reader: Reader,
     service: &dyn TextService,
 ) -> Result<Collected, ServiceError> {
-    let initial = reader.declared.unwrap_or(0);
-    let charge = service.charge_ingress("http-body", initial as u64)?;
-    let mut body = Collected {
-        backing: allocate_bytes(initial)?,
-        used: 0,
-        charge,
-    };
+    let limit = reader.limit();
+    let mut body = Collected::new(reader.declared.unwrap_or(0), service, "http-body")?;
     while let Some(data) = reader.next().await? {
-        let end = reader.received;
-        if end > body.backing.len() {
-            // The reader has already checked the cumulative cap.
-            let capacity = end
-                .checked_next_power_of_two()
-                .unwrap_or(reader.limit)
-                .max(4096)
-                .min(reader.limit);
-            let charge = service.charge_ingress("http-body", capacity as u64)?;
-            let mut backing = allocate_bytes(capacity)?;
-            backing[..body.used].copy_from_slice(&body.backing[..body.used]);
-            body.backing = backing;
-            body.charge = charge;
-        }
-        body.backing[body.used..end].copy_from_slice(&data);
-        body.used = end;
+        body.append(&data, limit, service, "http-body")?;
     }
     Ok(body)
 }

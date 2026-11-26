@@ -34,7 +34,50 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — OA-1B public chunked text / strict framing (26 Nov)
+### Current checkpoint — OA-1 accepted; OA-2 semantic request next (27 Nov)
+
+Started from clean signed 715127cc on L5. Acquired only multer 3.1.0
+from crates.io after user continuation of the explicit dependency request.
+Archive SHA-256 matched the cached index
+83e87776546dc87511aa5ee218730c92b666d7264ab6ed41f9d215af9cd5224b.
+All other resolved dependencies were already cached; builds remain offline.
+Vendor source/license/provenance retained with narrow strict form policy:
+initial delimiter at body start, final delimiter with optional transport
+padding/CRLF and actual decoded EOF, duplicate part header refusal.
+No MIME preambles/epilogues; no second parser. Existing upstream field
+streaming and size constraints retained.
+
+Shared Reader feeds Multer cooperatively, under original decoded aggregate
+cap, absolute deadline and trailer/length checks. Charge conservative parser
+headroom and bounded retained metadata before parsing; reuse exact charged
+Collected backing and growth-overlap for individual parts. Completed form
+owns parts and metadata together. No filename-to-path use, automatic transfer
+decoding, detached task or persistent upload store. Dormant private
+primitive until real modality route; ordinary server media refusal and
+JSON text policy preserved. Repeated fields preserve order and remain
+subject to future endpoint-specific semantic validation.
+
+Focused serving 38/0/0, strict lint and architecture pass. Actual private
+TCP fixtures verify authorization before read, fixed/chunked binary/text/
+empty parts, fragmented delimiters, actual admission pressure, count/part/
+aggregate bounds, malformed and incomplete forms, closing delimiter
+without HTTP EOF, trailers, timeout and dropped connection ownership.
+Existing public listener still refuses unimplemented media and multipart
+on text endpoints. Actual cached CLI/TUI/Web (76.57s) and SDK (14.07s)
+regressions each passed 1/0/0. Full assembled isolated gate exited 0
+(902.1s): 2,551/0/109 across 318 Rust suites, strict lint, backend
+feature boundaries, release TUI/Web, installer and scripts. Logs: `target/oa1b-multipart-focused-final.log`,
+`target/oa1b-multipart-real-consumers.log`, `target/oa1b-multipart-assembled.log`.
+Exact Nix source-integrity remains separately blocked by four unavailable
+locked inputs; prior Nix syntax passed. No new model/physical GPU or
+performance claims. OA-1 transport substrate accepted. Next OA-2:
+introduce shared typed semantic requests/events and move model-specific
+chat/template lowering out of HTTP. Preserve the original engine,
+admission, listener, source identity and CLI behavior. Adapt CLI run,
+Chat Completions and legacy Completions to the same seam; no new Responses
+endpoint until OA-2 is qualified.
+
+### Prior checkpoint — OA-1B public chunked text / strict framing (26 Nov)
 
 Source authoring began from clean synchronized signed `3156ce45` on L5.
 Cached Hyper 1.13.0 archive verified against the locked checksum; vendored

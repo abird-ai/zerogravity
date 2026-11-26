@@ -87,13 +87,23 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   installer and scripts. Nix source filter/check updated and syntax passes;
   exact locked source-integrity derivation blocked by four unavailable
   flake source hashes offline. No new physical GPU qualification.
-- [ ] OA-1B multipart: acquire approved pinned mature multipart decoder
-  (multer 3.1.0 indexed; offline resolution of 20 registry packages
-  lacks only its archive, checksum recorded in current handoff);
-  cached form-data 0.6.0 rejected
-  on truncated-input loop and invalid boundary termination. Qualify
-  bounded per-part/aggregate admission and cleanup. No second HTTP parser,
-  automatic downloads or fake modality endpoint. OA-2 follows OA-1.
+- [x] OA-1B multipart: acquired only pinned multer 3.1.0 with index
+  checksum verification; other dependencies cached. Vendor strict initial/
+  final delimiter, decoded EOF and duplicate part header policy in its
+  existing state machine. Reuse original bounded reader, shared charged
+  backing, aggregate/per-part/count and metadata bounds, absolute deadline
+  and cancellation ownership. Private real socket tests verify complete
+  forms and rollback including real host-budget refusal; ordinary server
+  refuses media and non-JSON text input. Focused 38/0/0, strict lint,
+  architecture passed. Real cached CLI/TUI/Web and SDK passed (76.57s
+  and 14.07s). Full isolated gate exited 0 (902.1s): 2,551/0/109 across
+  318 Rust suites, release TUI/Web, installer and scripts. Exact Nix
+  source-integrity remains separately unverified. No second parser, media
+  capability or new scheduler. OA-1 accepted.
+- [ ] OA-2: shared typed semantic request/event boundary; model-owned
+  chat/template lowering; CLI run, Chat Completions and legacy Completions
+  consume the same semantic path. Preserve exact source/model/runtime,
+  auth, admission and cancellation; qualify before OA-3 Responses.
 
 ### Current continuation — 22 Nov 2026
 

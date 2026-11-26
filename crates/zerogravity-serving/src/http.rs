@@ -17,6 +17,12 @@ use zerogravity_engine::router::{FailureDetails, Request, ServiceError, TokenMet
 
 mod body;
 mod ingress_body;
+// Dormant until a real modality route consumes admitted forms.
+#[allow(
+    dead_code,
+    reason = "reusable multipart transport primitive qualified by real socket tests"
+)]
+mod multipart;
 mod transport;
 mod websocket;
 pub(crate) use transport::{SERVER_HEADROOM, ServeConfig, Shutdown, serve};

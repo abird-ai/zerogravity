@@ -5,6 +5,18 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 27 Nov — OA-1B multipart foundation
+
+Pinned checksum-verified Multer 3.1.0, strict complete form termination
+and duplicate part header policy. Shared bounded Reader/charged part
+backing and metadata, actual private TCP validation and rollback; public
+media remains unsupported. Focused 38/0/0, strict lint and architecture
+passed; real cached CLI/TUI/Web (76.57s) and SDK (14.07s) passed.
+Full isolated gate exited 0 (902.1s): 2,551/0/109 across 318 Rust
+suites plus release TUI/Web, installer and scripts. OA-1 accepted;
+OA-2 next. No new physical GPU/performance claim. Exact Nix source-integrity remains
+separately blocked by unavailable locked inputs.
+
 ## 26 Nov — OA-1B public chunked text / strict framing
 
 Cached Hyper 1.13.0 server-parser patch resolves mixed/repeated length

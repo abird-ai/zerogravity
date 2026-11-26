@@ -771,9 +771,11 @@ and accepted (2,544/0/109 across 318 isolated Rust suites; real cached
 CLI/TUI/Web and SDK passed). Public chunked text now uses the same
 bounded reader and a narrow cached Hyper server framing patch; focused
 33/0/0, real cached CLI/TUI/Web/SDK and full isolated retry 2,546/0/109
-(318 suites) passed. Remaining OA-1B multipart
-requires authorized pinned decoder acquisition; OA-2 semantic
-request/model-template boundary follows complete OA-1.
+(318 suites) passed. OA-1B multipart foundation implemented using approved
+checksum-verified Multer and original bounded ingress/staging owners;
+focused 38/0/0, real cached CLI/TUI/Web and SDK, and full isolated gate
+2,551/0/109 (318 suites) passed. OA-1 accepted. OA-2 shared semantic
+request/model-template boundary is next; OA-3 Responses follows OA-2.
 Preserve the original runtime, admission and listener owner.
 
 - [ ] Close the [OpenAI-compatible serving iteration](serving-and-speculation/NEXT_ITERATION_OPENAI_COMPATIBLE_SERVING.md):

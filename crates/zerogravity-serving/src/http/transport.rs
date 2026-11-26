@@ -195,9 +195,10 @@ fn header_value<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
 }
 
 /// Some(length) is fixed length, None is strictly decoded chunked input.
-fn validate_headers(
+pub(super) fn validate_headers(
     parts: &hyper::http::request::Parts,
     limit: usize,
+    accepts_chunked: bool,
 ) -> Result<Option<usize>, ServiceError> {
     let path = parts.uri.path_and_query().map_or("", |uri| uri.as_str());
     if parts.version != Version::HTTP_11 {
@@ -259,14 +260,14 @@ fn validate_headers(
         ));
     }
     if let Some(encoding) = header_value(&parts.headers, "transfer-encoding") {
-        // Only the supported JSON text routes accept decoded chunked bodies.
-        // No other transfer codings or trailers, and no body on an upgrade.
+        // The selected route explicitly admits chunked input. No other
+        // transfer codings or trailers, and no body on an upgrade.
         if !encoding.eq_ignore_ascii_case("chunked")
             || parts.headers.contains_key(header::CONTENT_LENGTH)
             || parts.headers.contains_key(header::TRAILER)
             || parts.headers.contains_key(header::UPGRADE)
             || parts.method != Method::POST
-            || !matches!(path, "/v1/completions" | "/v1/chat/completions")
+            || !accepts_chunked
         {
             return Err(ServiceError::new(
                 400,
@@ -308,7 +309,7 @@ fn validate_headers(
     Ok(Some(length))
 }
 
-fn authorize(headers: &HeaderMap, api_key: Option<&str>) -> Result<(), ServiceError> {
+pub(super) fn authorize(headers: &HeaderMap, api_key: Option<&str>) -> Result<(), ServiceError> {
     if let Some(expected) = api_key {
         let received = header_value(headers, "authorization")
             .and_then(|value| value.strip_prefix("Bearer "))
@@ -351,7 +352,9 @@ impl Connection {
         let result = async {
             host.shutdown.check()?;
             let (parts, incoming) = incoming.into_parts();
-            let length = validate_headers(&parts, host.config.limits.body_bytes)?;
+            let path = parts.uri.path_and_query().map_or("", |uri| uri.as_str());
+            let accepts_chunked = matches!(path, "/v1/completions" | "/v1/chat/completions");
+            let length = validate_headers(&parts, host.config.limits.body_bytes, accepts_chunked)?;
             // Auth before any body read, allocation or model admission.
             host.metrics.accept_request();
             authorize(&parts.headers, host.config.api_key.as_deref())?;

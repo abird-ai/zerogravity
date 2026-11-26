@@ -233,7 +233,7 @@ selected model performance/trend and reported layer placement
 acceptance (CPU/native/Firefox/HTTP, SDK listener, simultaneous transfers,
 actual CUDA layer/counters), full native link/launch and strict lint pass.
 Final assembled private-network gate on ad7a4178 passed 2,539 passed, zero failures, 109 explicit skips across 318 Rust suites; release Web/TUI/installer/scripts passed. UX-P accepted. Proceed to
-public serving OA-1 (bounded async text substrate accepted; OA-1B charged staging and owned WebSocket primitives accepted, strict public chunked text accepted, multipart remains open), then ordinary benchmarks and ordered performance phases.
+public serving OA-1 (bounded async text substrate accepted; OA-1B charged staging and owned WebSocket primitives accepted, OA-1 async transport substrate accepted, OA-2 shared semantic request/model-template boundary next), then ordinary benchmarks and ordered performance phases.
 Optional deeper profiling is not a blocker; see live handoff.
 General UMA/foreign backing, device-write host read, unqualified model/
 backend/media and other expansion holds remain explicit. Historical
