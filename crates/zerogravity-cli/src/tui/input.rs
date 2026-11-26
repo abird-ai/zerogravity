@@ -22,7 +22,6 @@ pub(super) enum Target {
     Scrollbar(Scrollbar),
     Maximize(Pane),
     Focus(Pane),
-    Appearance,
     Theme(ThemeMode),
     Help,
     Palette,

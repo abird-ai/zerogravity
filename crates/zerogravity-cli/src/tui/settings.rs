@@ -63,16 +63,18 @@ pub(super) fn observe(target: Target) -> Result<Observed> {
         result.rows.push(Row {
             key: Key::Setting(row.key.clone()),
             title: format!("{} = {shown}", row.key),
+            annotation: None,
             details: vec![
-                row.key,
-                format!("Value: {shown}"),
-                format!("Origin: {}", row.origin),
                 if row.explicit {
                     "Explicit value".into()
                 } else {
                     "Inherited / built-in".into()
                 },
                 row.help.into(),
+            ],
+            technical: vec![
+                format!("Origin: {}", row.origin),
+                format!("YAML value: {}", raw.trim_end()),
             ],
         });
     }
@@ -86,20 +88,14 @@ pub(super) fn profiles() -> Result<Vec<Row>> {
             let target = Target::profile(&name)?;
             Ok(Row {
                 key: Key::Profile(name.clone()),
-                title: if name == "default" {
-                    "default · config.yaml".into()
+                title: name.clone(),
+                annotation: None,
+                details: vec![if target.path.is_file() {
+                    "Stored document".into()
                 } else {
-                    format!("{name} · profiles/{name}.yaml")
-                },
-                details: vec![
-                    target.path.display().to_string(),
-                    if target.path.is_file() {
-                        "Stored document".into()
-                    } else {
-                        "Built-in defaults (no document created)".into()
-                    },
-                    "Enter opens editor; activation is explicit.".into(),
-                ],
+                    "Built-in defaults (no document created)".into()
+                }],
+                technical: vec![target.path.display().to_string()],
             })
         })
         .collect()

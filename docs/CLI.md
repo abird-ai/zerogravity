@@ -135,8 +135,12 @@ Alt+Left/Right resizes the rail, Ctrl+arrows resize inner splits. F8
 toggles mouse capture for this session; set `ui.mouse: never` (or
 `zg config set ui.mouse never`) to opt out persistently. Terminal text
 selection is emulator-owned (often Shift+drag, or disable capture first).
-Selection alone does not execute. The action strip and More… (F4) menu
-expose the original operations; disabled buttons cannot activate,
+Selection alone does not execute. The minimal action strip (at most three quick actions) and More… (F4) menu
+expose the original operations; secondary operations and appearance
+settings stay in More. Models show aligned human-readable sizes
+(B/KiB/MiB/GiB and larger units). Details… (D) opens the selected exact
+observation, full digest/revision, raw bytes and last action result
+without executing inspection or verification. Disabled buttons cannot activate,
 and changed observations require choosing again. Form and confirmation
 buttons use the same typed actions as Enter/Ctrl-S and y/n/Esc.
 F9 toggles response following. Existing keyboard shortcuts remain.

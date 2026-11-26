@@ -27,7 +27,57 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — UX-P3B settings/filter and editor interaction (26 Nov)
+### Current checkpoint — UX-P4A1 minimal presentation (26 Nov)
+
+User supplied two actual Alacritty screenshots and requested less
+visual overload, no redundant top-bar destinations or random text,
+details on request and smart size units. This overrides the earlier
+wide action strip. Owning UX-P specification §1 and §5.3 updated.
+
+- At most three contextual quick actions + More/F4 regardless of width.
+  Cached Models Load/Run/Search, Catalog/Partial Pull/Search, Home
+  Run/Load; secondary operations, appearance, refresh/quit in menu.
+  No second visible navigation list or duplicate shelf tabs in toolbar.
+  Header brand/profile, quiet footer and active cancellation. Clear
+  old view notice on navigation; retain original work/result identity.
+- Compact Home/Serve/Downloads/Running summaries, one library context
+  row, aligned name/size annotations, selected summary, active profile
+  distinct from selection, compact log/filter/empty states. When both
+  panes visible, no redundant cross-pane switch; maximize retained.
+  Details/D read-only scrollable modal includes exact selected key
+  metadata and last action result, no implicit Inspect/Verify/effect.
+  Row selection/identity and existing More/confirmation guards intact.
+- format.rs automatically selects IEC B/KiB/MiB/GiB/TiB/PiB/EiB with
+  at most two decimals; cached/partial, memory and transfer summaries.
+  Exact bytes available in technical observation, unchanged wire and
+  original effect results. Unknown never becomes zero.
+- Actual TestBackend cell review (example cached model sizes), no
+  raw digest or exact byte count in normal list/detail, explicit
+  Details reveals full digest. Strict feature lint and optimized Rust
+  87/0/3. Native mouse split/scroll/Details, action controls, editor,
+  shell/settings/appearance and actual controlled download passed. Exact default CPU/model/text/
+  TUI/Web release and all native PTY invocations also passed (target/
+  ux-p4a-minimal-default.log).
+  PTY fixture geometry and differential assertions adjusted (including
+  private Web URL fresh paint without logging credential).
+  Actual cached-owner combined reruns reached browser resident success
+  twice; native Details, inspect, verify and alias worked but fixture
+  proceeded before settled receipt/inventory (assertions corrected,
+  guards retained). Last combined rerun timed out at browser model
+  load. Native-only retry explicitly refused original 8 GiB envelope:
+  7,538,163,712 bytes after headroom available (7188 MiB). No lowering
+  admission or touching unrelated host jobs. Final cached-owner rerun
+  pending healthy host, P4A2/P4B; no new full acceptance claim.
+  Logs target/ux-p4a-minimal-final.log, -pty2.log, -pty3.log,
+  -owners2.log, -resident-final.log, -resident-rerun.log, -native-owner.log
+  (all under target/ux-p4a-minimal prefix).
+  No new dependency, runtime authority or model download.
+- Remaining UX-P4A2 stable item/log/output anchors, distinct Running
+  selected-detail/response, safe log details, compact modal/keyboard
+  focus and editor drag edges; P4B simultaneous-owner/full isolated
+  acceptance. No public serving or overall UX-P exit yet.
+
+### Previous checkpoint — UX-P3B settings/filter and editor interaction (26 Nov; 8a2c2ae8)
 
 - New choice.rs finite setting and log picker; initialized from the
   actual observed effective choice. Edit/e uses typed picker, Enter
@@ -63,7 +113,7 @@ reusable work and measured history, not precedence over this order.
   default release gate; target/ux-p3b-default-release.log. Initial fixture assertions corrected for differential
   rendering and the expected ERROR log after deliberate stale refusal.
   Logs target/ux-p3b-final.log and target/ux-p3b-final-rerun.log.
-- **Next UX-P4A:** final ergonomic/visual review, stable item/log/output
+- **Historical P4A scope (P4A1 minimalism landed above):** stable item/log/output
   scroll anchors, distinct Running selected detail/response affordance,
   safe log-row detail, small/modal/keyboard focus and editor drag edge
   cases; finish remaining view actions. P4B final real simultaneous

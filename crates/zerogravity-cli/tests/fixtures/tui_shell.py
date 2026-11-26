@@ -83,8 +83,16 @@ class Terminal:
             os.read(self.master, 65536)
         os.write(self.master, b"b")
         deadline = time.monotonic() + 10
+        repaint = time.monotonic() + 0.8
         data = b""
         while time.monotonic() < deadline:
+            if repaint is not None and time.monotonic() >= repaint:
+                # A differential render may omit a character already
+                # present under the URL. Force one full cell paint, without
+                # copying the private capability into assertion transcripts.
+                self.resize(149 if self.width == 150 else self.width + 1)
+                os.kill(self.proc.pid, signal.SIGWINCH)
+                repaint = None
             if select.select([self.master], [], [], 0.2)[0]:
                 data = (data + os.read(self.master, 65536))[-65536:]
                 match = re.search(rb"http://127\.0\.0\.1:\d+/ui/#control=[a-f0-9]{64}", data)
@@ -94,7 +102,7 @@ class Terminal:
 
     def check_started(self):
         self.until(b"\x1b[?1049h")
-        self.until(b"owners")
+        self.until(b"Local runtime")
         assert termios.tcgetattr(self.slave) != self.initial
 
     def finish(self, *, interactive=True):
@@ -187,7 +195,7 @@ def mouse_interaction(root):
         # catalog entry. Wheel doesn't alter selection; click must use the
         # actual scrolled row, not its index in the unscrolled catalog.
         terminal.send(wheel(30,10), b"gemma4")
-        terminal.send(click(30,9), b"Qwen/Qwen3.8-27B")
+        terminal.send(click(30,5), b"Qwen/Qwen3.8-27B")
         # Drag the rail from its default 22 cells to 29; clicking the newly
         # exposed rail area (previously workspace) must navigate.
         terminal.send(drag(22,18,29,18), b"Models")
@@ -196,12 +204,14 @@ def mouse_interaction(root):
         # Resize the actual inner divider, then select through the newly
         # enlarged list region (which was formerly the detail pane).
         terminal.send(drag(95,15,105,15), b"Selected")
-        terminal.send(click(101,10), b"> qwen3.8-flash-next")
-        terminal.until(b"Source-specific")
+        terminal.send(click(101,6), b"> qwen3.8-flash-next")
+        terminal.send(click(135,4),b"pinned-indexed-safetensors")
+        os.write(terminal.master,b"\x1b")
+        time.sleep(0.2)
         # Maximize the list; select a row in the former details area, then
         # restore its old split and observe the selected exact source.
-        terminal.send(click(102,8) + click(140,9), b"> qwen3.8-27b")
-        terminal.send(click(147,8), b"Qwen/Qwen3.8-27B")
+        terminal.send(click(102,4) + click(140,5), b"> qwen3.8-27b")
+        terminal.send(click(147,4), b"Qwen/Qwen3.8-27B")
         # Focus details and return with keyboard equivalence. Opening a
         # modal masks every hit target behind it.
         terminal.send(b"\x1b[17~?", b"Help")
@@ -224,7 +234,7 @@ def mouse_interaction(root):
         terminal.send(click(2,0),b"Navigation")
         terminal.send(click(4,5),b"Cached")
         terminal.send(click(12,3),b"qwen3.5-plus")
-        terminal.send(drag(25,15,25,16) + click(4,15),b"> qwen-gguf-quant")
+        terminal.send(drag(25,13,25,14) + click(4,13),b"> gemma4-26b-a4b-it")
         # Narrow view collapses to one pane; Nav remains available.
         terminal.resize(30)
         os.kill(terminal.proc.pid,signal.SIGWINCH)
@@ -346,11 +356,11 @@ def mouse_controls(root):
         client.closed()
     with Terminal(root,[],width=50,height=18) as terminal:
         terminal.check_started()
-        terminal.send(b"\x1bOS",b"Actions")
+        terminal.send(b"\x1bOS",b"> Run  (Enter)")
         terminal.send(b"\r",b"Quick run source")
         os.write(terminal.master,b"\x1b")
         time.sleep(0.2)
-        terminal.send(click(46,1),b"Actions")
+        terminal.send(click(46,1),b"> Run  (Enter)")
         os.write(terminal.master,b"\x1b")
         time.sleep(0.2)
         os.write(terminal.master,b"q")
@@ -403,10 +413,10 @@ def editor_and_choices(root):
         # Log filter choices are local, not configuration writes.
         before = document.read_bytes()
         terminal.send(b"9",b"Operational logs")
-        terminal.send(click(48,1),b"All levels")
+        terminal.send(click(35,1),b"All levels")
         terminal.send(click(51,19),b"> ERROR")
         terminal.send(click(99,21),b"returned")
-        terminal.send(click(58,1),b"All components")
+        terminal.send(click(45,1),b"All components")
         terminal.send(click(51,15),b"> action")
         terminal.send(click(99,23),b"action")
         assert document.read_bytes()==before
@@ -415,7 +425,7 @@ def editor_and_choices(root):
         # query via a drag selection, not a remote provider query.
         terminal.send(b"4",b"Cached")
         terminal.send(click(35,3),b"qwen3.5-plus")
-        terminal.send(click(117,1),b"Enter search")
+        terminal.send(click(33,1),b"Enter search")
         terminal.send(b"gemma4" + click(105,24),b"gemma4-e2b-it")
         terminal.send(b"/",b"Enter search")
         x=(terminal.width-76)//2+1
@@ -455,7 +465,7 @@ def appearance(root):
     with Terminal(root, [], width=100, height=28, hints=hints) as terminal:
         terminal.repaint_on_wait = True
         terminal.check_started()
-        terminal.until(b"Auto")
+        terminal.until(b"Quick")
         assert b"48;2;255;255;255" in terminal.transcript
         terminal.send(b"T", b"ui.theme = auto")
         terminal.send(b"\r", b"Enter apply")
@@ -674,11 +684,21 @@ def lifecycle(root, expected):
         terminal.send(click(28,1), b"MODEL")
         terminal.send(click(105,24), b"accepted", 60)
         terminal.send(b"4", b"fixture/serve")
-        terminal.send(click(47,1), b"checked;")
-        terminal.send(click(73,1), b"verified", 60)
-        terminal.send(click(82,1), b"replacement.")
+        # Exact snapshot identity is disclosed only on request.
+        terminal.send(click(terminal.width-14,4),b"sha256:")
+        os.write(terminal.master,b"\x1b")
+        time.sleep(0.2)
+        def model_action(index,expected,seconds=10):
+            terminal.send(click(terminal.width-4,1),b"Actions")
+            terminal.send(click(45,10+index),expected,seconds)
+        model_action(3,b"checked;")
+        model_action(5,b"Payloads",60)
+        model_action(6,b"replacement.")
         terminal.send(b"tui-fixture" + click(105,24), b"created", 30)
-        terminal.send(click(108,1), b"confirm")
+        # Alias publication triggers a cold inventory refresh; let the
+        # new observation settle before pressing another exact-row action.
+        time.sleep(0.5)
+        model_action(8,b"confirm")
         os.write(terminal.master, b"n")
         terminal.send(click(32,1), b"Prompt")
         # Original profile raw=true. TUI completion must be actual output.
@@ -786,7 +806,7 @@ def lifecycle(root, expected):
         else:
             terminal.send(b"a", b"Activated")
         assert http("/models") == models
-        terminal.send(b"7", b"local.yaml")
+        terminal.send(b"7", b"local")
         terminal.send(b"j\r", b"run.backend")
         terminal.send(b"a", b"Activated")
         assert http("/models") == models
@@ -802,7 +822,7 @@ def lifecycle(root, expected):
         os.write(terminal.master, b"n")
         assert http("/models") == models
         terminal.send(b"3", b"OpenAI-compatible")
-        terminal.send(click(35,1), b"confirm")
+        terminal.send(click(25,1), b"confirm")
         if client:
             with client.events() as events:
                 terminal.send(click(112,25), b"Listener stopped", 30)
@@ -850,7 +870,7 @@ def lifecycle(root, expected):
             terminal.send(b"\x1b[200~" + prompt.encode() + b"\x1b[201~\r", b"length", 30)
             terminal.send(b"3", address.encode(), 30)
         else:
-            terminal.send(click(41,1), b"confirm")
+            terminal.send(click(33,1), b"confirm")
             terminal.send(b"y", b"retired", 60)
             # The last retirement makes the same runtime available for a new load.
             terminal.send(b"l", b"MODEL")
@@ -1015,7 +1035,7 @@ elif sys.argv[2] == "--download-fixture":
             with Terminal(root, ["--ignored", "--exact", "pull::monitor::tests::monitor_child", "--nocapture"], width=150, height=40) as terminal:
                 terminal.check_started()
                 terminal.send(b"5", b"Paused", 15)
-                terminal.send(click(36,1), b"Running", 15)
+                terminal.send(click(26,1), b"Running", 15)
                 # The existing fixture body accepts 128 bytes per 40 ms.
                 # Allow a prefix before asking for the safe range checkpoint;
                 # the child asserts that an actual second request was made.
@@ -1028,9 +1048,9 @@ elif sys.argv[2] == "--download-fixture":
                 terminal.send(b"1", b"Quick", 15)
                 terminal.send(b"5", b"Paused", 15)
                 if mode == "tui":
-                    terminal.send(click(36,1), b"Snapshot:", 20)
+                    terminal.send(click(26,1), b"Snapshot", 20)
                 else:
-                    terminal.send(click(49,1), b"Cancel", 20)
+                    terminal.send(click(38,1), b"Cancel", 20)
                     time.sleep(0.5)
                     terminal.send(b"1", b"Quick", 15)
                     terminal.send(b"5", b"Cancelled", 15)

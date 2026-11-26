@@ -16,7 +16,7 @@ Cross-window continuation starts at [the canonical current handoff](../docs/CURR
 For the complete current takeover through accepted UX-9B, read the
 [26 Nov comprehensive handoff](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-26_UX9B_EXIT.md) §§0–13;
 the historical continuation was UX-9C (now accepted). The live handoff
-records accepted UX-1–10 and focused-qualified UX-P1/P2/P3. Next: UX-P4 in
+records accepted UX-1–10, focused-qualified UX-P1/P2/P3 and P4A1. Next: P4A2/P4B in
 [UX-P native TUI polish](cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md)
 (mouse, panes, scrolling, themes), added by user decision 26 Nov before
 public serving and ordinary benchmarks; then ordered backend performance.

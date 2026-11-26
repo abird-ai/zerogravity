@@ -4,7 +4,7 @@ Author: Project owner
 Co-authors: GPT-6.2
 Owner: @pvl
 Decision: 26 Nov 2026 — polish before public serving
-Status: UX-P1/P2/P3 implemented and focused-qualified (26 Nov); UX-P4 final ergonomics/acceptance next.
+Status: UX-P1/P2/P3 implemented and focused-qualified (26 Nov); P4A1 minimal presentation revision landed, P4A remaining ergonomics and P4B acceptance next.
 
 This is the follow-on to the accepted UX-1–10 iteration at `1b8de1cb`.
 It supersedes only the relevant interaction/presentation details of
@@ -16,6 +16,32 @@ product polish phase (UX-P), not a redesign of the execution fabric.
 Complete it before §2.3 public serving/ordinary benchmarks.
 
 ## 1. Intent
+
+**26 Nov screenshot review — user-directed minimalism correction.**
+Full accessibility is not exhaustive visibility. Wide terminals must
+not fill available columns with redundant actions. The left rail owns
+visible destinations; global actions and secondary operations belong
+in More/F4, not another toolbar. The app header owns only brand and
+active profile; theme remains in Config/More/T. Default surfaces show
+meaningful current state and concise summaries, not policy slogans,
+repeated shortcuts, long exact IDs or raw bytes. Empty space is allowed.
+Retain one or two primary operations plus search where useful; at most
+three quick actions and More, independent of terminal width. No new
+dashboard/cards/extra UI layer. Render a compact Details action for
+selected observations; exact identity, full revisions, provenance,
+raw byte counts and last diagnostic results are on demand. Preserve
+all original keyboard and effect authorization paths.
+
+Human-readable memory/model/transfer sizes use automatic binary
+B/KiB/MiB/GiB/TiB/PiB/EiB (up to two decimals, no trailing zeros).
+Exact bytes remain in technical details and unchanged machine-readable
+owner data. Unknown remains unknown. Do not infer verified payloads,
+model execution or remote freshness from cached metadata.
+
+This decision supersedes the earlier generous wide action strip and
+repeated key-hint/policy lines in §§4–6. Subsequent polish must preserve
+the restrained hierarchy, not spend newly available space on more chrome.
+
 
 A quiet, beautiful instrument panel that feels like a native application,
 not an assortment of terminal printouts. Elegant because the hierarchy is
@@ -354,9 +380,10 @@ sufficient. Keyboard equivalent for all controls.
 ### 5.3 Responsive action bar
 
 Every action currently exposed solely by key hints gets a visible labeled
-button, tab, menu item or picker. Wide bars show primary + most useful
-secondary actions; narrow views put the rest behind one `More…` button
-with full mouse/keyboard access. Click hitbox includes padding and label,
+button, tab, menu item or picker. Per the screenshot review, both wide
+and narrow bars show a curated subset (at most three quick actions)
+plus one `More…` button, not every action that happens to fit. More/F4
+remains fully mouse/keyboard accessible. Click hitbox includes padding and label,
 not just a glyph. Context hints (shortcut next to action) replace repeated
 long key lists. Keep action visibility and enabled predicate from the
 original typed owner/status/selection, not a parallel policy table.
@@ -541,7 +568,33 @@ not mark an untested or interrupted phase accepted.
   Real cached resident inference/serve/download/config simultaneous
   regression through mouse and keyboard, full offline isolated gate,
   updated CLI guide/help and owner handoff. No physical GPU perf claim.
-  Suggested coherent exit slices: P4A remaining ergonomics/visual review
+  - [x] P4A1 minimal presentation revision after user screenshot feedback:
+    one curated quick toolbar per view/shelf, no duplicated navigation,
+    persistent theme control or secondary buttons; More/F4 retains
+    exact bound commands and disabled reasons. Header brand/profile,
+    quiet footer, active cancel affordance, stale cross-view notice
+    cleared. Compact Home (no empty scheduler/uncompiled-feature noise),
+    one library context row, aligned name/size and selected summary,
+    no cross-pane switch when both panes visible. Profiles active marker
+    separate from selection, concise filters/empty states/log heading.
+    Details/D exposes selected exact technical observation + last
+    action result via read-only scrollable modal, distinct from
+    manifest Inspect or payload Verify; no worker or mutation. Original
+    row keys and owner validation unchanged. Smart IEC bytes helper
+    shared within TUI; exact bytes still in technical details and
+    unchanged wire/owner data. Actual rendered cells audited; focused
+    Rust 87/0/3, strict feature lint, actual mouse layout/Details,
+    action/editor/shell/settings/appearance and controlled transfer
+    tests passed. Initial PTY fixture adjustments reflect smaller
+    geometry and differential output, not weaker action guards.
+    Cached integration: browser resident succeeded twice on this source;
+    native Details/inspect/verify/alias completed, then fixture attempted
+    next action before settled observation. Corrected receipt wait and
+    cold refresh timing. Later browser load timeout and explicit
+    native-only 8 GiB envelope refusal (7188 MiB available after headroom)
+    block final real cached-owner acceptance. No reduced envelope or
+    unrelated job cleanup. Rerun on recovered host in P4A2/P4B.
+  Remaining coherent exit slices: P4A2 ergonomics/visual review
   (stable item/log/output anchors across refresh/resize/reorder, distinct
   Running selected-detail/output affordance, safe log-row detail, compact
   modal navigation/scroll and editor edge-of-viewport selection, keyboard

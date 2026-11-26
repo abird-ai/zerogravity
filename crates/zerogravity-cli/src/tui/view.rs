@@ -4,6 +4,7 @@ use super::{
     choice::Picker,
     controls::{Bound, Menu, Scope},
     editor::{self, Editor},
+    format,
     input::{Hits, Intent, Pointer, Target},
     layout::{Motion, Pane, Scrollbar, SplitKind, Splitter, Workspace},
     library::{Key, Kind, Shelf},
@@ -20,6 +21,7 @@ use ratatui::{
     widgets::{Block, Borders, Clear, Paragraph, Wrap},
 };
 use unicode_segmentation::UnicodeSegmentation;
+use unicode_width::UnicodeWidthStr;
 use zerogravity::{configuration::ThemeMode, control::ServeSummary};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -166,6 +168,11 @@ enum Modal {
     None,
     Palette(Palette),
     Help,
+    Details {
+        title: String,
+        lines: Vec<String>,
+        scroll: u16,
+    },
     Menu(Menu),
     Choice(Picker),
     Theme {
@@ -192,6 +199,7 @@ pub(super) struct Navigation {
     hits: Hits,
     pointer: Pointer,
     too_small: bool,
+    split_visible: bool,
     modal: Modal,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -247,7 +255,7 @@ pub(super) enum LogAction {
 pub(super) enum Action {
     Redraw,
     Open,
-    Navigate(View),
+    ShowDetails,
     OpenActions,
     Bound(Bound),
     FollowOutput,
@@ -276,6 +284,14 @@ pub(super) enum Action {
 impl Navigation {
     pub fn view(&self) -> View {
         self.view
+    }
+    pub fn details(&mut self, title: String, lines: Vec<String>) {
+        self.pointer.cancel();
+        self.modal = Modal::Details {
+            title,
+            lines,
+            scroll: 0,
+        };
     }
     pub fn menu(&mut self, menu: Menu) {
         self.pointer.cancel();
@@ -471,7 +487,9 @@ impl Navigation {
                 }
             }
             Intent::ScrollModal(delta, max) => {
-                if let Modal::Confirm { scroll, .. } = &mut self.modal {
+                if let Modal::Confirm { scroll, .. } | Modal::Details { scroll, .. } =
+                    &mut self.modal
+                {
                     *scroll = scroll.saturating_add_signed(delta).min(max);
                     Some(Action::Redraw)
                 } else if let Modal::Form { editor, .. } = &mut self.modal {
@@ -579,7 +597,6 @@ impl Navigation {
                         self.focus(Pane::Main);
                         Action::Library(LibraryAction::SelectShelf(shelf))
                     }
-                    Target::Appearance => Action::Appearance,
                     Target::Help => {
                         self.modal = Modal::Help;
                         Action::Redraw
@@ -692,6 +709,21 @@ impl Navigation {
             Modal::WebUrl(_) => {
                 if matches!(key.code, Esc | Enter) {
                     self.modal = Modal::None;
+                }
+                return Action::Redraw;
+            }
+            Modal::Details { scroll, .. } => {
+                match key.code {
+                    Esc | Enter => return self.dismiss_modal(),
+                    Up | PageUp => {
+                        *scroll = scroll.saturating_sub(if key.code == PageUp { 8 } else { 1 })
+                    }
+                    Down | PageDown => {
+                        *scroll = scroll.saturating_add(if key.code == PageDown { 8 } else { 1 })
+                    }
+                    Home => *scroll = 0,
+                    End => *scroll = u16::MAX,
+                    _ => {}
                 }
                 return Action::Redraw;
             }
@@ -880,6 +912,14 @@ impl Navigation {
             Enter if pane == Pane::Detail => Action::Redraw,
             Char('q') => Action::Quit,
             Char('T') => Action::Appearance,
+            Char('D')
+                if matches!(
+                    self.view,
+                    View::Models | View::Devices | View::Config | View::Profiles
+                ) =>
+            {
+                Action::ShowDetails
+            }
             Char(':') => {
                 self.modal = Modal::Palette(Palette::default());
                 Action::Redraw
@@ -1115,8 +1155,8 @@ fn downloads(app: &App) -> String {
             || "No operation in this runtime".into(),
             |download| {
                 format!(
-                    "Operation {} · {:?} · {:?} · {} bytes",
-                    download.id, download.status, download.phase, download.total_bytes
+                    "Operation {} · {:?} · {:?}",
+                    download.id, download.status, download.phase
                 )
             },
         )
@@ -1146,8 +1186,14 @@ fn download_rows(rows: &mut Vec<Line<'static>>, app: &App) {
         )));
         let bytes = |current: u64, exact: Option<u64>, maximum: u64| {
             exact.map_or_else(
-                || format!("{current} bytes · total unknown (maximum {maximum})"),
-                |total| format!("{current} / {total} bytes"),
+                || {
+                    format!(
+                        "{} · total unknown (max {})",
+                        format::bytes(current),
+                        format::bytes(maximum)
+                    )
+                },
+                |total| format!("{} / {}", format::bytes(current), format::bytes(total)),
             )
         };
         rows.push(text(format!(
@@ -1167,12 +1213,13 @@ fn download_rows(rows: &mut Vec<Line<'static>>, app: &App) {
             )));
         }
         rows.push(text(format!(
-            "Cached: {} bytes · resumed: {} bytes",
-            download.cached_bytes, download.resumed_bytes
+            "Cached: {} · resumed: {}",
+            format::bytes(download.cached_bytes),
+            format::bytes(download.resumed_bytes)
         )));
         rows.push(text(format!(
-            "Last observed checkpoint: {} bytes",
-            download.checkpoint_bytes
+            "Last observed checkpoint: {}",
+            format::bytes(download.checkpoint_bytes)
         )));
         if let Some(total) = download.total_expected_bytes.filter(|total| *total != 0) {
             let percent = (download.total_bytes as u128 * 100 / total as u128).min(100);
@@ -1182,7 +1229,7 @@ fn download_rows(rows: &mut Vec<Line<'static>>, app: &App) {
             && !download.cancel_requested
             && let Some(rate) = download.logical_bytes_per_second.filter(|rate| *rate > 0)
         {
-            rows.push(text(format!("Accepted logical bytes/s: {rate}")));
+            rows.push(text(format!("Accepted: {}/s", format::bytes(rate))));
             if let Some(total) = download.total_expected_bytes {
                 rows.push(text(format!(
                     "Approximate transfer ETA: {}s (not publication)",
@@ -1221,58 +1268,65 @@ fn content(app: &App, theme: Theme) -> Content {
     match app.navigation.view {
         View::Home => {
             rows.push(label("Local runtime", theme));
+            let count = runtime.status.loaded_owners;
             rows.push(
-                text(format!(
-                    "{:?} · {} model owners · {} aliases",
-                    runtime.status.phase,
-                    runtime.status.loaded_owners,
-                    runtime.status.loaded_models
-                ))
+                text(if count == 0 {
+                    "No models loaded".into()
+                } else {
+                    format!("{count} model{} loaded", if count == 1 { "" } else { "s" })
+                })
                 .style(if runtime.status.failed {
                     theme.danger()
+                } else if count > 0 {
+                    theme.success()
                 } else {
-                    theme.info()
+                    theme.muted()
                 }),
             );
             if runtime.status.failed {
-                rows.push(
-                    text("Runtime reports a failure; inspect diagnostics.").style(theme.danger()),
-                );
+                rows.push(text("Runtime failed · see Logs").style(theme.danger()));
+            } else if !matches!(
+                runtime.status.phase,
+                zerogravity::diagnostics::RuntimePhase::Empty
+                    | zerogravity::diagnostics::RuntimePhase::Ready
+            ) {
+                rows.push(text(format!("{:?}", runtime.status.phase)).style(theme.info()));
             }
             if let Some(scheduler) = &runtime.scheduler {
-                rows.push(text(format!(
-                    "Requests: {} active · {} queued · {} output tokens",
-                    scheduler.counters.active,
-                    scheduler.queue.pending,
-                    scheduler.counters.output_tokens
-                )));
-            } else {
-                rows.push(text("No scheduler installed"));
+                rows.push(
+                    text(format!(
+                        "{} active · {} queued",
+                        scheduler.counters.active, scheduler.queue.pending
+                    ))
+                    .style(theme.muted()),
+                );
             }
             rows.push(Line::default());
-            rows.push(text(format!(
-                "Active configuration: {}",
-                app.document.snapshot().target.label()
-            )));
-            #[cfg(feature = "web")]
-            rows.push(text("b open private Web control URL"));
-            rows.push(label("Quick run", theme));
-            rows.push(text(match &app.selected {
-                Some(owner) => format!("Enter: prompt for {}", owner.alias),
-                None => "Enter: choose a source and prompt".into(),
-            }));
-            rows.push(text("l load a cached/local model or configured route set"));
-            rows.push(Line::default());
-            rows.push(label("Inference API", theme));
             rows.push(
-                text(serve(app.snapshot.serving)).style(serve_style(app.snapshot.serving, theme)),
+                text(match &app.selected {
+                    Some(owner) => format!("Quick run with {}", owner.alias),
+                    None => "Quick run: choose a local or cached model.".into(),
+                })
+                .style(theme.muted()),
             );
-            rows.push(label("Downloads", theme));
-            rows.push(text(downloads(app)));
+            if app.snapshot.serving != ServeSummary::Unavailable {
+                rows.push(Line::default());
+                rows.push(label("Inference API", theme));
+                rows.push(
+                    text(serve(app.snapshot.serving))
+                        .style(serve_style(app.snapshot.serving, theme)),
+                );
+            }
+            #[cfg(all(feature = "acquisition", target_os = "linux"))]
+            if app.snapshot.download.is_some() {
+                rows.push(Line::default());
+                rows.push(label("Downloads", theme));
+                rows.push(text(downloads(app)));
+            }
         }
         View::Running => {
             rows.push(text(format!(
-                "{} registered model owners · Enter run · u unload · l load",
+                "{} registered model owners",
                 runtime.status.loaded_owners
             )));
             for model in &runtime.catalog {
@@ -1334,8 +1388,9 @@ fn content(app: &App, theme: Theme) -> Content {
                                 session_state_bytes,
                                 session_scratch_bytes,
                             } => rows.push(text(format!(
-                                "Host session state {} bytes · scratch {} bytes",
-                                session_state_bytes, session_scratch_bytes
+                                "Host state {} · scratch {}",
+                                format::bytes(*session_state_bytes),
+                                format::bytes(*session_scratch_bytes)
                             ))),
                             ModelMemory::Resident(memory) => {
                                 rows.push(text(format!("Device: {}", memory.device.device)))
@@ -1350,7 +1405,10 @@ fn content(app: &App, theme: Theme) -> Content {
                         }
                     }
                     if let Some(bytes) = capability.details.source_host_reserved_bytes {
-                        rows.push(text(format!("Source host reservation: {bytes} bytes")));
+                        rows.push(text(format!(
+                            "Source host reservation: {}",
+                            format::bytes(bytes)
+                        )));
                     }
                 }
             }
@@ -1368,9 +1426,6 @@ fn content(app: &App, theme: Theme) -> Content {
             rows.push(
                 text(serve(app.snapshot.serving)).style(serve_style(app.snapshot.serving, theme)),
             );
-            rows.push(text("Listener owned by this process"));
-            #[cfg(feature = "web")]
-            rows.push(text("b open private Web control URL"));
             if let Some(scheduler) = &runtime.scheduler {
                 rows.push(text(format!(
                     "Context {} · output {} · active {}/{} · queued {}",
@@ -1396,9 +1451,6 @@ fn content(app: &App, theme: Theme) -> Content {
         View::Downloads => {
             rows.push(label("Download operation", theme));
             rows.push(text(downloads(app)));
-            rows.push(text(
-                "Explicit transfer controls · original operation owner",
-            ));
             if app.document.snapshot().offline {
                 rows.push(text("Offline · new acquisition disabled"));
             }
@@ -1516,7 +1568,7 @@ fn action_bar(frame: &mut Frame<'_>, area: Rect, app: &mut App, theme: Theme) {
     let more_rect = Rect::new(area.right() - more_width, area.y, more_width, area.height);
     let mut x = area.x;
     let mut primary = true;
-    for item in buttons {
+    for item in buttons.into_iter().filter(|item| scope.quick(item.command)) {
         // Availability never changes a button's geometry.
         let title = format!(
             "{}{} ",
@@ -1671,7 +1723,7 @@ fn pane_body(
             toggle,
             Target::Maximize(which),
         );
-        if area.width >= 33 {
+        if !nav.split_visible && area.width >= 33 {
             control(
                 frame,
                 nav,
@@ -1680,7 +1732,7 @@ fn pane_body(
                 focus,
                 Target::Focus(other),
             );
-        } else {
+        } else if !nav.split_visible {
             control(
                 frame,
                 nav,
@@ -1717,8 +1769,13 @@ fn scroll_rows(
     if area.is_empty() {
         return (area, 0);
     }
-    let body = Rect::new(area.x, area.y, area.width.saturating_sub(1), area.height);
-    let track = Rect::new(body.right(), area.y, area.width - body.width, area.height);
+    let body = Rect::new(
+        area.x + u16::from(area.width > 1),
+        area.y,
+        area.width.saturating_sub(2),
+        area.height,
+    );
+    let track = Rect::new(area.right().saturating_sub(1), area.y, 1, area.height);
     let viewport = nav.workspace.viewport(nav.view.index(), which);
     viewport.measure(
         paragraph
@@ -1846,19 +1903,9 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
     ])
     .areas(area);
     let profile = clean(&app.document.snapshot().target.label());
-    let appearance = format!(" T Theme: {} ", theme.description());
-    let appearance_width = if header.width >= 60 {
-        appearance.chars().count() as u16
-    } else {
-        0
-    };
     let nav_width = if area.width < 70 { 6 } else { 0 };
-    let [nav_button, identity, appearance_area] = Layout::horizontal([
-        Constraint::Length(nav_width),
-        Constraint::Min(1),
-        Constraint::Length(appearance_width),
-    ])
-    .areas(header);
+    let [nav_button, identity] =
+        Layout::horizontal([Constraint::Length(nav_width), Constraint::Min(1)]).areas(header);
     if nav_width > 0 {
         control(
             frame,
@@ -1869,7 +1916,7 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
             Target::Navigation,
         );
     }
-    let header_context = if area.width >= 100 {
+    let profile = if area.width >= 45 {
         format!("  ·  {profile}")
     } else {
         String::new()
@@ -1877,22 +1924,11 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
     frame.render_widget(
         Paragraph::new(Line::from(vec![
             Span::styled(" ZeroGravity", theme.accent()),
-            Span::raw("  /  local control"),
-            Span::styled(header_context, theme.muted()),
+            Span::styled(profile, theme.muted()),
         ]))
         .style(theme.surface()),
         identity,
     );
-    if appearance_width > 0 {
-        control(
-            frame,
-            &mut app.navigation,
-            theme,
-            appearance_area,
-            &appearance,
-            Target::Appearance,
-        );
-    }
     app.navigation.workspace.has_detail = matches!(
         app.navigation.view,
         View::Models | View::Devices | View::Profiles | View::Config | View::Running
@@ -1916,7 +1952,7 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
     divider(frame, &mut app.navigation, theme, track);
     let status = if let Some(job) = &app.active {
         format!(
-            "{} · {:?} · {} · c cancel",
+            "{} · {:?} · {}",
             job.title,
             job.origin,
             if job.cancel_requested {
@@ -1926,22 +1962,38 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
             }
         )
     } else {
-        app.notice
-            .clone()
-            .unwrap_or_else(|| "Explicit actions only · no implicit acquisition".into())
+        app.notice.clone().unwrap_or_else(|| "Ready".into())
     };
+    let cancel = app.active.as_ref().is_some_and(|job| !job.cancel_requested)
+        && app.navigation.view != View::Downloads
+        && footer.width >= 32;
+    let status_width = footer.width.saturating_sub(if cancel { 15 } else { 0 });
+    frame.render_widget(
+        Paragraph::new(text(status).style(if app.active.is_some() {
+            theme.info()
+        } else {
+            theme.muted()
+        }))
+        .style(theme.surface()),
+        Rect::new(footer.x, footer.y, status_width, 1),
+    );
+    if cancel {
+        let scope = std::rc::Rc::new(Scope::capture(app));
+        control(
+            frame,
+            &mut app.navigation,
+            theme,
+            Rect::new(footer.right() - 15, footer.y, 15, 1),
+            " Cancel action ",
+            Target::Command(Bound::new(super::controls::Command::Cancel, &scope)),
+        );
+    }
     frame.render_widget(
         Paragraph::new(vec![
-            text(status).style(if app.active.is_some() {
-                theme.info()
-            } else {
-                theme.muted()
-            }),
-            text("1–9 views  Tab focus  F4 actions  F6 panes  F7 size  F8 mouse")
-                .style(theme.muted()),
+            text("Tab focus  ·  F4 More  ·  q quit").style(theme.muted()),
         ])
         .style(theme.surface()),
-        footer,
+        Rect::new(footer.x, footer.y + 1, footer.width, 1),
     );
     if footer.width >= 44 {
         let y = footer.bottom() - 1;
@@ -1953,14 +2005,16 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
             " ? Help ",
             Target::Help,
         );
-        control(
-            frame,
-            &mut app.navigation,
-            theme,
-            Rect::new(footer.right() - 16, y, 8, 1),
-            " : Go   ",
-            Target::Palette,
-        );
+        if area.width < 70 {
+            control(
+                frame,
+                &mut app.navigation,
+                theme,
+                Rect::new(footer.right() - 16, y, 8, 1),
+                " : Go   ",
+                Target::Palette,
+            );
+        }
     }
     if !app.navigation.idle() {
         app.navigation.hits.clear();
@@ -2029,6 +2083,30 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
                 .wrap(Wrap { trim: false }),
                 content,
             );
+            close_button(frame, &mut app.navigation.hits, theme, controls);
+        }
+        Modal::Details {
+            title,
+            lines,
+            scroll,
+        } => {
+            let popup = center(body, 100, 24);
+            frame.render_widget(Clear, popup);
+            let title = format!(" {} ", clean(title));
+            let block = dialog(&title, theme);
+            let inner = block.inner(popup);
+            frame.render_widget(block, popup);
+            let [content, controls] =
+                Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(inner);
+            let paragraph = Paragraph::new(lines.iter().map(text).collect::<Vec<_>>())
+                .wrap(Wrap { trim: false });
+            let max = paragraph
+                .line_count(content.width)
+                .saturating_sub(content.height as usize)
+                .min(u16::MAX as usize) as u16;
+            *scroll = (*scroll).min(max);
+            frame.render_widget(paragraph.scroll((*scroll, 0)), content);
+            app.navigation.hits.add(content, Target::ModalScroll(max));
             close_button(frame, &mut app.navigation.hits, theme, controls);
         }
         Modal::Menu(menu) => {
@@ -2206,7 +2284,13 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
             }
             if popup.height >= 11 {
                 rows.push(Line::default());
-                rows.push(text("Auto: terminal hint; unknown uses dark.").style(theme.muted()));
+                rows.push(
+                    text(format!(
+                        "{} · Auto follows terminal hint",
+                        theme.description()
+                    ))
+                    .style(theme.muted()),
+                );
             }
             frame.render_widget(Paragraph::new(rows), content);
             modal_buttons(
@@ -2487,92 +2571,118 @@ fn render_rail(frame: &mut Frame<'_>, area: Rect, app: &mut App, theme: Theme) {
         }
     }
 }
+fn truncate_cells(value: &str, width: usize) -> String {
+    let value = clean(value);
+    if value.width() <= width {
+        return value;
+    }
+    if width == 0 {
+        return String::new();
+    }
+    let mut out = String::new();
+    let mut used = 0;
+    for grapheme in value.graphemes(true) {
+        let n = grapheme.width();
+        if used + n >= width {
+            break;
+        }
+        out.push_str(grapheme);
+        used += n;
+    }
+    out.push('…');
+    out
+}
+fn item_line(
+    title: &str,
+    annotation: Option<&str>,
+    width: u16,
+    selected: bool,
+    theme: Theme,
+) -> Line<'static> {
+    let width = width as usize;
+    let prefix = if selected { "> " } else { "  " };
+    let value = annotation.map(clean).filter(|v| v.width() + 5 < width);
+    let mut spans = vec![Span::raw(prefix)];
+    if let Some(value) = value {
+        let name_width = width.saturating_sub(2 + 2 + value.width());
+        let title = truncate_cells(title, name_width);
+        let pad = name_width.saturating_sub(title.width()) + 2;
+        spans.push(Span::raw(title));
+        spans.push(Span::raw(" ".repeat(pad)));
+        spans.push(Span::styled(
+            value,
+            if selected {
+                theme.selected()
+            } else {
+                theme.muted()
+            },
+        ));
+    } else {
+        spans.push(Span::raw(truncate_cells(title, width.saturating_sub(2))));
+    }
+    let line = Line::from(spans);
+    if selected {
+        line.style(theme.selected())
+    } else {
+        line
+    }
+}
 fn render_library(frame: &mut Frame<'_>, area: Rect, app: &mut App, kind: Kind, theme: Theme) {
     let title = match kind {
-        Kind::Models => format!(" Models · {:?} ", app.library.shelf),
+        Kind::Models if area.width < 30 => format!(" Models · {:?} ", app.library.shelf),
+        Kind::Models => " Models ".into(),
         Kind::Devices => " Devices ".into(),
         Kind::Profiles => " Profiles ".into(),
-        Kind::Config => format!(" Config · {} ", app.library.editor.label()),
+        Kind::Config => format!(
+            " Config · {}{} ",
+            app.library.editor.label(),
+            if app.library.editor.path == app.document.snapshot().target.path {
+                ""
+            } else {
+                " (inactive)"
+            }
+        ),
     };
     let block = pane(title, theme, false);
     let inner = block.inner(area);
     frame.render_widget(block, area);
     let collection = app.library.rows(kind);
-    let mut header = match kind {
-        Kind::Models => vec![
-            text(if inner.width >= 30 {
-                ""
-            } else {
-                "m shelf · j/k select"
-            }),
-            text(format!(
-                "Search: {} · / filter",
-                if collection.query().is_empty() {
-                    "all"
-                } else {
-                    collection.query()
-                }
-            )),
-            text("Acquisition and execution are explicit"),
-        ],
-        Kind::Devices => vec![
-            text("j/k select · Enter refresh · e check model policy"),
-            text("l load on selected physical device · no inferred model eligibility"),
-        ],
-        Kind::Profiles => vec![
-            text(format!(
-                "Active: {}",
-                app.document.snapshot().target.label()
-            )),
-            text("j/k select · Enter open/editor · c create"),
-            text("Open is inert; activate, copy or remove in Config."),
-        ],
-        Kind::Config => vec![
-            text(format!(
-                "Active: {} · Editing: {}",
-                app.document.snapshot().target.label(),
-                app.library.editor.path.display()
-            )),
-            text("Select a setting to edit its value"),
-            text("Changes apply to the selected document"),
-            text(format!(
-                "Search: {} · {}",
-                if app.library.query.is_empty() {
-                    "all"
-                } else {
-                    &app.library.query
-                },
-                if app.library.raw {
-                    "Raw YAML view"
-                } else {
-                    "Typed settings"
-                }
-            )),
-        ],
+    let query = if kind == Kind::Config {
+        &app.library.query
+    } else {
+        collection.query()
     };
-    if app.document.snapshot().offline && kind == Kind::Models {
-        header.push(text("Offline · acquisition disabled"));
+    let count = collection.visible().len();
+    let mut status = match kind {
+        Kind::Models => format!("{count} models"),
+        Kind::Config if app.library.raw => "Raw YAML".into(),
+        Kind::Config
+            if app
+                .library
+                .observed()
+                .is_some_and(|obs| !obs.snapshot.exists()) =>
+        {
+            "Built-in defaults".into()
+        }
+        Kind::Config => format!("{count} settings"),
+        Kind::Profiles => format!("{count} profiles"),
+        Kind::Devices => format!("{count} devices"),
+    };
+    if !query.is_empty() {
+        status.push_str(&format!(" · Search: {query}"));
     }
-    if kind == Kind::Config
-        && app
-            .library
-            .observed()
-            .is_some_and(|obs| !obs.snapshot.exists())
-    {
-        header.push(text("Built-in defaults (no document created)"));
+    if let Some(notice) = app.library.notice(kind) {
+        status.push_str(&format!(" · {notice}"));
+    } else if kind == Kind::Models && app.document.snapshot().offline {
+        status.push_str(" · Offline");
     }
-    let status = app.library.notice(kind).unwrap_or("Owner observations");
-    header.push(text(format!(
-        "{} entries · {status}",
-        collection.visible().len()
-    )));
-    let reserved = if inner.height >= 17 { 13 } else { 3 };
-    let height = (header.len() as u16).min(inner.height.saturating_sub(reserved));
-    let [head, body] =
-        Layout::vertical([Constraint::Length(height), Constraint::Min(1)]).areas(inner);
-    frame.render_widget(Paragraph::new(header), head);
+    let [head, body] = Layout::vertical([
+        Constraint::Length(u16::from(inner.height >= 4)),
+        Constraint::Min(1),
+    ])
+    .areas(inner);
+    let mut x = head.x;
     if kind == Kind::Models && head.height > 0 && head.width >= 30 {
-        let mut x = head.x;
         for (shelf, title) in [
             (Shelf::Cached, " Cached "),
             (Shelf::Catalog, " Catalog "),
@@ -2584,7 +2694,7 @@ fn render_library(frame: &mut Frame<'_>, area: Rect, app: &mut App, kind: Kind, 
                 Paragraph::new(text(title)).style(if app.library.shelf == shelf {
                     theme.selected()
                 } else {
-                    theme.raised()
+                    theme.surface().patch(theme.muted())
                 }),
                 rect,
             );
@@ -2592,10 +2702,17 @@ fn render_library(frame: &mut Frame<'_>, area: Rect, app: &mut App, kind: Kind, 
             x += width + 1;
         }
     }
+    if x < head.right() {
+        frame.render_widget(
+            Paragraph::new(text(status)).style(theme.muted()),
+            Rect::new(x, head.y, head.right() - x, head.height),
+        );
+    }
     let (list, detail, track) = app
         .navigation
         .workspace
         .inner(body, app.navigation.view.index());
+    app.navigation.split_visible = !list.is_empty() && !detail.is_empty();
     divider(frame, &mut app.navigation, theme, track);
     let mut lines = Vec::new();
     let mut group = "";
@@ -2614,16 +2731,34 @@ fn render_library(frame: &mut Frame<'_>, area: Rect, app: &mut App, kind: Kind, 
             selected_line = lines.len();
         }
         keys.push((lines.len(), &row.key));
-        let line = text(format!(
-            "{} {}",
-            if selected { ">" } else { " " },
-            row.title
-        ));
-        lines.push(if selected {
-            line.style(theme.selected())
+        let active = matches!(&row.key,Key::Profile(name) if app.document.snapshot().target.profile.as_deref()==Some(name.as_str()));
+        let annotation = if active {
+            Some("Active")
         } else {
-            line
-        });
+            row.annotation.as_deref()
+        };
+        lines.push(item_line(
+            &row.title,
+            annotation,
+            list.width.saturating_sub(2),
+            selected,
+            theme,
+        ));
+    }
+    if lines.is_empty() {
+        lines.push(
+            text(if !query.is_empty() {
+                "No matches"
+            } else {
+                match (kind, app.library.shelf) {
+                    (Kind::Models, Shelf::Cached) => "No cached models",
+                    (Kind::Models, Shelf::Partial) => "No partial downloads",
+                    (Kind::Config, _) => "No settings observed",
+                    _ => "No entries",
+                }
+            })
+            .style(theme.muted()),
+        );
     }
     if !list.is_empty() {
         let inner = pane_body(
@@ -2632,7 +2767,11 @@ fn render_library(frame: &mut Frame<'_>, area: Rect, app: &mut App, kind: Kind, 
             &mut app.navigation,
             theme,
             Pane::Main,
-            "Entries",
+            if kind == Kind::Config {
+                "Setting"
+            } else {
+                "Name"
+            },
         );
         let reveal = app
             .navigation
@@ -2669,15 +2808,17 @@ fn render_library(frame: &mut Frame<'_>, area: Rect, app: &mut App, kind: Kind, 
         details.extend(row.details.iter().map(text));
         if let Some((key, result)) = &app.library.detail
             && key == &row.key
+            && let Some(summary) = result.lines().next()
+            && app.notice.as_deref() != Some(summary)
         {
             details.push(Line::default());
-            details.extend(result.lines().map(text));
+            details.push(text(format!("Last action: {summary}")).style(theme.muted()));
         }
     } else {
         details.push(text(if kind == Kind::Config {
-            "No typed selection; w raw edit, v raw view"
+            "Select a setting"
         } else {
-            "No observed selection"
+            "Select an item"
         }));
     }
     if !detail.is_empty() {
@@ -2689,6 +2830,27 @@ fn render_library(frame: &mut Frame<'_>, area: Rect, app: &mut App, kind: Kind, 
             Pane::Detail,
             "Selected",
         );
+        if collection.selected().is_some() {
+            let reserved = if app.navigation.split_visible {
+                5
+            } else if detail.width >= 33 {
+                13
+            } else {
+                9
+            };
+            if detail.width >= reserved + 20 {
+                let scope = std::rc::Rc::new(Scope::capture(app));
+                let rect = Rect::new(detail.right() - reserved - 11, detail.y, 11, 1);
+                control(
+                    frame,
+                    &mut app.navigation,
+                    theme,
+                    rect,
+                    " Details… ",
+                    Target::Command(Bound::new(super::controls::Command::Details, &scope)),
+                );
+            }
+        }
         scroll_rows(
             frame,
             &mut app.navigation,
@@ -2711,19 +2873,14 @@ fn render_logs(frame: &mut Frame<'_>, area: Rect, app: &mut App, theme: Theme) {
         "Operational logs",
     );
     let [head, body] =
-        Layout::vertical([Constraint::Length(3.min(inner.height)), Constraint::Min(0)])
+        Layout::vertical([Constraint::Length(1.min(inner.height)), Constraint::Min(0)])
             .areas(inner);
-    frame.render_widget(
-        Paragraph::new(vec![
-            text(app.logs.heading()),
-            text("/ search · l level · f component · p pause/follow · PgUp/PgDn scroll"),
-            text(format!(
-                "Local operational observations; {} older entries dropped. No model output.",
-                app.logs.dropped()
-            )),
-        ]),
-        head,
-    );
+    let mut heading = app.logs.heading();
+    let dropped = app.logs.dropped();
+    if dropped > 0 {
+        heading.push_str(&format!(" · {dropped} older entries dropped"));
+    }
+    frame.render_widget(Paragraph::new(text(heading)).style(theme.muted()), head);
     let rows = app.logs.lines();
     let lines = if rows.is_empty() {
         vec![text("No notifications received.")]
@@ -2782,6 +2939,7 @@ fn render_workspace(frame: &mut Frame<'_>, area: Rect, app: &mut App, theme: The
     } else {
         (area, Rect::default(), None)
     };
+    app.navigation.split_visible = !main.is_empty() && !detail.is_empty();
     divider(frame, &mut app.navigation, theme, track);
     if !main.is_empty() {
         let title = app.navigation.view.name();
@@ -2983,7 +3141,7 @@ mod tests {
                 .map(|cell| cell.symbol())
                 .collect::<String>();
             assert!(text.contains("ZeroGravity"));
-            assert!(text.contains("0 model owners"));
+            assert!(text.contains("No models loaded"));
             assert_eq!(text.contains("Navigation"), width >= 70);
             app.navigation.focus(Pane::Rail);
             terminal.draw(|frame| render(frame, &mut app)).unwrap();
@@ -3015,6 +3173,77 @@ mod tests {
                 ratatui::style::Color::Rgb(expected.0, expected.1, expected.2)
             );
         }
+        app.navigation.open(View::Models);
+        app.library.test_replace(
+            Kind::Models,
+            vec![
+                super::super::library::Row {
+                    key: Key::Snapshot("a".repeat(64)),
+                    title: "google/gemma-4-E2B-it".into(),
+                    annotation: Some(format::bytes(32_198_128)),
+                    details: vec![
+                        "Size: 30.71 MiB · 1 file".into(),
+                        "Metadata only · payloads not verified".into(),
+                    ],
+                    technical: vec![format!("Snapshot: sha256:{}", "a".repeat(64))],
+                },
+                super::super::library::Row {
+                    key: Key::Snapshot("b".repeat(64)),
+                    title: "Qwen/Qwen3.5-2B".into(),
+                    annotation: Some(format::bytes(4_571_272_453)),
+                    details: vec![
+                        "Size: 4.26 GiB · 12 files".into(),
+                        "Metadata only · payloads not verified".into(),
+                    ],
+                    technical: vec![format!("Snapshot: sha256:{}", "b".repeat(64))],
+                },
+            ],
+        );
+        app.library.rows_mut(Kind::Models).move_selection(1);
+        let mut terminal = Terminal::new(TestBackend::new(128, 24)).unwrap();
+        terminal.draw(|frame| render(frame, &mut app)).unwrap();
+        let buffer = terminal.backend().buffer();
+        let row = |y| {
+            (0..128)
+                .map(|x| buffer[(x, y)].symbol())
+                .collect::<String>()
+        };
+        let bar = row(1);
+        assert!(
+            bar.contains("Load")
+                && bar.contains("Run")
+                && bar.contains("Search")
+                && bar.contains("More")
+        );
+        for redundant in [
+            "Inspect",
+            "Verify",
+            "Alias",
+            "Refresh",
+            "Appearance",
+            "Cached",
+            "Catalog",
+            "Partial",
+            "Load for Serve",
+        ] {
+            assert!(!bar.contains(redundant), "{bar}");
+        }
+        let visible = (0..24).map(row).collect::<Vec<_>>();
+        let text = visible.join("\n");
+        assert!(text.contains("30.71 MiB") && text.contains("4.26 GiB"));
+        assert!(!text.contains("sha256:") && !text.contains("4571272453"));
+        assert!(text.contains("Details…"));
+        println!("Minimal Models cells:\n{text}");
+        app.handle(&runtime, runtime.control(), Action::ShowDetails);
+        terminal.draw(|frame| render(frame, &mut app)).unwrap();
+        let text = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+        assert!(text.contains(&format!("sha256:{}", "b".repeat(64))));
         runtime.shutdown().unwrap();
     }
 }

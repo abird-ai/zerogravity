@@ -3,6 +3,7 @@
 mod choice;
 mod controls;
 mod editor;
+mod format;
 mod input;
 mod layout;
 pub(crate) mod library;
@@ -455,9 +456,27 @@ impl App {
                 self.notice = Some("Action target or availability changed; choose again".into());
             }
             Action::OpenActions => self.navigation.menu(controls::Menu::new(self)),
-            Action::Navigate(view) => {
-                self.navigation.open(view);
-                self.refresh_cold(runtime, control);
+            Action::ShowDetails => {
+                let kind=match self.navigation.view() {
+                    View::Models=>Kind::Models,
+                    View::Devices=>Kind::Devices,
+                    View::Profiles=>Kind::Profiles,
+                    View::Config=>Kind::Config,
+                    _=>return false,
+                };
+                if let Some(row)=self.library.rows(kind).selected() {
+                    let mut lines=row.details.clone();
+                    if !row.technical.is_empty() {
+                        lines.push(String::new());
+                        lines.extend(row.technical.iter().cloned());
+                    }
+                    if let Some((key,result))=&self.library.detail && key==&row.key {
+                        lines.push(String::new());
+                        lines.push("Last action result".into());
+                        lines.extend(result.lines().map(str::to_owned));
+                    }
+                    self.navigation.details(row.title.clone(),lines);
+                }
             }
             Action::FollowOutput => self.navigation.toggle_output_follow(),
             Action::Quit if self.live() || self.active.is_some() || self.web_owned() => self.navigation.confirm(
@@ -465,7 +484,7 @@ impl App {
                 view::Confirmation::Quit,
             ),
             Action::Quit | Action::Confirmed(view::Confirmation::Quit) => return true,
-            Action::Open => self.refresh_cold(runtime, control),
+            Action::Open => { self.notice=None; self.refresh_cold(runtime,control); }
             Action::Refresh => {
                 self.refresh(control);
                 self.refresh_cold(runtime, control);

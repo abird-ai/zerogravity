@@ -465,6 +465,14 @@ Retain accepted UX-1–10 ownership and keyboard behavior.
     Remaining compact/modal/focus and view affordance review at P4A.
 - [ ] UX-P4: complete ergonomics, actual PTY and accepted real cached
   resident/transfer/config regression, isolated workspace gate.
+  - [x] P4A1 screenshot-driven minimalism: curated toolbar (max three
+    actions + More), no repeated rail/shelf/theme actions, compact
+    summaries and exact Details/D, human IEC sizes. Strict lint,
+    focused 87/0/3, actual rendered cells/native PTY and controlled
+    transfer pass.
+  - [ ] P4A2 remaining scroll anchors, separate Running response,
+    safe log detail, compact/modal/focus and editor drag edges.
+  - [ ] P4B full simultaneous owner regressions and isolated gate.
 
 Deferred public serving until UX-P exit. Optional terminal background
 helper requires dependency/offline approval; conservative Auto fallback

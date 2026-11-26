@@ -5,6 +5,18 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 26 Nov — UX-P4A1 screenshot-driven minimal presentation
+
+Curated quick actions + More, one navigation rail, concise summaries
+and explicit exact Details, smart IEC sizes without changing bytes or
+machine-readable authority. Actual rendered cell inspection, focused
+Rust 87/0/3, strict lint, native mouse/action/editor/settings/theme and
+controlled transfer pass. No new dependency, model download, GPU or
+performance claim. Real cached owner final rerun pending: host refused
+original 8 GiB envelope (7188 MiB after headroom); browser load timeout
+last combined rerun after earlier browser resident passes. Remaining
+ergonomics P4A2, full gate P4B.
+
 ## 26 Nov — native UX-P polish (P1/P2/P3A/P3B)
 
 P3B typed finite settings/log choices, local shelf search, grapheme

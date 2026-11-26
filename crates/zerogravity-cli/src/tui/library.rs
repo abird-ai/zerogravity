@@ -1,6 +1,9 @@
 //! Presentation-only model/device rows and a single coalesced read worker.
 //! Selection is an exact observed identity, not a cache lease or admission.
-use super::settings::{self, Observed, Snapshot, Target};
+use super::{
+    format,
+    settings::{self, Observed, Snapshot, Target},
+};
 use std::thread::{self, JoinHandle};
 use zerogravity::{Error, Result, Runtime, control::ControlPlane};
 
@@ -47,7 +50,9 @@ pub(super) enum Kind {
 pub(super) struct Row {
     pub key: Key,
     pub title: String,
+    pub annotation: Option<String>,
     pub details: Vec<String>,
+    pub technical: Vec<String>,
 }
 
 #[derive(Default)]
@@ -82,8 +87,13 @@ impl Rows {
                 (query.is_empty()
                     || row.title.to_ascii_lowercase().contains(&query)
                     || row
+                        .annotation
+                        .as_ref()
+                        .is_some_and(|value| value.to_ascii_lowercase().contains(&query))
+                    || row
                         .details
                         .iter()
+                        .chain(&row.technical)
                         .any(|detail| detail.to_ascii_lowercase().contains(&query)))
                 .then_some(i)
             }));
@@ -207,16 +217,16 @@ impl Library {
                 .iter()
                 .map(|target| Row {
                     key: Key::Target(target.slug.into()),
-                    title: format!(
-                        "{} · {} · {}",
-                        target.slug,
-                        target.task.label(),
-                        target.source_status.label()
-                    ),
+                    title: target.slug.into(),
+                    annotation: Some(target.task.label().into()),
                     details: vec![
                         format!("Repository: {}", target.repository.unwrap_or("unverified")),
-                        format!("Source layout: {}", target.source_layout.label()),
+                        format!("Source: {}", target.source_status.label()),
                         format!("Execution: {}", target.execution_status.label()),
+                    ],
+                    technical: vec![
+                        format!("Task: {}", target.task.label()),
+                        format!("Source layout: {}", target.source_layout.label()),
                         if target.payload_hold {
                             "Payload hold; no catalog acquisition.".into()
                         } else {
@@ -308,6 +318,10 @@ impl Library {
             (Kind::Profiles, _) => &self.profiles,
             (Kind::Config, _) => &self.config,
         }
+    }
+    #[cfg(test)]
+    pub fn test_replace(&mut self, kind: Kind, rows: Vec<Row>) {
+        self.rows_mut(kind).replace(rows);
     }
     pub fn rows_mut(&mut self, kind: Kind) -> &mut Rows {
         match (kind, self.shelf) {
@@ -416,12 +430,23 @@ fn models(control: ControlPlane<'_>) -> Models {
                 .into_iter()
                 .map(|model| Row {
                     key: Key::Snapshot(model.snapshot.clone()),
-                    title: format!("{} · {} bytes", model.repository, model.bytes),
+                    title: model.repository.clone(),
+                    annotation: Some(format::bytes(model.bytes)),
                     details: vec![
+                        format!(
+                            "Size: {} · {} files",
+                            format::bytes(model.bytes),
+                            model.files
+                        ),
+                        format!("Source: {}", model.provider),
+                        "Metadata only · payloads not verified".into(),
+                    ],
+                    technical: vec![
                         format!("Snapshot: sha256:{}", model.snapshot),
-                        format!("{}:{}@{}", model.provider, model.repository, model.revision),
-                        format!("{} files · {} bytes", model.files, model.bytes),
-                        "Metadata only; payloads and execution not verified.".into(),
+                        format!("Repository: {}", model.repository),
+                        format!("Revision: {}", model.revision),
+                        format!("Size: {}", format::exact_bytes(model.bytes)),
+                        "No execution or remote freshness qualification.".into(),
                     ],
                 })
                 .collect();
@@ -433,12 +458,28 @@ fn models(control: ControlPlane<'_>) -> Models {
                         .into_iter()
                         .map(|partial| Row {
                             key: Key::Partial(partial.key.clone()),
-                            title: format!("{} / {} bytes", partial.bytes, partial.total),
+                            title: format!(
+                                "Partial · {}",
+                                partial.key.chars().take(12).collect::<String>()
+                            ),
+                            annotation: Some(format!(
+                                "{} / {}",
+                                format::bytes(partial.bytes),
+                                format::bytes(partial.total)
+                            )),
                             details: vec![
+                                format!(
+                                    "Checkpoint: {} / {}",
+                                    format::bytes(partial.bytes),
+                                    format::bytes(partial.total)
+                                ),
+                                "Resume the original pull to revalidate.".into(),
+                            ],
+                            technical: vec![
                                 partial.key,
+                                format!("Observed bytes: {}", format::exact_bytes(partial.bytes)),
+                                format!("Expected bytes: {}", format::exact_bytes(partial.total)),
                                 "Checkpoint observation only; may be active or invalid.".into(),
-                                "Repeat the original pinned pull intent to revalidate and resume."
-                                    .into(),
                             ],
                         })
                         .collect(),
@@ -477,27 +518,44 @@ fn devices(control: ControlPlane<'_>) -> Result<Vec<Row>> {
         .into_iter()
         .map(|device| Row {
             key: Key::Device(device.id.clone()),
-            title: format!("{} · {} · {}", device.id, device.class, device.vendor),
+            title: format!("{} · {}", device.id, device.vendor),
+            annotation: device.available.map(format::bytes),
             details: vec![
-                format!("Observed: {} (Unix ms)", inventory.observed_unix_ms),
+                format!("Class: {}", device.class),
                 format!("Backends: {}", device.backends.join(", ")),
                 format!(
                     "Capacity: {}",
                     device
                         .ceiling
-                        .map_or_else(|| "unknown".into(), |bytes| format!("{bytes} bytes"))
+                        .map_or_else(|| "Unknown".into(), format::bytes)
                 ),
                 format!(
                     "Available: {}",
                     device
                         .available
-                        .map_or_else(|| "unknown".into(), |bytes| format!("{bytes} bytes"))
+                        .map_or_else(|| "Unknown".into(), format::bytes)
                 ),
+                device
+                    .exclusion
+                    .clone()
+                    .unwrap_or_else(|| "Hardware observed · model fit not checked".into()),
+            ],
+            technical: vec![
+                format!("Observed: {} (Unix ms)", inventory.observed_unix_ms),
                 format!("Observation: {}", device.provenance),
-                device.exclusion.map_or_else(
-                    || "No observed hardware exclusion; not a source-qualified capability.".into(),
-                    |reason| format!("Excluded: {reason}"),
+                format!(
+                    "Capacity: {}",
+                    device
+                        .ceiling
+                        .map_or_else(|| "Unknown".into(), format::exact_bytes)
                 ),
+                format!(
+                    "Available: {}",
+                    device
+                        .available
+                        .map_or_else(|| "Unknown".into(), format::exact_bytes)
+                ),
+                "Physical observation is not execution admission.".into(),
             ],
         })
         .collect())
@@ -527,7 +585,9 @@ mod tests {
         let row = |id: &str| Row {
             key: Key::Snapshot(id.into()),
             title: id.into(),
+            annotation: None,
             details: Vec::new(),
+            technical: Vec::new(),
         };
         let mut rows = Rows::default();
         rows.replace(vec![row("a"), row("b")]);

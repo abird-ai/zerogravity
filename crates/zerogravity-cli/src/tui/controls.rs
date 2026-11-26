@@ -23,7 +23,7 @@ pub(super) enum Command {
     Download(DownloadAction),
     Settings(SettingsAction),
     Logs(LogAction),
-    Navigate(View),
+    Details,
     FollowOutput,
     OpenWeb,
     Appearance,
@@ -43,7 +43,7 @@ impl Command {
             Self::Download(action) => Action::Download(action),
             Self::Settings(action) => Action::Settings(action),
             Self::Logs(action) => Action::Logs(action),
-            Self::Navigate(view) => Action::Navigate(view),
+            Self::Details => Action::ShowDetails,
             Self::FollowOutput => Action::FollowOutput,
             Self::OpenWeb => Action::OpenWeb,
             Self::Appearance => Action::Appearance,
@@ -198,6 +198,61 @@ impl Scope {
         }
     }
 
+    /// The toolbar is a curated subset, never a second navigation rail
+    /// or an exhaustive list. Everything else remains in More/F4.
+    pub fn quick(&self, command: Command) -> bool {
+        use Command as C;
+        use LibraryAction as L;
+        use LogAction as G;
+        use SettingsAction as S;
+        match self.view {
+            View::Home => matches!(command, C::Run | C::Load),
+            View::Running => {
+                matches!(command, C::Run)
+                    || (command == C::Load && self.owner.is_none())
+                    || (command == C::Unload && self.owner.is_some())
+            }
+            View::Serve => {
+                matches!(command, C::Start | C::Stop)
+                    && match self.listener {
+                        Listener::Listening(_) | Listener::Finished(_) => command == C::Stop,
+                        _ => command == C::Start,
+                    }
+                    || command == C::Load && self.owner.is_none()
+            }
+            View::Models => match self.shelf {
+                Shelf::Cached => matches!(command, C::Library(L::Load(false) | L::Run | L::Search)),
+                Shelf::Catalog | Shelf::Partial => {
+                    matches!(command, C::Library(L::Pull | L::Search))
+                }
+            },
+            View::Downloads => {
+                #[cfg(all(feature = "acquisition", target_os = "linux"))]
+                if let Some((_, status, _)) = self.download
+                    && !status.terminal()
+                {
+                    return matches!(command, C::Download(DownloadAction::Cancel))
+                        || command
+                            == C::Download(
+                                if status == zerogravity::control::DownloadStatus::Paused {
+                                    DownloadAction::Resume
+                                } else {
+                                    DownloadAction::Pause
+                                },
+                            );
+                }
+                command == C::Library(L::Pull)
+            }
+            View::Devices => matches!(command, C::Library(L::Fit | L::Load(false))),
+            View::Profiles => matches!(command, C::Settings(S::Open | S::Create)),
+            View::Config => matches!(command, C::Settings(S::Choose | S::Search)),
+            View::Logs => matches!(
+                command,
+                C::Logs(G::Search | G::PickLevel | G::PickComponent)
+            ),
+        }
+    }
+
     /// Hints are based on the same observed state as the existing handlers.
     /// They are not an admission decision; original requests revalidate.
     pub fn buttons(&self) -> Vec<Button> {
@@ -225,9 +280,6 @@ impl Scope {
             View::Home => {
                 add(C::Run, "Run", "Enter", self.run());
                 add(C::Load, "Load", "l", self.load());
-                add(C::Navigate(View::Models), "Models", "4", None);
-                add(C::Navigate(View::Serve), "Serve", "3", None);
-                add(C::Navigate(View::Downloads), "Downloads", "5", None);
                 add(C::OpenWeb, "Web", "b", web);
             }
             View::Running => {
@@ -253,7 +305,6 @@ impl Scope {
                     .then_some("No owned listener")),
                 );
                 add(C::Load, "Load", "l", self.load());
-                add(C::Navigate(View::Models), "Models", "4", None);
                 add(C::OpenWeb, "Web", "b", web);
             }
             View::Models => {
@@ -436,6 +487,12 @@ impl Scope {
                 "Ctrl-C",
                 active.cancel_requested.then_some("Cancellation requested"),
             );
+        }
+        if matches!(
+            self.view,
+            View::Models | View::Devices | View::Profiles | View::Config
+        ) {
+            add(C::Details, "Details", "D", select_row);
         }
         add(C::Refresh, "Refresh", "r", None);
         add(C::Appearance, "Appearance", "T", None);
