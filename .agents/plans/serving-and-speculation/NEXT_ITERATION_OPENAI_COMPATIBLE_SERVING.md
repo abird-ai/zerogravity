@@ -6,7 +6,7 @@ scaffolding), CLI/TUI/Web and serving, ROCm, CUDA, Vulkan, then concrete
 compiled providers. Native Hugging Face/Safetensors and GGUF are primary.
 Older ordering below is context; valid owner constraints remain authoritative.
 
-Status: **OA-1 through OA-3 and OA-4A/B accepted** (27 Nov). OA-4 remains open for conversations, token count and background replay; later units remain ordered.
+Status: **OA-1 through OA-3 and OA-4A/B/C accepted** (27 Nov). OA-4 remains open for exact input-token count and bounded background replay; later units remain ordered.
 
 26 Nov user decision: [UX-P native TUI polish](../cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md)
 was the prerequisite. The assembled P4B gate passed on ad7a4178;
@@ -1391,9 +1391,53 @@ on the cached model. Full isolated gate 2,562/0/109 across 318 Rust
 suites (377.3s), release TUI/Web, installer and scripts passed.
 OA-4B accepted.
 
-Remaining: conversation/items CRUD and atomic append on successful
-generation; exact input_tokens count without generation through original
-charged tokenizer; bounded background streaming/replay and resume.
+**OA-4C conversation resources (27 Nov).** Conversation create/retrieve/
+metadata update/delete and item create/retrieve/delete/list use the same
+listener-local authenticated protocol store, reservation ledger and lock
+as responses. Current API reference:
+https://developers.openai.com/api/reference/resources/conversations
+and https://developers.openai.com/api/reference/resources/conversations/subresources/items.
+Text messages only; normalize through the original Responses text parser.
+Metadata update replaces the map (null or empty clears it). New item IDs
+are server-owned. Pages retain exact IDs and ascending/descending cursors;
+invalid/deleted cursors refuse. At most 20 items per explicit create batch,
+128 retained turns, 2 MiB retained text (1 MiB semantic input replay bound).
+Each conversation reserves 2 MiB + 128 KiB of the existing 64-slot/32 MiB
+quota before creation. Age out 30min after the last successful mutation,
+not a read; active leases defer expiry. Replies retain separately admitted
+immutable serialization, not borrowed deleted records. Local deletion
+retires the scoped items; independent stored response snapshots survive.
+No durable/cloud item store or tenant isolation beyond the listener.
+
+Accept conversation ID string or object; mutually exclusive with
+previous_response_id. Replay existing history through the original
+SemanticRequest and model-owned template. Request-local instructions
+remain request-local. Omitted input can generate from existing context.
+Reserve one terminal assistant item before admission. One exclusive
+mutation lease per conversation; reads remain available and competing
+generation/edit/delete returns 409 until lease retirement. On successful
+terminal completed or max-token incomplete, append only this request's
+new input and actual assistant output, preserving its original output ID
+and status. Publish append and any retained response record under the same
+lock; no replay duplication, stale replacement, lost updates or partial
+append. Foreground store=false needs no response record; explicit
+conversation association still appends context. Background uses the
+original joined receipt and cancellation race; failure, refusal,
+pre-terminal disconnect or cancellation appends nothing. Cancellation can
+briefly leave a mutation conflict until joined consumer retirement.
+No model session retention or additional execution authority.
+
+Focused engine/serving 177/0/0, strict lint passed. Real installed OpenAI
+SDK 2.33.0 conversation/response canary passed exact Chat parity and
+actual cancellation. Full isolated assembled gate 2,567/0/109 across
+318 suites (342s), release TUI/Web, installer and scripts passed.
+Serial CLI/TUI/Web and official SDK retry passed (124.91s), Rust SDK
+(15.56s). First combined consumer run encountered a resource/execution
+bound refusal during concurrent workspace build; serial retry passed
+unchanged. OA-4C accepted.
+
+Remaining after OA-4C: exact input_tokens count without generation through
+original charged tokenizer; bounded background streaming/replay and resume.
 Retain one protocol quota, no model-state store or second scheduler.
 No false capability until qualified.
 

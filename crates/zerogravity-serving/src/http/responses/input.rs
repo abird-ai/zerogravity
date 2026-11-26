@@ -1,8 +1,11 @@
 //! Bounded text-only Responses input. No translation through Chat JSON.
-use super::{Options, Wire, store::Store};
+use super::{
+    Options, Wire,
+    store::{ConversationLease, Store},
+};
 use crate::TextService;
 use serde_json::{Map, Value};
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Arc};
 use zerogravity_engine::router::{
     ChatMessage, ChatRole, MAX_CHAT_MESSAGES, SemanticRequest, ServiceError, TextInput,
     pending::ServingCharge,
@@ -10,10 +13,10 @@ use zerogravity_engine::router::{
 
 type Result<T> = std::result::Result<T, ServiceError>;
 
-fn invalid(param: &'static str, message: &'static str) -> ServiceError {
+pub(super) fn invalid(param: &'static str, message: &'static str) -> ServiceError {
     ServiceError::new(400, "invalid_request", message).with_parameter(param)
 }
-fn unsupported(param: &'static str) -> ServiceError {
+pub(super) fn unsupported(param: &'static str) -> ServiceError {
     ServiceError::new(
         400,
         "unsupported_parameter",
@@ -21,7 +24,7 @@ fn unsupported(param: &'static str) -> ServiceError {
     )
     .with_parameter(param)
 }
-fn optional<'a>(map: &'a Map<String, Value>, key: &str) -> Option<&'a Value> {
+pub(super) fn optional<'a>(map: &'a Map<String, Value>, key: &str) -> Option<&'a Value> {
     map.get(key).filter(|value| !value.is_null())
 }
 fn boolean(map: &Map<String, Value>, key: &'static str, default: bool) -> Result<bool> {
@@ -29,7 +32,7 @@ fn boolean(map: &Map<String, Value>, key: &'static str, default: bool) -> Result
         .map(|v| v.as_bool().ok_or_else(|| invalid(key, "expected boolean")))
         .unwrap_or(Ok(default))
 }
-fn only(map: &Map<String, Value>, allowed: &[&str], param: &'static str) -> Result<()> {
+pub(super) fn only(map: &Map<String, Value>, allowed: &[&str], param: &'static str) -> Result<()> {
     if map.keys().any(|key| !allowed.contains(&key.as_str())) {
         return Err(unsupported(param));
     }
@@ -67,7 +70,7 @@ fn plain_text(value: &Value) -> Result<()> {
 
 // Borrowed input content; measure once before copying. Text parts are
 // concatenated in-order within their original role, with no new separator.
-fn fragments(
+pub(super) fn fragments(
     value: &Value,
     role: ChatRole,
     mut visit: impl FnMut(&str) -> Result<()>,
@@ -104,7 +107,10 @@ fn fragments(
     Ok(())
 }
 
-fn turns(input: &Value, mut visit: impl FnMut(ChatRole, &Value) -> Result<()>) -> Result<()> {
+pub(super) fn turns(
+    input: &Value,
+    mut visit: impl FnMut(ChatRole, &Value) -> Result<()>,
+) -> Result<()> {
     if input.is_string() {
         return visit(ChatRole::User, input);
     }
@@ -143,9 +149,56 @@ fn turns(input: &Value, mut visit: impl FnMut(ChatRole, &Value) -> Result<()>) -
     Ok(())
 }
 
-fn add(a: usize, b: usize) -> Result<usize> {
+pub(super) fn add(a: usize, b: usize) -> Result<usize> {
     a.checked_add(b)
         .ok_or_else(|| ServiceError::new(400, "size_overflow", "Responses size overflow"))
+}
+
+pub(super) fn metadata(map: &Map<String, Value>) -> Result<Option<&Map<String, Value>>> {
+    optional(map, "metadata")
+        .map(|v| {
+            let metadata = v
+                .as_object()
+                .ok_or_else(|| invalid("metadata", "metadata must be an object"))?;
+            if metadata.len() > 16 {
+                return Err(invalid("metadata", "too many metadata entries"));
+            }
+            for (key, value) in metadata {
+                if key.chars().count() > 64
+                    || value.as_str().is_none_or(|s| s.chars().count() > 512)
+                {
+                    return Err(invalid("metadata", "metadata key/value exceeds limits"));
+                }
+            }
+            Ok(metadata)
+        })
+        .transpose()
+}
+pub(super) fn owned_metadata(metadata: Option<&Map<String, Value>>) -> BTreeMap<String, String> {
+    metadata
+        .into_iter()
+        .flatten()
+        .map(|(k, v)| {
+            (
+                k.clone(),
+                v.as_str().expect("validated metadata").to_owned(),
+            )
+        })
+        .collect()
+}
+
+pub(super) fn message(role: ChatRole, content: &Value) -> Result<ChatMessage> {
+    let mut len = 0;
+    fragments(content, role, |text| {
+        len = add(len, text.len())?;
+        Ok(())
+    })?;
+    let mut text = String::with_capacity(len);
+    fragments(content, role, |s| {
+        text.push_str(s);
+        Ok(())
+    })?;
+    Ok(ChatMessage { role, text })
 }
 
 pub(in crate::http) fn parse(
@@ -153,8 +206,8 @@ pub(in crate::http) fn parse(
     service: &dyn TextService,
     ingress: &mut Vec<ServingCharge>,
     output_limit: usize,
-    resources: &Store,
-) -> Result<(SemanticRequest, Options, Wire)> {
+    resources: &Arc<Store>,
+) -> Result<(SemanticRequest, Options, Wire, Option<ConversationLease>)> {
     let value = super::super::parse_json(body, Some(service), ingress)?;
     let map = value
         .as_object()
@@ -227,9 +280,35 @@ pub(in crate::http) fn parse(
             return Err(unsupported("background_options"));
         }
     }
-    for name in ["conversation", "reasoning"] {
-        neutral(map, name, |_| false)?;
+    neutral(map, "reasoning", |_| false)?;
+    let conversation_id = optional(map, "conversation")
+        .map(|value| {
+            if let Some(id) = value.as_str() {
+                return Ok(id);
+            }
+            let object = value
+                .as_object()
+                .ok_or_else(|| invalid("conversation", "conversation ID required"))?;
+            only(object, &["id"], "conversation")?;
+            object
+                .get("id")
+                .and_then(Value::as_str)
+                .ok_or_else(|| invalid("conversation", "conversation ID required"))
+        })
+        .transpose()?;
+    if conversation_id.is_some() && optional(map, "previous_response_id").is_some() {
+        return Err(invalid(
+            "conversation",
+            "conversation and previous_response_id are mutually exclusive",
+        ));
     }
+    let conversation = conversation_id
+        .map(|id| {
+            resources
+                .lease_conversation(id)
+                .map_err(|e| e.with_parameter("conversation"))
+        })
+        .transpose()?;
     let previous = optional(map, "previous_response_id")
         .map(|v| {
             v.as_str()
@@ -301,48 +380,45 @@ pub(in crate::http) fn parse(
                 .ok_or_else(|| invalid("instructions", "instructions must be text"))
         })
         .transpose()?;
-    let input = map
-        .get("input")
-        .ok_or_else(|| invalid("input", "input required"))?;
+    let input = optional(map, "input").filter(|v| !(conversation.is_some() && empty_array(v)));
+    if input.is_none() && conversation.is_none() {
+        return Err(invalid("input", "input required"));
+    }
     let mut count = usize::from(instructions.is_some());
     let mut bytes = instructions.map_or(0, str::len);
+    if let Some(conversation) = &conversation {
+        let (history_count, history_bytes) = conversation.measure();
+        count = add(count, history_count)?;
+        bytes = add(bytes, history_bytes)?;
+    }
     if let Some(parent) = &parent {
         count = add(count, add(parent.input.len(), 1)?)?;
         for turn in parent.input.iter().chain(std::iter::once(&parent.output)) {
             bytes = add(bytes, turn.text.len())?;
         }
     }
-    turns(input, |role, content| {
-        count = add(count, 1)?;
-        fragments(content, role, |text| {
-            bytes = add(bytes, text.len())?;
-            Ok(())
-        })
-    })?;
-    if count > MAX_CHAT_MESSAGES || bytes > super::super::MAX_BODY {
+    if let Some(input) = input {
+        turns(input, |role, content| {
+            count = add(count, 1)?;
+            fragments(content, role, |text| {
+                bytes = add(bytes, text.len())?;
+                Ok(())
+            })
+        })?;
+    }
+    // Reserve one conversation item for the terminal assistant output.
+    let retained_count = count - usize::from(instructions.is_some());
+    if count == 0
+        || count > MAX_CHAT_MESSAGES
+        || bytes > super::super::MAX_BODY
+        || (conversation.is_some() && retained_count >= MAX_CHAT_MESSAGES)
+    {
         return Err(
             ServiceError::new(413, "input_too_large", "Responses input exceeds limits")
                 .with_parameter("input"),
         );
     }
-    let metadata = optional(map, "metadata")
-        .map(|v| {
-            let metadata = v
-                .as_object()
-                .ok_or_else(|| invalid("metadata", "metadata must be an object"))?;
-            if metadata.len() > 16 {
-                return Err(invalid("metadata", "too many metadata entries"));
-            }
-            for (key, value) in metadata {
-                if key.chars().count() > 64
-                    || value.as_str().is_none_or(|s| s.chars().count() > 512)
-                {
-                    return Err(invalid("metadata", "metadata key/value exceeds limits"));
-                }
-            }
-            Ok(metadata)
-        })
-        .transpose()?;
+    let metadata = metadata(map)?;
     // Price the typed input before copying, independently of response
     // metadata, which must survive retirement of the admitted input.
     let route_bytes = add(
@@ -361,14 +437,17 @@ pub(in crate::http) fn parse(
             // Pending owns every serialized polling snapshot. Only retain
             // the options/metadata allowance, not a second wire budget.
             0
-        } else if store {
+        } else if store || conversation.is_some() {
             output_limit.min(super::super::MAX_BODY)
         } else {
             output_limit
         },
         add(
             add(metadata_bytes, instructions.map_or(0, str::len))?,
-            previous.map_or(0, str::len),
+            add(
+                previous.map_or(0, str::len),
+                conversation_id.map_or(0, str::len),
+            )?,
         )?,
     )?;
     let mut messages = Vec::with_capacity(count);
@@ -384,25 +463,16 @@ pub(in crate::http) fn parse(
         messages.extend(parent.input.iter().cloned());
         messages.push(parent.output.clone());
     }
-    turns(input, |role, content| {
-        let mut len = 0;
-        fragments(content, role, |text| {
-            len = add(len, text.len())?;
+    if let Some(conversation) = &conversation {
+        conversation.extend(&mut messages);
+    }
+    if let Some(input) = input {
+        turns(input, |role, content| {
+            messages.push(message(role, content)?);
             Ok(())
         })?;
-        let mut text = String::with_capacity(len);
-        fragments(content, role, |s| {
-            text.push_str(s);
-            Ok(())
-        })?;
-        messages.push(ChatMessage { role, text });
-        Ok(())
-    })?;
-    let metadata: BTreeMap<_, _> = metadata
-        .into_iter()
-        .flatten()
-        .map(|(k, v)| (k.clone(), v.as_str().unwrap().to_owned()))
-        .collect();
+    }
+    let metadata = owned_metadata(metadata);
     Ok((
         SemanticRequest {
             model: model.to_owned(),
@@ -420,8 +490,10 @@ pub(in crate::http) fn parse(
             store,
             background,
             previous: previous.map(str::to_owned),
+            conversation: conversation_id.map(str::to_owned),
             _charge: wire.charge.clone(),
         },
         wire,
+        conversation,
     ))
 }

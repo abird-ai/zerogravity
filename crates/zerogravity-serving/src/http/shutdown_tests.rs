@@ -615,3 +615,210 @@ fn background_worker_failure_and_output_limit_publish_safe_terminal_records() {
     drop((consumer, service));
     assert_eq!(host.serving_bytes(), baseline);
 }
+
+#[test]
+fn conversation_background_cancel_and_terminal_append_are_atomic() {
+    use serde_json::json;
+    let _lock = test_support::lock();
+    let host = test_support::host();
+    let baseline = host.serving_bytes();
+    let service = PendingService::open(host.clone());
+    let consumer = service.queue.worker().unwrap();
+    let server = start(service.clone());
+    let address = server.local_addr();
+    let call = |method: &str, path: &str, body: Option<&serde_json::Value>| {
+        background_exchange(address, method, path, body)
+    };
+    let (status, conv) = call(
+        "POST",
+        "/v1/conversations",
+        Some(&json!({
+            "items":[{"role":"user","content":"original"}]
+        })),
+    );
+    assert_eq!(status, 200, "{conv}");
+    let id = conv["id"].as_str().unwrap();
+    let path = format!("/v1/conversations/{id}");
+    let items = format!("{path}/items");
+    let initial = call("GET", &items, None);
+    let request = json!({"model":"fixture","conversation":id,"input":"pending","background":true,"store":false});
+    let (status, response) = call("POST", "/v1/responses", Some(&request));
+    assert_eq!(status, 200, "{response}");
+    let first = format!("/v1/responses/{}", response["id"].as_str().unwrap());
+    let token = service.receipt(0);
+    let job = match consumer.try_pop(|(cancel, _)| cancel.is_cancelled()) {
+        Pop::Item(job) => job,
+        _ => panic!("original active receipt missing"),
+    };
+    assert_eq!(call("GET", &items, None), initial);
+    assert_eq!(call("POST", "/v1/responses", Some(&request)).0, 409);
+    assert_eq!(
+        call(
+            "POST",
+            &items,
+            Some(&json!({"items":[{"role":"user","content":"race"}]}))
+        )
+        .0,
+        409
+    );
+    assert_eq!(
+        call("POST", &path, Some(&json!({"metadata":{"race":"true"}}))).0,
+        409
+    );
+    assert_eq!(call("DELETE", &path, None).0, 409);
+    assert_eq!(
+        call(
+            "DELETE",
+            &format!("{items}/{}", initial.1["first_id"].as_str().unwrap()),
+            None
+        )
+        .0,
+        409
+    );
+    let (status, cancelled) = call("POST", &format!("{first}/cancel"), None);
+    assert_eq!(status, 200);
+    assert_eq!(cancelled["status"], "cancelled");
+    assert!(token.is_cancelled());
+    let _ = job.1.try_send(ResponseEvent::Done {
+        output: "late".into(),
+        prompt_tokens: 3,
+        cached_prompt_tokens: 0,
+        completion_tokens: 1,
+        finish_reason: "stop",
+    });
+    assert_eq!(call("GET", &items, None), initial);
+    // Lease release is tied to the joined consumer, not the cancellation flag.
+    let mut second = serde_json::Value::Null;
+    wait_until(|| {
+        let (status, response) = call("POST", "/v1/responses", Some(&request));
+        if status == 409 {
+            return false;
+        }
+        assert_eq!(status, 200, "{response}");
+        second = response;
+        true
+    });
+    let second_path = format!("/v1/responses/{}", second["id"].as_str().unwrap());
+    let second_job = match consumer.try_pop(|(cancel, _)| cancel.is_cancelled()) {
+        Pop::Item(job) => job,
+        _ => panic!("second original receipt missing"),
+    };
+    assert_eq!(call("GET", &items, None), initial);
+    second_job
+        .1
+        .try_send(ResponseEvent::Done {
+            output: "complete".into(),
+            prompt_tokens: 3,
+            cached_prompt_tokens: 0,
+            completion_tokens: 1,
+            finish_reason: "length",
+        })
+        .unwrap_or_else(|_| panic!("worker disconnected"));
+    let mut terminal = serde_json::Value::Null;
+    wait_until(|| {
+        let (status, value) = call("GET", &second_path, None);
+        assert_eq!(status, 200);
+        terminal = value;
+        terminal["status"] != "in_progress"
+    });
+    assert_eq!(terminal["status"], "incomplete");
+    let (status, page) = call("GET", &format!("{items}?order=asc"), None);
+    assert_eq!(status, 200);
+    let data = page["data"].as_array().unwrap();
+    assert_eq!(data.len(), 3);
+    assert_eq!(data[1]["content"][0]["text"], "pending");
+    assert_eq!(data[2]["content"][0]["text"], "complete");
+    assert_eq!(data[2]["id"], terminal["output"][0]["id"]);
+    assert_eq!(data[2]["status"], "incomplete");
+    assert_eq!(
+        call("POST", &format!("{second_path}/cancel"), None),
+        (200, terminal)
+    );
+    assert_eq!(
+        call("GET", &format!("{items}?order=asc"), None),
+        (200, page)
+    );
+    assert_eq!(call("GET", &first, None), (200, cancelled));
+    // Active shutdown must retire the lease and original receipt.
+    assert_eq!(call("POST", "/v1/responses", Some(&request)).0, 200);
+    let third = service.receipt(2);
+    server.shutdown().unwrap();
+    assert!(third.is_cancelled());
+    assert_eq!(
+        service
+            .queue
+            .sweep(|(cancel, _)| cancel.is_cancelled())
+            .unwrap(),
+        1
+    );
+    drop((job, second_job, token, third, consumer, service));
+    assert_eq!(host.serving_bytes(), baseline);
+}
+
+#[test]
+fn foreground_conversation_disconnect_releases_lease_without_append() {
+    use serde_json::json;
+    let _lock = test_support::lock();
+    let host = test_support::host();
+    let baseline = host.serving_bytes();
+    let service = PendingService::open(host.clone());
+    let consumer = service.queue.worker().unwrap();
+    let server = start(service.clone());
+    let address = server.local_addr();
+    let (status, conv) =
+        background_exchange(address, "POST", "/v1/conversations", Some(&json!({})));
+    assert_eq!(status, 200);
+    let id = conv["id"].as_str().unwrap();
+    let path = format!("/v1/conversations/{id}/items");
+    for stream in [true, false] {
+        let mut socket = TcpStream::connect(address).unwrap();
+        let body =
+            json!({"model":"fixture","conversation":id,"input":"disconnected","stream":stream})
+                .to_string();
+        write!(socket, "POST /v1/responses HTTP/1.1\r\nHost: localhost\r\nContent-Length: {}\r\nContent-Type: application/json\r\n\r\n{body}", body.len()).unwrap();
+        let receipt = service.receipt(usize::from(!stream));
+        assert!(!receipt.is_cancelled());
+        let (status, page) = background_exchange(address, "GET", &path, None);
+        assert_eq!(status, 200);
+        assert_eq!(page["data"], json!([]));
+        drop(socket);
+        wait_until(|| receipt.is_cancelled());
+        assert_eq!(
+            service
+                .queue
+                .sweep(|(cancel, _)| cancel.is_cancelled())
+                .unwrap(),
+            1
+        );
+        // An edit proves the exact mutation lease was released. Remove the
+        // edit to keep the same empty context for the next disconnect case.
+        let mut added = serde_json::Value::Null;
+        wait_until(|| {
+            let (status, value) = background_exchange(
+                address,
+                "POST",
+                &path,
+                Some(&json!({"items":[{"role":"user","content":"edit"}]})),
+            );
+            if status == 409 {
+                return false;
+            }
+            assert_eq!(status, 200, "{value}");
+            added = value;
+            true
+        });
+        assert_eq!(added["data"].as_array().unwrap().len(), 1);
+        let item = added["first_id"].as_str().unwrap();
+        assert_eq!(
+            background_exchange(address, "DELETE", &format!("{path}/{item}"), None).0,
+            200
+        );
+        assert_eq!(
+            background_exchange(address, "GET", &path, None).1["data"],
+            json!([])
+        );
+    }
+    server.shutdown().unwrap();
+    drop((consumer, service));
+    assert_eq!(host.serving_bytes(), baseline);
+}

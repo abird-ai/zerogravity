@@ -5,10 +5,11 @@ Canonical cross-window entry point for `/home/pvl/spaces/abird/src/zerogravity`.
 **Latest complete takeover (27 Nov, through OA-4B):**
 [FULL_COMPREHENSIVE_HANDOFF_2026-11-27_OA4B.md](FULL_COMPREHENSIVE_HANDOFF_2026-11-27_OA4B.md).
 Read §§0–13 first for current architecture, acceptance, limitations and next
-work. Use [the standalone OA-4 continuation prompt](NEXT_AGENT_2026-11-27_OA4C.md).
-OA-4B already committed at 89822f40 and the interrupted turn's accepted
-evidence was recovered; no production rework required. Remaining OA-4:
-conversations/items, exact input-token counting, bounded background replay.
+work. The [standalone OA-4C continuation prompt](NEXT_AGENT_2026-11-27_OA4C.md)
+is the historical entry to the current work; use the live checkpoint below.
+OA-4B already committed at 89822f40; no production rework required.
+OA-4C accepted. Remaining OA-4: exact input-token counting and bounded
+background streaming/replay/resumption.
 Appendix D preserves every post-M1 landing narrative, changed paths and
 exact engineering prose delta; Appendix B records unresolved markers.
 The preceding [UX-P-M1 pack](FULL_COMPREHENSIVE_HANDOFF_2026-11-26_UX_PM1.md),
@@ -36,7 +37,67 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — OA-4B accepted; OA-4 conversations/count/replay next (27 Nov)
+### Current checkpoint — OA-4C conversations accepted; count/replay next (27 Nov)
+
+Started from clean main at 39d7086e (OA-4B implementation 89822f40).
+Single L5 source-authoring checkout; no push, downloads, or new
+dependencies. Preserve other projects' physical owners.
+
+Conversation/item CRUD and bounded exact-ID pages on original authorized
+listener. A single Store state lock now owns responses and conversations;
+same 64-slot/32 MiB quota and physical ServingCharge. Reserve 2 MiB retained
+text + 128 KiB per conversation, maximum 128 turns and 20 items per create
+batch. Read replies own separately charged serialized bytes. Expire after
+30min since successful mutation, except active leases; deletion removes
+the scoped items, not independent stored response snapshots. Metadata
+updates replace/clear. All memory-only, listener scoped.
+
+Original semantic request receives request-local instructions, conversation
+history and new typed text. ID string/object supported; previous_response_id
+mutually exclusive. Input may be omitted for existing nonempty context.
+The 1 MiB input bound, 128-turn admission and bounded terminal projection
+reserve room for the actual assistant item. Exclusive per-conversation
+mutation lease prevents concurrent edits/delete/generation (409), while
+reads proceed. Append exactly the new input and terminal completed or
+length-incomplete assistant output, with its actual ID and status, under
+the same state lock as any retained response publication. No append on
+failure, failed admission, pre-terminal foreground disconnect or
+background cancellation; late Done cannot revive a cancelled response.
+Lease release after cancellation follows original joined consumer
+retirement. Foreground store=false with explicit conversation appends
+without a retained response record. No second scheduler, model state store,
+or session retention. Details and limits in the owning OA-4 design.
+
+Focused engine/serving 177/0/0 and strict lint passed, including shared
+quota, expiry, actual sockets, authorization, stable item identity,
+exact semantic replay, failure/disconnect/cancel and ledger retirement.
+Initial outdated unsupported-conversation assertion updated to expect
+404 for nonexistent conversation. Installed OpenAI SDK 2.33.0 actual
+cached Qwen3.5 canary passed conversation CRUD, exact Chat text/usage parity,
+JSON/SSE/background append, retained response independence and actual
+background cancel. First combined CLI/TUI/Web run hit a late native
+load-and-run resource/execution-bound refusal while the assembled build
+was concurrently consuming host memory; SDK/browser conversation checks
+had already passed. Retry consumer checks serially after the workspace
+gate; no source change for that refusal. Full isolated assembled gate
+exited 0: 2,567/0/109 across 318 suites (342s), release TUI/Web,
+installer and scripts passed. Serial real CLI/TUI/Web and official SDK
+retry passed (124.91s) without source changes. Rust SDK passed (15.56s).
+OA-4C accepted. Logs: target/oa4c-focused.log,
+target/oa4c-real-consumers.log (first refusal),
+target/oa4c-real-consumers-retry.log, target/oa4c-assembled.log.
+
+Next after OA-4C: exact input-token counting through the selected original
+charged tokenizer without opening generation. Inspect Router::request_with,
+TextTokenizer::{semantic_prompt_bound,semantic_prompt_tokens},
+PreparedModel validation and Runtime/TextService delegation. Reuse original
+model-reader identity, exact template, charged allocation and typed input
+(including conversation/previous-response replay), with no generation queue
+ticket, session, receipt or context mutation for counting. Then bounded
+background streaming/replay/resumption through the original joined
+job/receipt. OA-4 remains open. No new physical GPU/performance claim.
+
+### Prior checkpoint — OA-4B accepted; OA-4 conversations/count/replay next (27 Nov)
 
 Started from clean signed 0898734b on L5. Rechecked current background
 mode and cancel contracts:

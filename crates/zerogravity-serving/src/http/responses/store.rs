@@ -14,6 +14,10 @@ use zerogravity_engine::router::{
     pending::ServingCharge,
 };
 
+mod conversation;
+use conversation::{Append, Conversation, ItemKey};
+pub(in crate::http) use conversation::{Lease as ConversationLease, route as conversation_route};
+
 type Result<T> = std::result::Result<T, ServiceError>;
 
 pub(super) const MAX_RECORDS: usize = 64;
@@ -29,21 +33,27 @@ struct Budget {
 
 #[derive(Default)]
 pub(in crate::http) struct Store {
-    records: Mutex<BTreeMap<String, Entry>>,
+    state: Mutex<State>,
     budget: Arc<Mutex<Budget>>,
+}
+#[derive(Default)]
+struct State {
+    responses: BTreeMap<String, Entry>,
+    conversations: BTreeMap<String, Conversation>,
 }
 impl Store {
     pub(in crate::http) fn expire(&self) {
         self.expire_at(Instant::now());
     }
     fn expire_at(&self, now: Instant) {
-        self.records
-            .lock()
-            .expect("protocol store")
-            .retain(|_, entry| match entry {
-                Entry::Active(_) => true,
-                Entry::Terminal { expires, .. } => *expires > now,
-            });
+        let mut state = self.state.lock().expect("protocol store");
+        state.responses.retain(|_, entry| match entry {
+            Entry::Active(_) => true,
+            Entry::Terminal { expires, .. } => *expires > now,
+        });
+        state
+            .conversations
+            .retain(|_, conversation| conversation.retained_at(now));
     }
 
     fn reserve(&self, bytes: usize, service: &dyn TextService) -> Result<Credit> {
@@ -59,7 +69,7 @@ impl Store {
                 return Err(ServiceError::new(
                     503,
                     "response_store_full",
-                    "response store capacity exhausted",
+                    "protocol store capacity exhausted",
                 ));
             }
             budget.count += 1;
@@ -77,9 +87,10 @@ impl Store {
 
     pub(super) fn get(&self, id: &str) -> Result<Arc<Record>> {
         self.expire();
-        self.records
+        self.state
             .lock()
             .expect("protocol store")
+            .responses
             .get(id)
             .map(Entry::record)
             .ok_or_else(missing)
@@ -87,7 +98,8 @@ impl Store {
 
     fn remove(&self, id: &str) -> Result<()> {
         self.expire();
-        let mut records = self.records.lock().expect("protocol store");
+        let mut state = self.state.lock().expect("protocol store");
+        let records = &mut state.responses;
         if matches!(records.get(id), Some(Entry::Active(_))) {
             return Err(ServiceError::new(
                 409,
@@ -101,7 +113,8 @@ impl Store {
 
     fn cancel(&self, id: &str) -> Result<Arc<Record>> {
         self.expire();
-        let mut records = self.records.lock().expect("protocol store");
+        let mut state = self.state.lock().expect("protocol store");
+        let records = &mut state.responses;
         match records.get(id).ok_or_else(missing)? {
             Entry::Terminal { record, .. } if record.background => Ok(record.clone()),
             Entry::Terminal { .. } => Err(ServiceError::new(
@@ -181,6 +194,7 @@ pub(super) struct Record {
     // instructions. A continuation copies these turns and the output,
     // never references a previous physical session or a chain of records.
     pub(super) input: Arc<Vec<ChatMessage>>,
+    input_keys: Option<Arc<Vec<ItemKey>>>,
     pub(super) output: ChatMessage,
     pub(super) continuable: bool,
     background: bool,
@@ -199,7 +213,9 @@ impl Record {
     }
 }
 
-// One reservation per stored response, allocated before model admission.
+// Retained response reservation and optional context mutation, both prepared
+// before original model admission. Stateless conversation turns need no
+// independent response slot.
 pub(in crate::http) struct Pending {
     store: Arc<Store>,
     id: String,
@@ -207,7 +223,9 @@ pub(in crate::http) struct Pending {
     limit: usize,
     background: bool,
     stored: bool,
-    credit: Arc<Credit>,
+    credit: Option<Arc<Credit>>,
+    input_keys: Option<Arc<Vec<ItemKey>>>,
+    append: Option<Append>,
 }
 impl Pending {
     pub(in crate::http) fn prepare(
@@ -215,10 +233,12 @@ impl Pending {
         service: &dyn TextService,
         request: &SemanticRequest,
         options: &Options,
+        conversation: Option<ConversationLease>,
         request_id: &str,
         output_limit: usize,
     ) -> Result<Option<Self>> {
-        if !options.store && !options.background {
+        let retain = options.store || options.background;
+        if !retain && conversation.is_none() {
             return Ok(None);
         }
         let TextInput::Conversation(messages) = &request.input else {
@@ -253,15 +273,35 @@ impl Pending {
             .ok_or_else(|| {
                 ServiceError::new(400, "size_overflow", "response store bound overflow")
             })?;
-        let credit = store.reserve(bytes, service)?;
+        let identity = Identity::new(request_id);
+        let credit = if retain {
+            // Conversation item IDs/statuses are retained along with the
+            // normalized response snapshot, independently of later edits.
+            let bytes = bytes
+                .checked_add(if conversation.is_some() { 32 * 1024 } else { 0 })
+                .ok_or_else(|| {
+                    ServiceError::new(400, "size_overflow", "response store bound overflow")
+                })?;
+            Some(Arc::new(store.reserve(bytes, service)?))
+        } else {
+            None
+        };
+        let (append, input_keys) = if let Some(conversation) = conversation {
+            let (append, keys) = conversation.prepare(input, &identity)?;
+            (Some(append), retain.then(|| Arc::new(keys)))
+        } else {
+            (None, None)
+        };
         Ok(Some(Self {
             store: store.clone(),
-            id: Identity::new(request_id).response,
-            input: Arc::new(input.to_vec()),
+            id: identity.response,
+            input: Arc::new(if retain { input.to_vec() } else { Vec::new() }),
             limit,
             background: options.background,
             stored: options.store,
-            credit: Arc::new(credit),
+            credit,
+            input_keys,
+            append,
         }))
     }
 
@@ -287,6 +327,7 @@ impl Pending {
         Ok(Arc::new(Record {
             json: buffer.bytes,
             input: self.input.clone(),
+            input_keys: self.input_keys.clone(),
             output: ChatMessage {
                 role: ChatRole::Assistant,
                 text: output.to_owned(),
@@ -294,24 +335,33 @@ impl Pending {
             continuable: self.stored && continuable,
             background: self.background,
             stored: self.stored,
-            _credit: self.credit.clone(),
+            _credit: self
+                .credit
+                .as_ref()
+                .expect("retained response reservation")
+                .clone(),
         }))
     }
 
     pub(super) fn finish<T: Serialize>(
-        self,
+        mut self,
         view: &T,
         output: &str,
-        continuable: bool,
+        status: Option<&'static str>,
     ) -> Result<()> {
-        let record = self.record(view, output, continuable)?;
-        let previous = self
-            .store
-            .records
-            .lock()
-            .expect("protocol store")
-            .insert(self.id, Entry::terminal(record));
-        assert!(previous.is_none(), "server response ID reused");
+        let record = self
+            .credit
+            .is_some()
+            .then(|| self.record(view, output, status.is_some()))
+            .transpose()?;
+        let mut state = self.store.state.lock().expect("protocol store");
+        if let (Some(append), Some(status)) = (&mut self.append, status) {
+            append.publish(&mut state, output, status);
+        }
+        if let Some(record) = record {
+            let previous = state.responses.insert(self.id, Entry::terminal(record));
+            assert!(previous.is_none(), "server response ID reused");
+        }
         Ok(())
     }
 
@@ -329,21 +379,30 @@ impl Pending {
         });
         let previous = self
             .store
-            .records
+            .state
             .lock()
             .expect("protocol store")
+            .responses
             .insert(self.id.clone(), Entry::Active(active.clone()));
         assert!(previous.is_none(), "server response ID reused");
         active
     }
 
-    pub(super) fn finish_active(self, active: &Arc<Active>, record: Arc<Record>) {
-        let mut records = self.store.records.lock().expect("protocol store");
+    pub(super) fn finish_active(
+        mut self,
+        active: &Arc<Active>,
+        record: Arc<Record>,
+        status: Option<&'static str>,
+    ) {
+        let mut state = self.store.state.lock().expect("protocol store");
         // Cancellation may have already won. Never recreate deleted records
         // or overwrite the cancelled snapshot with a later worker result.
-        if matches!(records.get(&self.id), Some(Entry::Active(current)) if Arc::ptr_eq(current, active))
+        if matches!(state.responses.get(&self.id), Some(Entry::Active(current)) if Arc::ptr_eq(current, active))
         {
-            records.insert(self.id, Entry::terminal(record));
+            if let (Some(append), Some(status)) = (&mut self.append, status) {
+                append.publish(&mut state, &record.output.text, status);
+            }
+            state.responses.insert(self.id, Entry::terminal(record));
         }
     }
 }
@@ -374,13 +433,13 @@ fn item_id(response_id: &str, index: usize) -> String {
     )
 }
 impl<'a> Item<'a> {
-    fn new(id: String, turn: &'a ChatMessage) -> Self {
+    fn with_status(id: String, turn: &'a ChatMessage, status: &'static str) -> Self {
         let assistant = turn.role == ChatRole::Assistant;
         Self {
             id,
             kind: "message",
             role: turn.role.as_str(),
-            status: "completed",
+            status,
             content: [Part {
                 kind: if assistant {
                     "output_text"
@@ -410,8 +469,7 @@ struct Pagination<'a> {
 }
 impl<'a> Pagination<'a> {
     fn parse(query: Option<&'a str>) -> Result<Self> {
-        let invalid =
-            || ServiceError::new(400, "invalid_request", "invalid input_items pagination");
+        let invalid = || ServiceError::new(400, "invalid_request", "invalid item pagination");
         let mut page = Self {
             after: None,
             limit: 20,
@@ -522,10 +580,23 @@ pub(in crate::http) fn route(
                         n - 1 - position
                     }
                 };
+                let key = |index: usize| {
+                    record
+                        .input_keys
+                        .as_ref()
+                        .map(|keys| keys[index].clone())
+                        .unwrap_or_else(|| ItemKey::new(item_id(id, index), "completed"))
+                };
                 let start = match page.after {
                     None => 0,
                     Some(after) => (0..n)
-                        .find(|&i| item_id(id, order(i)) == after)
+                        .find(|&i| {
+                            let index = order(i);
+                            match &record.input_keys {
+                                Some(keys) => keys[index].id == after,
+                                None => item_id(id, index) == after,
+                            }
+                        })
                         .map(|i| i + 1)
                         .ok_or_else(|| {
                             ServiceError::new(400, "invalid_request", "unknown pagination cursor")
@@ -546,7 +617,8 @@ pub(in crate::http) fn route(
                 let data = (start..start + count)
                     .map(|i| {
                         let index = order(i);
-                        Item::new(item_id(id, index), &record.input[index])
+                        let key = key(index);
+                        Item::with_status(key.id, &record.input[index], key.status)
                     })
                     .collect::<Vec<_>>();
                 let view = Page {
@@ -594,13 +666,14 @@ mod tests {
         let credit = store.reserve(MAX_BYTES, service.as_ref()).unwrap();
         assert!(store.reserve(1, service.as_ref()).is_err());
         let now = Instant::now();
-        store.records.lock().unwrap().insert(
+        store.state.lock().unwrap().responses.insert(
             "resp_fixture".into(),
             Entry::Terminal {
                 expires: now + TTL,
                 record: Arc::new(Record {
                     json: b"{}".to_vec(),
                     input: Arc::new(Vec::new()),
+                    input_keys: None,
                     output: ChatMessage {
                         role: ChatRole::Assistant,
                         text: String::new(),

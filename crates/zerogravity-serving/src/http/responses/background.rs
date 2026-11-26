@@ -127,30 +127,42 @@ pub(in crate::http) fn start(
              }| {
                 let content = [TextPart::new(&output)];
                 let items = [Message::new(&identity, status, &content)];
-                pending.record(
-                    &options.view(&identity, &owner.model, status, &items, Some(usage), None),
-                    &output,
-                    true,
-                )
+                pending
+                    .record(
+                        &options.view(&identity, &owner.model, status, &items, Some(usage), None),
+                        &output,
+                        true,
+                    )
+                    .map(|record| (record, Some(status)))
             },
         );
-        let record = match result {
+        let (record, status) = match result {
             Ok(record) => record,
             Err(error) => {
                 owner.cancel();
                 // Report only safe diagnostics. The pre-priced fallback
                 // cannot fail even if the terminal output exceeded its cap.
                 let error = response_error(&errors, &error, false);
-                pending
-                    .record(
-                        &options.view(&identity, &owner.model, "failed", &[], None, Some(&error)),
-                        "",
-                        false,
-                    )
-                    .unwrap_or(fallback)
+                (
+                    pending
+                        .record(
+                            &options.view(
+                                &identity,
+                                &owner.model,
+                                "failed",
+                                &[],
+                                None,
+                                Some(&error),
+                            ),
+                            "",
+                            false,
+                        )
+                        .unwrap_or(fallback),
+                    None,
+                )
             }
         };
-        pending.finish_active(&active, record);
+        pending.finish_active(&active, record, status);
         // Retire the original event receipt and projection reservation now;
         // no polling response or terminal record can keep them alive.
         drop(owner);

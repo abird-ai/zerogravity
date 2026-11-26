@@ -386,7 +386,8 @@ impl Connection {
             let accepts_chunked = matches!(
                 path,
                 "/v1/completions" | "/v1/chat/completions" | "/v1/responses"
-            );
+            ) || path == "/v1/conversations"
+                || path.starts_with("/v1/conversations/");
             let length = validate_headers(&parts, host.config.limits.body_bytes, accepts_chunked)?;
             // Auth before any body read, allocation or model admission.
             host.metrics.accept_request();
@@ -478,6 +479,32 @@ impl Connection {
                     return Ok(body::json_response(200, &model_object(alias), None));
                 }
             }
+            if parts.uri.path() == "/v1/conversations"
+                || parts.uri.path().starts_with("/v1/conversations/")
+            {
+                if parts.method == Method::POST
+                    && used != 0
+                    && !header_value(&parts.headers, "content-type").is_some_and(|t| {
+                        t.eq_ignore_ascii_case("application/json")
+                            || t.to_ascii_lowercase().starts_with("application/json;")
+                    })
+                {
+                    return Err(ServiceError::new(
+                        415,
+                        "unsupported_media_type",
+                        "JSON Content-Type required",
+                    ));
+                }
+                return responses::conversation_route(
+                    &host.resources,
+                    host.service.as_ref(),
+                    &parts,
+                    &raw[..used],
+                    &mut ingress,
+                    request_id,
+                    host.config.limits.output_bytes,
+                );
+            }
             if let Some(response) = responses::resource_route(
                 &host.resources,
                 host.service.as_ref(),
@@ -504,7 +531,7 @@ impl Connection {
                 ));
             }
             let (mut task, usage, projection) = if responses {
-                let (task, options, wire) = responses::parse(
+                let (task, options, wire, conversation) = responses::parse(
                     &raw[..used],
                     host.service.as_ref(),
                     &mut ingress,
@@ -519,6 +546,7 @@ impl Connection {
                     host.service.as_ref(),
                     &task,
                     &options,
+                    conversation,
                     request_id,
                     host.config.limits.output_bytes,
                 )?;

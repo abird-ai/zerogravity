@@ -5,7 +5,7 @@ mod input;
 mod store;
 pub(super) use background::{Jobs, start as start_background};
 pub(super) use input::parse;
-pub(super) use store::{Pending, Store, route as resource_route};
+pub(super) use store::{Pending, Store, conversation_route, route as resource_route};
 
 use super::{
     ErrorReporting,
@@ -37,6 +37,7 @@ pub(super) struct Options {
     store: bool,
     pub(super) background: bool,
     previous: Option<String>,
+    conversation: Option<String>,
     _charge: Arc<ServingCharge>,
 }
 
@@ -229,6 +230,11 @@ struct Incomplete {
 }
 
 #[derive(Serialize)]
+struct ConversationRef<'a> {
+    id: &'a str,
+}
+
+#[derive(Serialize)]
 struct View<'a> {
     id: &'a str,
     object: &'static str,
@@ -243,6 +249,8 @@ struct View<'a> {
     output: &'a [Message<'a>],
     parallel_tool_calls: bool,
     previous_response_id: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    conversation: Option<ConversationRef<'a>>,
     reasoning: Option<()>,
     store: bool,
     temperature: f64,
@@ -284,6 +292,10 @@ impl Options {
             output,
             parallel_tool_calls: self.parallel_tool_calls,
             previous_response_id: self.previous.as_deref(),
+            conversation: self
+                .conversation
+                .as_deref()
+                .map(|id| ConversationRef { id }),
             reasoning: None,
             store: self.store,
             temperature: 0.0,
@@ -408,7 +420,7 @@ pub(super) async fn completion(
     let view = options.view(&identity, &owner.model, status, &items, Some(usage), None);
     let data = wire.encode(&owner, None, &view).map_err(wire_error)?;
     if let Some(pending) = pending {
-        pending.finish(&view, &output, true)?;
+        pending.finish(&view, &output, Some(status))?;
     }
     Ok(Response::builder()
         .status(StatusCode::OK)
@@ -561,7 +573,7 @@ pub(super) fn streaming(
                     let payload = ResponsePayload { response: view };
                     let frame = wire.event(&owner, &mut sequence, kind, &payload)?;
                     if let Some(pending) = pending.take() {
-                        pending.finish(&payload.response, &output, true).map_err(io::Error::other)?;
+                        pending.finish(&payload.response, &output, Some(status)).map_err(io::Error::other)?;
                     }
                     yield frame;
                     return;
@@ -583,7 +595,7 @@ pub(super) fn streaming(
             let mut safe_error = failure_object;
             safe_error.as_object_mut().expect("fixed error envelope").remove("details");
             let view = options.view(&identity, &owner.model, "failed", &items, None, Some(&safe_error));
-            pending.finish(&view, &partial, false).map_err(io::Error::other)?;
+            pending.finish(&view, &partial, None).map_err(io::Error::other)?;
         }
         yield frame;
     };

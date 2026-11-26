@@ -5,6 +5,19 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 27 Nov — OA-4C conversation resources and atomic context append
+
+Conversation/item CRUD, exact-ID bounded pages, semantic text replay,
+exclusive context mutation lease and terminal append/response publication
+on the original shared quota and receipt. Foreground JSON/SSE and background
+success/incomplete append; failed/cancelled/disconnected work does not
+append. Focused 177/0/0 and strict lint passed. Actual cached Qwen3.5
+official SDK 2.33.0, CLI/TUI/Web (124.91s) and Rust SDK (15.56s) passed
+on serial retry. Full isolated gate 2,567/0/109 (318 suites, 342s),
+release TUI/Web, installer and scripts passed. OA-4C accepted.
+No new physical GPU or performance evidence. Exact input-token count and
+bounded background stream/replay remain OA-4.
+
 ## 27 Nov — OA-4B background polling and cancellation
 
 Listener-owned joined nonstream background jobs over original receipt,

@@ -1292,7 +1292,6 @@ fn responses_refuses_unsupported_state_controls_and_content_before_enqueue() {
     for (key, value) in [
         ("background", json!("true")),
         ("background_options", json!({"completion_window":"8h"})),
-        ("conversation", json!("conv_prior")),
         ("temperature", json!(0.7)),
         ("reasoning", json!({"effort":"high"})),
         ("tools", json!([{"type":"web_search"}])),
@@ -1311,6 +1310,13 @@ fn responses_refuses_unsupported_state_controls_and_content_before_enqueue() {
         assert_eq!(body["error"]["param"], key);
         assert!(correlation(&head).starts_with("req_zg_"));
     }
+    let (head, body) = responses_request(
+        &mut response_client(server.local_addr()),
+        &json!({"model":"fixture","input":"hello","conversation":"conv_prior"}),
+        false,
+    );
+    assert!(head.starts_with("HTTP/1.1 404"), "{body}");
+    assert_eq!(body["error"]["param"], "conversation");
     assert!(service.requests.lock().unwrap().is_empty());
     server.shutdown().unwrap();
     drop(service);
@@ -1492,6 +1498,275 @@ fn stored_stream_publishes_terminal_snapshot_and_obeys_listener_auth() {
     );
     assert_eq!(document(&retrieved), terminal["response"]);
     drop(client);
+    server.shutdown().unwrap();
+    drop(service);
+    assert_eq!(host.serving_bytes(), baseline);
+}
+
+#[test]
+fn conversation_crud_and_semantic_append_share_exact_item_identity() {
+    use serde_json::json;
+    let _lock = test_support::lock();
+    let host = test_support::host();
+    let baseline = host.serving_bytes();
+    let service = Script::new(host.clone());
+    let server = ServerBuilder::from_service(service.clone())
+        .bind("127.0.0.1:0".parse().unwrap())
+        .build()
+        .unwrap()
+        .start()
+        .unwrap();
+    let address = server.local_addr();
+    let call = |method: &str, path: &str, value: Option<serde_json::Value>, status: u16| {
+        let request = match value {
+            Some(value) => post(path, &value.to_string()),
+            None => format!("{method} {path} HTTP/1.1\r\nHost: localhost\r\n\r\n"),
+        };
+        let raw = exchange(address, &request);
+        assert!(raw.starts_with(&format!("HTTP/1.1 {status}")), "{raw}");
+        document(&raw)
+    };
+    let conv = call(
+        "POST",
+        "/v1/conversations",
+        Some(json!({
+            "metadata":{"topic":"demo"},
+            "items":[{"role":"user","content":"first"}]
+        })),
+        200,
+    );
+    let id = conv["id"].as_str().unwrap();
+    let path = format!("/v1/conversations/{id}");
+    let items = format!("{path}/items");
+    assert_eq!(call("GET", &path, None, 200), conv);
+    let updated = call(
+        "POST",
+        &path,
+        Some(json!({"metadata":{"topic":"new"}})),
+        200,
+    );
+    assert_eq!(updated["created_at"], conv["created_at"]);
+    assert_eq!(updated["metadata"], json!({"topic":"new"}));
+    let initial = call("GET", &items, None, 200);
+    let first_id = initial["first_id"].as_str().unwrap();
+    let added = call(
+        "POST",
+        &items,
+        Some(json!({
+            "items":[{"role":"assistant","content":[{"type":"output_text","text":"prior","annotations":[]}]}]
+        })),
+        200,
+    );
+    let prior = added["first_id"].as_str().unwrap();
+    assert_eq!(
+        call("GET", &format!("{items}/{prior}"), None, 200),
+        added["data"][0]
+    );
+    // Cursor identity belongs to this conversation, not a numeric index.
+    let first = call("GET", &format!("{items}?order=asc&limit=1"), None, 200);
+    assert_eq!(first["first_id"], first_id);
+    assert_eq!(first["has_more"], true);
+    let next = call(
+        "GET",
+        &format!("{items}?order=asc&after={first_id}"),
+        None,
+        200,
+    );
+    assert_eq!(next["first_id"], prior);
+    assert_eq!(next["has_more"], false);
+    call("GET", &format!("{items}?after=msg_missing"), None, 400);
+
+    // A rejected edit does not modify existing context.
+    call(
+        "POST",
+        &items,
+        Some(json!({"items":[{"role":"user","content":"valid"},{"type":"function_call"}]})),
+        400,
+    );
+    assert_eq!(
+        call("GET", &format!("{items}?order=asc"), None, 200)["data"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    call(
+        "POST",
+        "/v1/responses",
+        Some(json!({
+            "model":"fixture","conversation":id,"previous_response_id":"resp_missing","input":"no"
+        })),
+        400,
+    );
+    call(
+        "POST",
+        "/v1/responses",
+        Some(json!({
+            "model":"missing","conversation":id,"input":"no"
+        })),
+        404,
+    );
+    let response = call(
+        "POST",
+        "/v1/responses",
+        Some(json!({
+            "model":"fixture","conversation":{"id":id},"instructions":"request only",
+            "input":"second","store":true,
+        })),
+        200,
+    );
+    assert_eq!(response["conversation"], json!({"id":id}));
+    let rid = response["id"].as_str().unwrap();
+    let output_id = response["output"][0]["id"].as_str().unwrap();
+    let appended = call("GET", &format!("{items}?order=asc"), None, 200);
+    let data = appended["data"].as_array().unwrap();
+    assert_eq!(data.len(), 4);
+    assert_eq!(data[0]["id"], first_id);
+    assert_eq!(data[1]["id"], prior);
+    assert_eq!(data[2]["content"][0]["text"], "second");
+    assert_eq!(data[3]["id"], output_id);
+    assert_eq!(data[3]["content"][0]["text"], "transport fixture");
+    let input = call(
+        "GET",
+        &format!("/v1/responses/{rid}/input_items?order=asc"),
+        None,
+        200,
+    );
+    assert_eq!(input["data"], json!(data[..3]));
+    let requests = service.requests.lock().unwrap();
+    let TextInput::Conversation(turns) = &requests[0].0.input else {
+        panic!("semantic conversation")
+    };
+    assert_eq!(
+        turns
+            .iter()
+            .map(|t| (t.role.as_str(), t.text.as_str()))
+            .collect::<Vec<_>>(),
+        [
+            ("developer", "request only"),
+            ("user", "first"),
+            ("assistant", "prior"),
+            ("user", "second")
+        ]
+    );
+    drop(requests);
+
+    // No response retention is required to append. SSE uses the same commit.
+    let body =
+        json!({"model":"fixture","conversation":id,"input":"third","stream":true,"store":false})
+            .to_string();
+    let raw = exchange(address, &post("/v1/responses", &body));
+    assert!(raw.contains("response.completed"), "{raw}");
+    let final_page = call("GET", &format!("{items}?order=asc"), None, 200);
+    assert_eq!(final_page["data"].as_array().unwrap().len(), 6);
+    assert_eq!(final_page["data"][4]["content"][0]["text"], "third");
+    assert_eq!(
+        final_page["data"][5]["content"][0]["text"],
+        "transport fixture"
+    );
+    let requests = service.requests.lock().unwrap();
+    let TextInput::Conversation(turns) = &requests[1].0.input else {
+        panic!("semantic conversation")
+    };
+    assert_eq!(
+        turns.iter().map(|t| t.text.as_str()).collect::<Vec<_>>(),
+        ["first", "prior", "second", "transport fixture", "third"]
+    );
+    drop(requests);
+
+    // Item deletion is exact and doesn't mutate the independent response snapshot.
+    assert_eq!(
+        call("DELETE", &format!("{items}/{prior}"), None, 200),
+        updated
+    );
+    call("GET", &format!("{items}/{prior}"), None, 404);
+    call("GET", &format!("{items}?after={prior}"), None, 400);
+    assert_eq!(
+        call(
+            "GET",
+            &format!("/v1/responses/{rid}/input_items?order=asc"),
+            None,
+            200
+        ),
+        input
+    );
+    assert_eq!(
+        call("DELETE", &path, None, 200),
+        json!({"id":id,"object":"conversation.deleted","deleted":true})
+    );
+    call("GET", &items, None, 404);
+    assert_eq!(
+        call("GET", &format!("/v1/responses/{rid}"), None, 200),
+        response
+    );
+    call("DELETE", &format!("/v1/responses/{rid}"), None, 200);
+    server.shutdown().unwrap();
+    drop(service);
+    assert_eq!(host.serving_bytes(), baseline);
+}
+
+#[test]
+fn conversation_crud_is_authorized_and_failed_generation_is_not_appended() {
+    use serde_json::json;
+    let _lock = test_support::lock();
+    let host = test_support::host();
+    let baseline = host.serving_bytes();
+    let mut service = Script::new(host.clone());
+    let fixture = Arc::get_mut(&mut service).unwrap();
+    fixture.failure = Some(ServiceError::new(
+        500,
+        "fixture_failure",
+        "injected failure",
+    ));
+    fixture.fail_after_delta = true;
+    let server = ServerBuilder::from_service(service.clone())
+        .api_key(Some("secret".into()))
+        .bind("127.0.0.1:0".parse().unwrap())
+        .build()
+        .unwrap()
+        .start()
+        .unwrap();
+    let address = server.local_addr();
+    let authorized = |request: &str| {
+        exchange(
+            address,
+            &request.replacen(
+                "\r\nHost: localhost\r\n",
+                "\r\nHost: localhost\r\nAuthorization: Bearer secret\r\n",
+                1,
+            ),
+        )
+    };
+    let create = post(
+        "/v1/conversations",
+        r#"{"items":[{"role":"user","content":"private"}]}"#,
+    );
+    assert!(exchange(address, &create).starts_with("HTTP/1.1 401"));
+    let conv = document(&authorized(&create));
+    let id = conv["id"].as_str().unwrap();
+    let path = format!("/v1/conversations/{id}/items");
+    let initial = document(&authorized(&get(&path, "")));
+    let raw = exchange(address, &get(&path, ""));
+    assert!(raw.starts_with("HTTP/1.1 401") && !raw.contains("private"));
+    for stream in [false, true] {
+        let raw = authorized(&post("/v1/responses", &json!({
+            "model":"fixture","conversation":id,"input":"must not append","stream":stream,"store":true
+        }).to_string()));
+        if stream {
+            assert!(raw.contains("response.failed"), "{raw}");
+        } else {
+            assert!(raw.starts_with("HTTP/1.1 500"), "{raw}");
+        }
+        assert_eq!(document(&authorized(&get(&path, ""))), initial);
+    }
+    // Both failure paths must release the mutation lease.
+    assert!(
+        authorized(&post(
+            &path,
+            r#"{"items":[{"role":"user","content":"after failure"}]}"#
+        ))
+        .starts_with("HTTP/1.1 200")
+    );
     server.shutdown().unwrap();
     drop(service);
     assert_eq!(host.serving_bytes(), baseline);

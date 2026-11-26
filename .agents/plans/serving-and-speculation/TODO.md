@@ -147,8 +147,16 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   real installed SDK/CLI/TUI/Web (130.88s, actual cancelled) and Rust
   SDK (14.36s) passed. Full isolated gate 2,562/0/109 (318 suites,
   377.3s), release TUI/Web, installer and scripts passed. OA-4B accepted.
-- [ ] OA-4 remaining: conversation/item resources and atomic context
-  append using the same quota; exact input-token counting without
+- [x] OA-4C: conversation/item resources and atomic context append.
+  Same protocol quota and original semantic admission; exact item IDs,
+  bounded pages, exclusive mutation lease, terminal append/cancel race
+  and independent stored response snapshots. Focused 177/0/0 and strict
+  lint passed. Real official SDK 2.33.0 and cached CLI/TUI/Web lifecycle
+  passed (124.91s) after serial retry; Rust SDK passed (15.56s). Full
+  private-network assembled gate 2,567/0/109 (318 suites, 342s), release
+  TUI/Web, installer and scripts passed. OA-4C accepted. See design and
+  current handoff for local bounds, retention and retry details.
+- [ ] OA-4 remaining: exact input-token counting without
   generation through original charged tokenizer; bounded background
   streaming/replay and resume. No duplicate model state store,
   scheduler or fake capability. Real SDK qualification.

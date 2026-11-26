@@ -213,3 +213,102 @@ with openai.OpenAI(
     assert client.responses.retrieve(job.id).model_dump() == stopped.model_dump()
     assert client.responses.delete(job.id) is None
     print(f"OpenAI SDK {openai.__version__}: Models, Responses JSON/SSE, exact Chat parity, stored response/continuation, background polling and idempotent cancel ({stopped.status}) passed")
+
+    # Conversations are charged protocol context, not a retained model session.
+    conversation = client.conversations.create(
+        metadata={"canary": "oa4c"},
+        items=[{"role": "user", "content": prompt}],
+    )
+    cid = conversation.id
+    assert client.conversations.retrieve(cid).model_dump() == conversation.model_dump()
+    updated = client.conversations.update(cid, metadata={"canary": "updated"})
+    assert updated.created_at == conversation.created_at
+    assert updated.metadata == {"canary": "updated"}
+    initial = client.conversations.items.list(cid, order="asc")
+    assert len(initial.data) == 1 and initial.data[0].content[0].text == prompt
+    initial_id = initial.data[0].id
+    # Omitted input replays the original stored typed history, without
+    # re-appending that history or persisting request-local instructions.
+    first = client.responses.create(
+        model="fast", conversation=cid, instructions=instructions,
+        store=False, max_output_tokens=2, temperature=0,
+    )
+    assert first.conversation.id == cid
+    assert first.output_text == response.output_text
+    assert first.usage == response.usage
+    first_page = client.conversations.items.list(cid, order="asc")
+    assert len(first_page.data) == 2
+    assert first_page.data[0].id == initial_id
+    assert first_page.data[1].id == first.output[0].id
+    assert first_page.data[1].content[0].text == first.output_text
+    try:
+        client.responses.retrieve(first.id)
+        raise AssertionError("stateless conversation response was retained")
+    except openai.NotFoundError:
+        pass
+
+    with client.responses.create(
+        model="served-fixture", conversation={"id": cid}, input=new_prompt,
+        instructions=new_instructions, store=True, stream=True,
+        max_output_tokens=2, temperature=0,
+    ) as stream:
+        conversation_events = list(stream)
+    last = conversation_events[-1].response
+    assert last.conversation.id == cid
+    assert last.output_text == expected.choices[0].message.content
+    assert last.usage.input_tokens == expected.usage.prompt_tokens
+    assert last.usage.output_tokens == expected.usage.completion_tokens
+    page = client.conversations.items.list(cid, order="asc", limit=2)
+    assert page.has_more and len(page.data) == 2
+    tail = client.conversations.items.list(cid, order="asc", after=page.last_id)
+    assert not tail.has_more and len(tail.data) == 2
+    assert tail.data[0].content[0].text == new_prompt
+    assert tail.data[1].id == last.output[0].id
+    assert tail.data[1].content[0].text == last.output_text
+    all_input = client.responses.input_items.list(last.id, order="asc")
+    assert [item.id for item in all_input.data] == [
+        initial_id, first.output[0].id, tail.data[0].id,
+    ]
+    added = client.conversations.items.create(
+        cid, items=[{"role": "user", "content": "Temporary edit"}],
+    )
+    added_id = added.data[0].id
+    assert client.conversations.items.retrieve(
+        added_id, conversation_id=cid
+    ).model_dump() == added.data[0].model_dump()
+    assert client.conversations.items.delete(
+        added_id, conversation_id=cid
+    ).id == cid
+    try:
+        client.conversations.items.retrieve(added_id, conversation_id=cid)
+        raise AssertionError("deleted conversation item remained available")
+    except openai.NotFoundError:
+        pass
+    deleted = client.conversations.delete(cid)
+    assert deleted.deleted and deleted.id == cid
+    try:
+        client.conversations.retrieve(cid)
+        raise AssertionError("deleted conversation remained available")
+    except openai.NotFoundError:
+        pass
+    assert client.responses.retrieve(last.id).model_dump() == last.model_dump()
+    assert client.responses.delete(last.id) is None
+
+    conversation = client.conversations.create()
+    job = client.responses.create(
+        **kwargs, conversation=conversation.id, background=True,
+    )
+    deadline = time.monotonic() + 60
+    while job.status in ("queued", "in_progress"):
+        assert time.monotonic() < deadline, "conversation background deadline"
+        time.sleep(0.05)
+        job = client.responses.retrieve(job.id)
+    assert job.status == response.status
+    assert job.output_text == response.output_text
+    assert job.usage == response.usage
+    page = client.conversations.items.list(conversation.id, order="asc")
+    assert len(page.data) == 2 and page.data[0].content[0].text == prompt
+    assert page.data[1].id == job.output[0].id
+    assert client.responses.delete(job.id) is None
+    assert client.conversations.delete(conversation.id).deleted
+    print("OpenAI SDK: conversation CRUD, stable item cursors, exact Chat parity, foreground/SSE/background atomic append and independent response retention passed")
