@@ -1058,9 +1058,12 @@ fn correlation(head: &str) -> &str {
         })
         .expect("server request correlation")
 }
-fn request_response_events(address: std::net::SocketAddr) -> (String, Vec<serde_json::Value>) {
+fn request_response_events(
+    address: std::net::SocketAddr,
+    store: bool,
+) -> (String, Vec<serde_json::Value>) {
     let mut client = response_client(address);
-    let request = r#"{"model":"fixture","input":"hello","stream":true,"store":false}"#;
+    let request = format!(r#"{{"model":"fixture","input":"hello","stream":true,"store":{store}}}"#);
     write!(client.get_mut(), "POST /v1/responses HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{request}", request.len()).unwrap();
     let (head, body) = read_response(&mut client);
     assert!(
@@ -1200,7 +1203,7 @@ fn responses_stream_projects_named_monotonic_events_and_truthful_terminal_states
             .unwrap()
             .start()
             .unwrap();
-        let (head, events) = request_response_events(server.local_addr());
+        let (head, events) = request_response_events(server.local_addr(), true);
         let id = correlation(&head).replacen("req_", "resp_", 1);
         let kinds = events
             .iter()
@@ -1251,6 +1254,22 @@ fn responses_stream_projects_named_monotonic_events_and_truthful_terminal_states
             assert_eq!(terminal["status"], "completed");
             assert_eq!(terminal["usage"]["total_tokens"], 4);
         }
+        let retrieved = exchange(
+            server.local_addr(),
+            &format!("GET /v1/responses/{id} HTTP/1.1\r\nHost: localhost\r\n\r\n"),
+        );
+        assert!(retrieved.starts_with("HTTP/1.1 200"));
+        assert_eq!(&document(&retrieved), terminal);
+        if finish == "error" {
+            let (_, refusal) = responses_request(
+                &mut response_client(server.local_addr()),
+                &serde_json::json!({
+                    "model":"fixture","input":"again","previous_response_id":id
+                }),
+                false,
+            );
+            assert_eq!(refusal["error"]["param"], "previous_response_id");
+        }
         server.shutdown().unwrap();
         drop(service);
         assert_eq!(host.serving_bytes(), baseline);
@@ -1271,9 +1290,7 @@ fn responses_refuses_unsupported_state_controls_and_content_before_enqueue() {
         .start()
         .unwrap();
     for (key, value) in [
-        ("store", json!(true)),
         ("background", json!(true)),
-        ("previous_response_id", json!("resp_prior")),
         ("conversation", json!("conv_prior")),
         ("temperature", json!(0.7)),
         ("reasoning", json!({"effort":"high"})),
@@ -1294,6 +1311,186 @@ fn responses_refuses_unsupported_state_controls_and_content_before_enqueue() {
         assert!(correlation(&head).starts_with("req_zg_"));
     }
     assert!(service.requests.lock().unwrap().is_empty());
+    server.shutdown().unwrap();
+    drop(service);
+    assert_eq!(host.serving_bytes(), baseline);
+}
+
+#[test]
+fn stored_responses_retrieve_page_continue_delete_and_keep_stateless_default() {
+    use serde_json::json;
+    let _lock = test_support::lock();
+    let host = test_support::host();
+    let baseline = host.serving_bytes();
+    let service = Script::new(host.clone());
+    let server = ServerBuilder::from_service(service.clone())
+        .bind("127.0.0.1:0".parse().unwrap())
+        .build()
+        .unwrap()
+        .start()
+        .unwrap();
+    let address = server.local_addr();
+    let request = json!({
+        "model":"fixture", "instructions":"old instructions",
+        "input":[{"role":"user","content":"first"},{"role":"assistant","content":"prior"},{"role":"user","content":"second"}],
+        "store":true
+    });
+    let (head, first) = responses_request(&mut response_client(address), &request, false);
+    assert!(head.starts_with("HTTP/1.1 200"), "{first}");
+    assert_eq!(first["store"], true);
+    let id = first["id"].as_str().unwrap();
+    let get = |path: &str| {
+        let response = exchange(
+            address,
+            &format!("GET {path} HTTP/1.1\r\nHost: localhost\r\n\r\n"),
+        );
+        assert!(response.starts_with("HTTP/1.1 200"), "{response}");
+        document(&response)
+    };
+    assert_eq!(get(&format!("/v1/responses/{id}")), first);
+    let page = get(&format!("/v1/responses/{id}/input_items?order=asc&limit=2"));
+    assert_eq!(page["data"].as_array().unwrap().len(), 2);
+    assert_eq!(page["data"][0]["content"][0]["text"], "first");
+    assert_eq!(page["data"][1]["content"][0]["type"], "output_text");
+    assert_eq!(page["has_more"], true);
+    let after = page["last_id"].as_str().unwrap();
+    let last = get(&format!(
+        "/v1/responses/{id}/input_items?order=asc&after={after}&limit=2"
+    ));
+    assert_eq!(last["data"][0]["content"][0]["text"], "second");
+    assert_eq!(last["has_more"], false);
+    let reversed = get(&format!("/v1/responses/{id}/input_items?limit=1"));
+    assert_eq!(reversed["data"][0]["content"][0]["text"], "second");
+
+    // Continuations replay normalized input and actual assistant output,
+    // but replace prior request-local instructions.
+    let (head, next) = responses_request(
+        &mut response_client(address),
+        &json!({
+            "model":"fixture","input":"third","instructions":"new instructions",
+            "previous_response_id":id,"store":true,
+        }),
+        true,
+    );
+    assert!(head.starts_with("HTTP/1.1 200"), "{next}");
+    assert_eq!(next["previous_response_id"], id);
+    let requests = service.requests.lock().unwrap();
+    let TextInput::Conversation(turns) = &requests[1].0.input else {
+        panic!("semantic conversation")
+    };
+    assert_eq!(
+        turns
+            .iter()
+            .map(|t| (t.role.as_str(), t.text.as_str()))
+            .collect::<Vec<_>>(),
+        [
+            ("developer", "new instructions"),
+            ("user", "first"),
+            ("assistant", "prior"),
+            ("user", "second"),
+            ("assistant", "transport fixture"),
+            ("user", "third"),
+        ]
+    );
+    drop(requests);
+    let cancel = exchange(
+        address,
+        &format!(
+            "POST /v1/responses/{id}/cancel HTTP/1.1\r\nHost: localhost\r\nContent-Length: 0\r\n\r\n"
+        ),
+    );
+    assert!(cancel.starts_with("HTTP/1.1 400"));
+    let removed = exchange(
+        address,
+        &format!("DELETE /v1/responses/{id} HTTP/1.1\r\nHost: localhost\r\n\r\n"),
+    );
+    assert!(removed.starts_with("HTTP/1.1 200"));
+    assert_eq!(
+        document(&removed),
+        json!({"id":id,"object":"response.deleted","deleted":true})
+    );
+    let gone = exchange(
+        address,
+        &format!("GET /v1/responses/{id} HTTP/1.1\r\nHost: localhost\r\n\r\n"),
+    );
+    assert!(gone.starts_with("HTTP/1.1 404"));
+    let (head, error) = responses_request(
+        &mut response_client(address),
+        &json!({
+            "model":"fixture","input":"third","previous_response_id":id
+        }),
+        false,
+    );
+    assert!(head.starts_with("HTTP/1.1 404"));
+    assert_eq!(error["error"]["param"], "previous_response_id");
+    // A child is a self-contained bounded snapshot, not a dangling parent.
+    let child = next["id"].as_str().unwrap();
+    assert_eq!(get(&format!("/v1/responses/{child}")), next);
+    let (_, ephemeral) = responses_request(
+        &mut response_client(address),
+        &json!({
+            "model":"fixture","input":"fourth","previous_response_id":child,"store":false
+        }),
+        false,
+    );
+    let gone = exchange(
+        address,
+        &format!(
+            "GET /v1/responses/{} HTTP/1.1\r\nHost: localhost\r\n\r\n",
+            ephemeral["id"].as_str().unwrap()
+        ),
+    );
+    assert!(gone.starts_with("HTTP/1.1 404"));
+    server.shutdown().unwrap();
+    drop(service);
+    assert_eq!(host.serving_bytes(), baseline);
+}
+
+#[test]
+fn stored_stream_publishes_terminal_snapshot_and_obeys_listener_auth() {
+    use serde_json::json;
+    let _lock = test_support::lock();
+    let host = test_support::host();
+    let baseline = host.serving_bytes();
+    let service = Script::new(host.clone());
+    let server = ServerBuilder::from_service(service.clone())
+        .bind("127.0.0.1:0".parse().unwrap())
+        .api_key(Some("secret".into()))
+        .build()
+        .unwrap()
+        .start()
+        .unwrap();
+    let address = server.local_addr();
+    let request = json!({"model":"fixture","input":"hello","stream":true,"store":true}).to_string();
+    let mut client = response_client(address);
+    write!(client.get_mut(), "POST /v1/responses HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer secret\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{request}",request.len()).unwrap();
+    let (head, body) = read_response(&mut client);
+    assert!(head.starts_with("HTTP/1.1 200"));
+    let terminal: serde_json::Value = serde_json::from_str(
+        body.split("\n\n")
+            .filter(|s| !s.is_empty())
+            .last()
+            .unwrap()
+            .split_once("\ndata: ")
+            .unwrap()
+            .1,
+    )
+    .unwrap();
+    assert_eq!(terminal["type"], "response.completed");
+    let id = terminal["response"]["id"].as_str().unwrap();
+    let path = format!("/v1/responses/{id}");
+    let unauthorized = exchange(
+        address,
+        &format!("GET {path} HTTP/1.1\r\nHost: localhost\r\n\r\n"),
+    );
+    assert!(unauthorized.starts_with("HTTP/1.1 401"));
+    assert!(!unauthorized.contains("transport fixture"));
+    let retrieved = exchange(
+        address,
+        &format!("GET {path} HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer secret\r\n\r\n"),
+    );
+    assert_eq!(document(&retrieved), terminal["response"]);
+    drop(client);
     server.shutdown().unwrap();
     drop(service);
     assert_eq!(host.serving_bytes(), baseline);

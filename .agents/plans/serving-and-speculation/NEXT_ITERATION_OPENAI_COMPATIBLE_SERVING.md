@@ -6,7 +6,7 @@ scaffolding), CLI/TUI/Web and serving, ROCm, CUDA, Vulkan, then concrete
 compiled providers. Native Hugging Face/Safetensors and GGUF are primary.
 Older ordering below is context; valid owner constraints remain authoritative.
 
-Status: **OA-1 through OA-3 accepted** (27 Nov). OA-4 bounded response/conversation resources next; later units remain ordered.
+Status: **OA-1 through OA-3 and OA-4A foreground response resources accepted** (27 Nov). OA-4 remains open for background, conversations and token count; later units remain ordered.
 
 26 Nov user decision: [UX-P native TUI polish](../cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md)
 was the prerequisite. The assembled P4B gate passed on ad7a4178;
@@ -1353,6 +1353,30 @@ Add bounded:
 as required by the current API.
 
 Keep protocol state separate from model StateRoot.
+
+**OA-4A foreground resource slice (27 Nov).** Explicit store=true, terminal
+response retrieval/deletion, paginated normalized input items and
+previous_response_id text continuation. Memory-only single listener
+trust scope, bounded count (64), conservative reserved backing (32 MiB)
+and terminal age (30 min); listener-owned expiry and final reader
+ownership. Reserve before model admission; no retained model session,
+disk storage, detached tasks or additional scheduler. Record only
+normalized history and output, serialized terminal view. Omitted store
+stays false. Prior request-local instructions are not inherited; child
+snapshots survive parent deletion. Pending foreground responses are
+not addressable before terminal; failed stream records cannot continue.
+Explicit cancel of foreground record refuses (current API requires
+background). See live handoff for exact bounds and retention policy.
+Focused 170/0/0 and strict lint pass; real installed SDK 2.33.0,
+CLI/TUI/Web (134.83s) and Rust SDK (15.18s) lifecycle passed.
+Full isolated assembled gate 2,560/0/109 (318 suites, 690.5s),
+release TUI/Web, installer and scripts passed. OA-4A accepted.
+
+Remaining: background work/cancel with joined owner; conversation/items
+CRUD and atomic append on successful generation; exact input_tokens
+count without generation through original charged tokenizer. No false
+capability until qualified. Retain one protocol quota; no model-state
+store or second scheduler.
 
 ### OA-5 — Chat/Completions compatibility close
 

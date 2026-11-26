@@ -34,7 +34,73 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — OA-3 accepted; OA-4 response/conversation resources next (27 Nov)
+### Current checkpoint — OA-4A accepted; OA-4 background/conversations/count next (27 Nov)
+
+Started from clean signed cea0f18c on L5. Current Responses retrieve,
+delete, input_items, create/previous_response_id, and cancel reference
+reviewed. Explicit cancellation is a background-response capability;
+do not report a cancelled foreground response. OA-4A enables explicit
+store=true for foreground text; local default remains store=false.
+Listener-local memory-only Store, one quota and host admission.
+64 pending/retained record slots, 32 MiB aggregate conservative backing
+reservation, 30-minute TTL from terminal publication; expire on access
+and a 30s accept-loop tick, drop all on joined listener stop. Quota and
+ServingCharge follow the last reader even after logical deletion/expiry
+(Bytes::from_owner retains the record). Reserve before original model
+admission, drop pending records on failed ingress/admission/disconnect.
+No disk persistence, session/model-state retention or background task.
+All resource routes pass existing listener bearer/loopback trust policy;
+single listener trust scope, not multitenant access control.
+
+Retain normalized input text (excluding request-local instructions),
+terminal assistant text and immutable bounded serialized response.
+Store cap clamps the configured wire payload bound to at most 1 MiB;
+each record retains conservative worst-case reservation including
+serialization growth and actual history, so byte quota can be reached
+before count quota. Successful/incomplete foreground JSON and SSE
+terminal records support retrieval and deletion; streamed failed records
+retain safe terminal/partial text, never opt-in diagnostic details and
+cannot be continued. Foreground nonstream generation error keeps the
+original HTTP error and publishes no stored record. Pending foreground
+records are not addressable before terminal publication. Existing socket
+drop cancels original request. Explicit POST cancel of a stored
+foreground record refuses per current contract; background is still
+unsupported. GET /v1/responses/{id}/input_items supports bounded
+limit/order/after pagination of normalized history, server-owned stable
+IDs within each response snapshot (not cross-response item identities).
+previous_response_id reads the completed/incomplete stored parent,
+copies charged full history plus actual assistant text, prepends only
+current instructions, applies original input/context caps and submits
+the requested selected model. Child snapshots do not retain parent
+pointers; deleting a parent does not invalidate existing children.
+No token count/session claim. Strict unknown/unsupported fields refuse.
+
+Focused engine/serving 170/0/0 and strict lint passed: actual TCP tests
+verify store/retrieve/pagination/deletion/continuation, stateless refusal,
+SSE terminal retention, failed-record continuation refusal, authorization
+and joined disconnect/shutdown. Quota test covers pending count, byte
+bound, expiry and retained wire reader retirement. Cached official SDK
+2.33.0 canary extended with real stored responses/continuation, strict
+schema and Chat parity. First canary failed only because SDK delete()
+returns None; fixed the fixture to assert its actual raw deletion
+object and later 404, no production change. Final real CLI/TUI/Web/
+official SDK 1/0/0 (134.83s) and Rust SDK 1/0/0 (15.18s) passed.
+Full isolated assembled gate exited 0 (690.5s): 2,560/0/109 across
+318 Rust suites, backend boundaries, strict lint, release TUI/Web,
+installer and scripts passed. OA-4A accepted. Logs:
+`target/oa4a-focused-final.log`,
+`target/oa4a-real-consumers.log`, `target/oa4a-real-consumers-final.log`,
+`target/oa4a-assembled.log`. No new dependencies/downloads. Exact Nix
+source-integrity remains separately blocked by unavailable locked inputs.
+
+Remaining OA-4: explicit background response owner and cancel semantics
+(joined bounded work in existing listener runtime; no detached task or
+scheduler), conversation CRUD/items and atomic context append with the
+same protocol quota, exact input-token counting through original charged
+model tokenizer without opening a physical generation session. Explicit
+unsupported until each is qualified. Do not mark OA-4 complete yet.
+
+### Prior checkpoint — OA-3 accepted; OA-4 response/conversation resources next (27 Nov)
 
 Started from clean signed a76ddbfe on L5. Current OpenAI Responses create
 and streaming reference checked before selecting the supported text slice:

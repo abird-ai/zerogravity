@@ -115,6 +115,23 @@ impl Body for Reply {
         matches!(self, Self::Full(None))
     }
 }
+/// The Bytes owner can itself retain a protocol record; projected lists
+/// carry their independent serialization reservation until the last write.
+pub(super) fn retained_json(bytes: Bytes, charge: Option<Arc<ServingCharge>>) -> Response<Reply> {
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "application/json")
+        .header(header::CACHE_CONTROL, "no-store")
+        .header("x-content-type-options", "nosniff")
+        .body(Reply::Full(Some(Data {
+            bytes,
+            written: None,
+            _owner: None,
+            _projection: charge,
+        })))
+        .expect("fixed JSON headers")
+}
+
 pub(super) fn json_response(
     status: u16,
     value: &Value,

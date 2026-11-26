@@ -1,5 +1,5 @@
-//! Stateless text-only Responses input. No translation through Chat JSON.
-use super::{Options, Wire};
+//! Bounded text-only Responses input. No translation through Chat JSON.
+use super::{Options, Wire, store::Store};
 use crate::TextService;
 use serde_json::{Map, Value};
 use std::collections::BTreeMap;
@@ -153,6 +153,7 @@ pub(in crate::http) fn parse(
     service: &dyn TextService,
     ingress: &mut Vec<ServingCharge>,
     output_limit: usize,
+    resources: &Store,
 ) -> Result<(SemanticRequest, Options, Wire)> {
     let value = super::super::parse_json(body, Some(service), ingress)?;
     let map = value
@@ -206,17 +207,36 @@ pub(in crate::http) fn parse(
         .ok_or_else(|| invalid("model", "model name required"))?;
     zerogravity_engine::router::validate_alias(model).map_err(|e| e.with_parameter("model"))?;
     let stream = boolean(map, "stream", false)?;
-    // Local stateless default is deliberately false, unlike cloud storage.
-    // Explicit persistence/continuation cannot be claimed until OA-4.
-    if boolean(map, "store", false)? {
-        return Err(unsupported("store"));
-    }
+    // Local storage stays opt-in. Foreground requests do not survive a
+    // disconnected client; background ownership is a separate capability.
+    let store = boolean(map, "store", false)?;
     if boolean(map, "background", false)? {
         return Err(unsupported("background"));
     }
-    for name in ["previous_response_id", "conversation", "reasoning"] {
+    for name in ["conversation", "reasoning"] {
         neutral(map, name, |_| false)?;
     }
+    let previous = optional(map, "previous_response_id")
+        .map(|v| {
+            v.as_str()
+                .filter(|id| id.len() <= 128)
+                .ok_or_else(|| invalid("previous_response_id", "response ID required"))
+        })
+        .transpose()?;
+    let parent = previous
+        .map(|id| {
+            let parent = resources
+                .get(id)
+                .map_err(|e| e.with_parameter("previous_response_id"))?;
+            if !parent.continuable {
+                return Err(invalid(
+                    "previous_response_id",
+                    "previous response has no complete text output",
+                ));
+            }
+            Ok(parent)
+        })
+        .transpose()?;
     neutral(map, "temperature", |v| v.as_f64() == Some(0.0))?;
     neutral(map, "top_p", |v| v.as_f64() == Some(1.0))?;
     neutral(map, "tools", empty_array)?;
@@ -272,6 +292,12 @@ pub(in crate::http) fn parse(
         .ok_or_else(|| invalid("input", "input required"))?;
     let mut count = usize::from(instructions.is_some());
     let mut bytes = instructions.map_or(0, str::len);
+    if let Some(parent) = &parent {
+        count = add(count, add(parent.input.len(), 1)?)?;
+        for turn in parent.input.iter().chain(std::iter::once(&parent.output)) {
+            bytes = add(bytes, turn.text.len())?;
+        }
+    }
     turns(input, |role, content| {
         count = add(count, 1)?;
         fragments(content, role, |text| {
@@ -317,8 +343,15 @@ pub(in crate::http) fn parse(
     });
     let wire = Wire::new(
         service,
-        output_limit,
-        add(metadata_bytes, instructions.map_or(0, str::len))?,
+        if store {
+            output_limit.min(super::super::MAX_BODY)
+        } else {
+            output_limit
+        },
+        add(
+            add(metadata_bytes, instructions.map_or(0, str::len))?,
+            previous.map_or(0, str::len),
+        )?,
     )?;
     let mut messages = Vec::with_capacity(count);
     if let Some(text) = instructions {
@@ -326,6 +359,12 @@ pub(in crate::http) fn parse(
             role: ChatRole::Developer,
             text: text.into(),
         });
+    }
+    // Only this request's instructions precede the replay. The previous
+    // response's instructions were never put in its continuation history.
+    if let Some(parent) = parent {
+        messages.extend(parent.input.iter().cloned());
+        messages.push(parent.output.clone());
     }
     turns(input, |role, content| {
         let mut len = 0;
@@ -360,6 +399,8 @@ pub(in crate::http) fn parse(
             max_tokens,
             tool_choice,
             parallel_tool_calls,
+            store,
+            previous: previous.map(str::to_owned),
             _charge: wire.charge.clone(),
         },
         wire,

@@ -259,7 +259,7 @@ fn responses_disconnect_and_shutdown_retire_original_receipts_and_projection() {
     let server = start(service.clone());
     let connect = |stream: bool| {
         let mut socket = TcpStream::connect(server.local_addr()).unwrap();
-        let body = format!(r#"{{"model":"fixture","input":"x","stream":{stream},"store":false}}"#);
+        let body = format!(r#"{{"model":"fixture","input":"x","stream":{stream},"store":true}}"#);
         write!(socket, "POST /v1/responses HTTP/1.1\r\nHost: localhost\r\nContent-Length: {}\r\nContent-Type: application/json\r\n\r\n{body}", body.len()).unwrap();
         socket
     };

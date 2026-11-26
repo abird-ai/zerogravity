@@ -363,6 +363,7 @@ struct Host {
     config: ServeConfig,
     shutdown: Arc<Shutdown>,
     metrics: Arc<Counters>,
+    resources: Arc<responses::Store>,
 }
 struct Connection {
     host: Arc<Host>,
@@ -476,6 +477,16 @@ impl Connection {
                     return Ok(body::json_response(200, &model_object(alias), None));
                 }
             }
+            if let Some(response) = responses::resource_route(
+                &host.resources,
+                host.service.as_ref(),
+                &parts.method,
+                &parts.uri,
+                &raw[..used],
+                host.config.limits.output_bytes,
+            ) {
+                return response;
+            }
             let chat = path == "/v1/chat/completions";
             let responses = path == "/v1/responses";
             if parts.method != Method::POST || !(chat || responses || path == "/v1/completions") {
@@ -497,8 +508,17 @@ impl Connection {
                     host.service.as_ref(),
                     &mut ingress,
                     host.config.limits.output_bytes,
+                    &host.resources,
                 )?;
-                (task, false, Some((options, wire)))
+                let pending = responses::Pending::prepare(
+                    &host.resources,
+                    host.service.as_ref(),
+                    &task,
+                    &options,
+                    request_id,
+                    host.config.limits.output_bytes,
+                )?;
+                (task, false, Some((options, wire, pending)))
             } else {
                 let (task, usage) = parse_body(
                     &raw[..used],
@@ -524,7 +544,7 @@ impl Connection {
                     .request_semantic_admitted_scoped(task, ingress, scope)?,
                 None => host.service.request_semantic_admitted(task, ingress)?,
             };
-            if let Some((options, wire)) = projection {
+            if let Some((options, wire, pending)) = projection {
                 if stream {
                     Ok(responses::streaming(
                         events,
@@ -533,9 +553,10 @@ impl Connection {
                         request_id,
                         host.config.errors.clone(),
                         authorized,
+                        pending,
                     ))
                 } else {
-                    responses::completion(events, options, wire, request_id).await
+                    responses::completion(events, options, wire, request_id, pending).await
                 }
             } else if stream {
                 Ok(body::streaming(
@@ -674,6 +695,9 @@ async fn refuse(mut stream: TcpStream, host: &Host, error: ServiceError) {
 
 async fn accept_loop(listener: TcpListener, host: Arc<Host>) -> io::Result<()> {
     let mut tasks = JoinSet::new();
+    // Listener-owned expiry, including idle periods.
+    let mut expiry = time::interval(Duration::from_secs(30));
+    expiry.set_missed_tick_behavior(time::MissedTickBehavior::Skip);
     let result = loop {
         if host.shutdown.is_stopped() {
             break Ok(());
@@ -681,6 +705,7 @@ async fn accept_loop(listener: TcpListener, host: Arc<Host>) -> io::Result<()> {
         tokio::select! {
             biased;
             _ = host.shutdown.requested() => break Ok(()),
+            _ = expiry.tick() => host.resources.expire(),
             joined = tasks.join_next(), if !tasks.is_empty() => {
                 if let Some(Err(error)) = joined {
                     break Err(io::Error::other(error));
@@ -750,6 +775,7 @@ pub(crate) fn serve(
                 config,
                 shutdown,
                 metrics,
+                resources: Arc::new(responses::Store::default()),
             }),
         )
         .await

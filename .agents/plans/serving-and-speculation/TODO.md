@@ -126,11 +126,22 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   TUI/Web, installer and scripts passed. Store defaults false locally;
   explicit persistence/continuation, tools, non-text and unsupported
   controls refuse. OA-3 accepted.
-- [ ] OA-4: bounded response/conversation resource owner, explicit store/
-  continuation, cancellation, retrieval/deletion, input-item retrieval
-  and input-token counting. Recheck current API contract, preserve
-  original model/source/session/scheduler/receipt; no duplicate model
-  state store. Qualify actual cached text-model/SDK lifecycle.
+- [x] OA-4A: foreground store/retrieve/delete/input-items pagination and
+  previous_response_id. Listener-local memory-only charged quota 64
+  pending/retained slots, 32 MiB conservative reservation, 30min expiry
+  and final-reader credit retirement. Normalized text history excludes
+  prior instructions; actual assistant output replay, no parent chain
+  or model-state retention. Foreground cancellation explicitly refused;
+  disconnect cancels original receipt. Focused 170/0/0 and strict lint
+  passed. Real installed SDK 2.33.0/CLI/TUI/Web (134.83s) and Rust SDK
+  (15.18s) passed, including exact Chat parity and deletion. Full
+  isolated gate 2,560/0/109 (318 suites, 690.5s), release TUI/Web,
+  installer and scripts passed. OA-4A accepted.
+- [ ] OA-4 remaining: bounded joined background response execution and
+  explicit cancellation; conversation/item resources and atomic context
+  append using the same quota; exact input-token counting without
+  generation through original charged tokenizer. No duplicate model
+  state store, scheduler or fake capability. Real SDK qualification.
 
 ### Current continuation — 22 Nov 2026
 

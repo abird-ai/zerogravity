@@ -1,7 +1,9 @@
 //! OpenAI Responses projection of the original typed text event receipt.
-//! No response store, secondary scheduler, producer task or event queue.
+//! Optional protocol record; no secondary scheduler, producer task or event queue.
 mod input;
+mod store;
 pub(super) use input::parse;
+pub(super) use store::{Pending, Store, route as resource_route};
 
 use super::{
     ErrorReporting,
@@ -30,6 +32,8 @@ pub(super) struct Options {
     max_tokens: usize,
     tool_choice: &'static str,
     parallel_tool_calls: bool,
+    store: bool,
+    previous: Option<String>,
     _charge: Arc<ServingCharge>,
 }
 
@@ -235,7 +239,7 @@ struct View<'a> {
     model: &'a str,
     output: &'a [Message<'a>],
     parallel_tool_calls: bool,
-    previous_response_id: Option<()>,
+    previous_response_id: Option<&'a str>,
     reasoning: Option<()>,
     store: bool,
     temperature: f64,
@@ -276,9 +280,9 @@ impl Options {
             model,
             output,
             parallel_tool_calls: self.parallel_tool_calls,
-            previous_response_id: None,
+            previous_response_id: self.previous.as_deref(),
             reasoning: None,
-            store: false,
+            store: self.store,
             temperature: 0.0,
             top_p: 1.0,
             text: TextConfig {
@@ -321,6 +325,7 @@ pub(super) async fn completion(
     options: Options,
     mut wire: Wire,
     request_id: &str,
+    pending: Option<Pending>,
 ) -> Result<Response<Reply>> {
     let identity = Identity::new(request_id);
     let owner = Arc::new(request);
@@ -355,6 +360,9 @@ pub(super) async fn completion(
                 let usage = Usage::new(prompt_tokens, cached_prompt_tokens, completion_tokens)?;
                 let view = options.view(&identity, &owner.model, status, &items, Some(usage), None);
                 let data = wire.encode(&owner, None, &view).map_err(wire_error)?;
+                if let Some(pending) = pending {
+                    pending.finish(&view, &output, true)?;
+                }
                 return Ok(Response::builder()
                     .status(StatusCode::OK)
                     .header(header::CONTENT_TYPE, "application/json")
@@ -445,6 +453,7 @@ pub(super) fn streaming(
     request_id: &str,
     errors: ErrorReporting,
     authorized: bool,
+    mut pending: Option<Pending>,
 ) -> Response<Reply> {
     let identity = Identity::new(request_id);
     let owner = Arc::new(request);
@@ -503,7 +512,14 @@ pub(super) fn streaming(
                     let items = [Message::new(&identity, status, &content)];
                     let view = options.view(&identity, &owner.model, status, &items, Some(usage), None);
                     let kind = if status == "completed" { "response.completed" } else { "response.incomplete" };
-                    yield wire.event(&owner, &mut sequence, kind, ResponsePayload { response: view })?;
+                    // Encode the final event before publishing the record;
+                    // a failed projection must not leave a partial resource.
+                    let payload = ResponsePayload { response: view };
+                    let frame = wire.event(&owner, &mut sequence, kind, &payload)?;
+                    if let Some(pending) = pending.take() {
+                        pending.finish(&payload.response, &output, true).map_err(io::Error::other)?;
+                    }
+                    yield frame;
                     return;
                 }
                 ResponseEvent::Error(error) => break error,
@@ -526,7 +542,16 @@ pub(super) fn streaming(
         let part = [TextPart::new(&partial)];
         let items = [Message::new(&identity, "incomplete", &part)];
         let view = options.view(&identity, &owner.model, "failed", &items, None, Some(&failure_object));
-        yield wire.event(&owner, &mut sequence, "response.failed", ResponsePayload { response: view })?;
+        let payload = ResponsePayload { response: view };
+        let frame = wire.event(&owner, &mut sequence, "response.failed", &payload)?;
+        if let Some(pending) = pending.take() {
+            // Do not persist opt-in arbitrary diagnostics with a resource.
+            let mut safe_error = failure_object;
+            safe_error.as_object_mut().expect("fixed error envelope").remove("details");
+            let view = options.view(&identity, &owner.model, "failed", &items, None, Some(&safe_error));
+            pending.finish(&view, &partial, false).map_err(io::Error::other)?;
+        }
+        yield frame;
     };
     Response::builder()
         .status(StatusCode::OK)

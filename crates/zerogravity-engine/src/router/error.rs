@@ -83,6 +83,8 @@ impl FailureDetails {
             "unauthorized" => "Bearer token required.",
             "remote_bind_unsupported" => "The requested listener binding is not supported.",
             "model_not_found" | "missing_model" => "The requested model is not available.",
+            "response_not_found" => "The requested response is not available.",
+            "response_store_full" => "Response storage capacity is exhausted.",
             "invalid_model" => "Invalid model selection.",
             "invalid_json" => "Invalid JSON request.",
             "invalid_messages" => "Invalid chat messages.",
@@ -125,8 +127,14 @@ fn service_category(status: u16, code: &str) -> FailureCategory {
         | "cuda_cccl_missing"
         | "unsupported" => C::Unsupported,
         _ if code.starts_with("unsupported_") || code.ends_with("_unsupported") => C::Unsupported,
-        "resource_exhausted" | "host_budget" | "source_capacity" | "cohort_capacity"
-        | "queue_allocation" | "connections_full" | "queue_full" => C::Resource,
+        "resource_exhausted"
+        | "host_budget"
+        | "source_capacity"
+        | "cohort_capacity"
+        | "queue_allocation"
+        | "connections_full"
+        | "queue_full"
+        | "response_store_full" => C::Resource,
         "limit_exceeded" | "size_overflow" | "context_overflow" | "config_limit"
         | "id_exhausted" => C::Limit,
         "io_error" | "read_failed" | "config_unreadable" | "bind_failed" | "worker_spawn" => C::Io,

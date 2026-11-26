@@ -5,6 +5,17 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 27 Nov — OA-4A foreground response resources
+
+Memory-only charged listener records, retrieval/deletion/input pages,
+previous-response text replay excluding old instructions, stateless
+default retained. Focused 170/0/0 and strict lint passed; real installed
+SDK/CLI/TUI/Web (134.83s) and Rust SDK (15.18s) passed. Assembled
+gate 2,560/0/109 across 318 Rust suites (690.5s), release TUI/Web,
+installer and scripts passed. OA-4A accepted. Background/cancel,
+conversations and input token counting remain OA-4. No new model or
+physical GPU/performance claim.
+
 ## 27 Nov — OA-3 stateless Models and Responses text
 
 Actual registry model retrieval and stateless Responses JSON/SSE over

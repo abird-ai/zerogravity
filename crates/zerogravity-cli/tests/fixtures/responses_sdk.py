@@ -82,9 +82,84 @@ with openai.OpenAI(
     assert final.id != response.id
     assert all(event.item_id == final.output[0].id for event in deltas)
     assert events[0].response.id == final.id
+    # Foreground records are explicitly retained, not a second model
+    # state. Prior request-local instructions are replaced on continuation.
+    stored = client.responses.create(**{**kwargs, "store": True})
+    assert stored.store is True
+    assert client.responses.retrieve(stored.id).model_dump() == stored.model_dump()
+    page = client.responses.input_items.list(stored.id, order="asc", limit=1)
+    assert len(page.data) == 1 and not page.has_more
+    assert page.data[0].role == "user"
+    assert page.data[0].content[0].text == prompt
+    new_prompt = "Continue."
+    new_instructions = "Answer briefly."
+    continued = client.responses.create(
+        model="served-fixture",
+        input=new_prompt,
+        instructions=new_instructions,
+        previous_response_id=stored.id,
+        store=True,
+        max_output_tokens=2,
+        temperature=0,
+    )
+    expected = client.chat.completions.create(
+        model="fast",
+        messages=[
+            {"role":"developer", "content":new_instructions},
+            {"role":"user", "content":prompt},
+            {"role":"assistant", "content":stored.output_text},
+            {"role":"user", "content":new_prompt},
+        ],
+        max_tokens=2,
+        temperature=0,
+    )
+    assert continued.previous_response_id == stored.id
+    assert continued.output_text == expected.choices[0].message.content
+    assert continued.usage.input_tokens == expected.usage.prompt_tokens
+    assert continued.usage.output_tokens == expected.usage.completion_tokens
+    page = client.responses.input_items.list(continued.id, order="asc", limit=2)
+    assert len(page.data) == 2 and page.has_more
+    assert [item.role for item in page.data] == ["user", "assistant"]
+    assert page.data[1].content[0].text == stored.output_text
+    tail = client.responses.input_items.list(
+        continued.id, order="asc", after=page.last_id, limit=2
+    )
+    assert len(tail.data) == 1 and not tail.has_more
+    assert tail.data[0].content[0].text == new_prompt
     try:
-        client.responses.create(model="fast", input=prompt, store=True)
-        raise AssertionError("unimplemented store was accepted")
+        client.responses.cancel(stored.id)
+        raise AssertionError("foreground cancellation was claimed")
     except openai.BadRequestError as error:
-        assert error.body["param"] == "store" and error.request_id
-    print(f"OpenAI SDK {openai.__version__}: Models, Responses JSON/SSE, exact Chat parity, refusal and correlation passed")
+        assert error.body["param"] == "background" and error.request_id
+    # SDK 2.33.0 declares delete() -> None. Verify its actual HTTP
+    # response, then confirm the resource is no longer retrievable.
+    deleted = client.responses.with_raw_response.delete(stored.id)
+    assert deleted.status_code == 200
+    assert deleted.http_response.json() == {
+        "id": stored.id, "object": "response.deleted", "deleted": True,
+    }
+    try:
+        client.responses.retrieve(stored.id)
+        raise AssertionError("deleted response remained available")
+    except openai.NotFoundError:
+        pass
+    assert client.responses.retrieve(continued.id).model_dump() == continued.model_dump()
+    try:
+        client.responses.retrieve(response.id)
+        raise AssertionError("stateless response was retained")
+    except openai.NotFoundError:
+        pass
+    try:
+        client.responses.create(
+            model="fast", input=prompt, previous_response_id=stored.id, store=False
+        )
+        raise AssertionError("deleted continuation was accepted")
+    except openai.NotFoundError as error:
+        assert error.body["param"] == "previous_response_id"
+    assert client.responses.delete(continued.id) is None
+    try:
+        client.responses.retrieve(continued.id)
+        raise AssertionError("deleted child remained available")
+    except openai.NotFoundError:
+        pass
+    print(f"OpenAI SDK {openai.__version__}: Models, Responses JSON/SSE, exact Chat parity, stored response lifecycle and continuation passed")

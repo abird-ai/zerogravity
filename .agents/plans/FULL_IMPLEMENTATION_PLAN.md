@@ -783,7 +783,13 @@ accepted; OA-3 Models/retrieve and stateless Responses text JSON/SSE
 implemented over the original typed receipt, focused 167/0/0 and strict
 actual cached official SDK canary passed. Native/browser/Rust SDK
 regressions and assembled gate (2,557/0/109, 318 suites, 617.5s)
-passed. OA-3 accepted; OA-4 bounded response/conversation resources next.
+passed. OA-3 accepted. OA-4A foreground response storage/retrieval,
+deletion/input pages and continuation implemented using the original
+semantic request and listener-owned bounded charged protocol store;
+focused 170/0/0, strict lint and real installed official SDK/CLI/TUI/Web/
+Rust SDK and full isolated gate 2,560/0/109 (318 suites, 690.5s)
+passed. OA-4A accepted. OA-4 remains open for background cancellation,
+conversations/items and exact input-token count.
 Preserve the original runtime, admission and listener owner.
 
 - [ ] Close the [OpenAI-compatible serving iteration](serving-and-speculation/NEXT_ITERATION_OPENAI_COMPATIBLE_SERVING.md):
