@@ -5,6 +5,19 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 26 Nov — direct CLI polish (UX-10 core)
+
+Cold doctor, original planner device/model dry-run, typed pipeline
+list/inspect/check, fresh explicit positional source precedence, help/
+compatibility and CLI guide. Strict minimal/combined Clippy; final isolated
+minimal CLI/pipeline 27/0/0, optimized combined CLI/pipeline/run 32/0/1.
+Existing populated cache unchanged by doctor. General pipeline execution
+refuses; unobserved runtime bindings and physical quota usage are not
+claimed. Isolated formatting/architecture and HIP/Vulkan compile checks
+pass; full gate stopped during CUDA native transport rebuild. Full UX-10
+acceptance remains pending. No model download, new
+dependency, physical GPU or performance claim.
+
 ## 26 Nov — simultaneous native/Web acceptance (UX-9E)
 
 Combined release CLI 50/0/3; real native PTY/attached Firefox same-operation

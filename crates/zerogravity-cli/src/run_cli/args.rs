@@ -227,7 +227,8 @@ pub(super) fn parse(args: &[String], alias: Option<&str>) -> Result<Arguments> {
         if SourceSelector::implies_run_document(&v)? {
             a.config = Some(v)
         } else {
-            a.model = Some(v)
+            a.model = Some(v);
+            a.direct_positional = true;
         }
     }
     if a.config.is_some() && a.profile.is_some() {

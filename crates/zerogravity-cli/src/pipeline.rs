@@ -2,6 +2,7 @@
 use zerogravity::context_filter::{
     ContextFilter, ContextSource, DecisionUnavailable, FilterAction, MatchField,
 };
+#[cfg(test)]
 pub(super) use zerogravity::pipelines::load_document;
 use zerogravity::pipelines::{
     self, ApiRoute, ChatContextPatch, ChatContextPolicy, Config, ModelInstance, PipelineEdge,
@@ -252,10 +253,23 @@ pub(super) fn patch(args: &[String], overrides: bool) -> Result<PipelinePatch> {
     })
 }
 
-pub(super) fn run(args: &[String]) -> Result<()> {
-    if args.len() == 1 && matches!(args[0].as_str(), "--help" | "help" | "-h") {
-        println!(
-            "USAGE: zerogravity pipeline check --config CONFIG.yaml
+pub(super) fn help(child: Option<&str>) {
+    match child {
+        Some("list") => println!(
+            "USAGE: zerogravity [--profile NAME | --config FILE] pipeline list [--format json]"
+        ),
+        Some("inspect") => println!(
+            "USAGE: zerogravity [--profile NAME | --config FILE] pipeline inspect NAME [--format json]"
+        ),
+        Some("run") => println!(
+            "USAGE: zerogravity pipeline run NAME|FILE [--config FILE | --profile NAME]\nValidates the graph, then refuses: general pipeline execution is not qualified. Direct text models use run MODEL."
+        ),
+        Some("check") => {
+            println!(
+                "USAGE: zerogravity pipeline check FILE [--format json]
+       zerogravity pipeline check --config CONFIG.yaml
+
+ADVANCED STRUCTURAL CHECK:
         zerogravity pipeline check --name NAME --input audio-pcm --output audio-pcm \\
          --model asr=nvidia-canary-qwen-2.5b --model llm=qwen3.5-2b \\
          --model tts=qwen3-tts-1.7b --model diar=speaker-diarization \\
@@ -266,7 +280,7 @@ pub(super) fn run(args: &[String]) -> Result<()> {
          --link text.text=answer.text --link answer.text=talk.text \\
          --link talk.audio=output.value --route /v1/realtime=websocket --realtime
        zerogravity pipeline check --config examples/pipelines/contextual-voice-assistant.yaml
-       zerogravity pipeline run --config CONFIG.yaml   (NOT IMPLEMENTED)
+       zerogravity pipeline run --config CONFIG.yaml   (execution refused)
 
 OPTIONAL CHAT CONTEXT (off by default):
     chat_context: {{enabled: true, from_model: assistant, max_bytes: 4096}}
@@ -288,27 +302,169 @@ All stages/ports, model instances and routes compile into ONE process graph.
 Only structural checking is implemented; no weights, API port, stream or model starts.
 The same verified model instance may be referenced by multiple pipelines.
 Single-model resident inference continues through zerogravity run MODEL.gguf."
-        );
-        return Ok(());
-    }
-    let operation = args.first().ok_or_else(invalid)?;
-    if operation != "check" && operation != "run" {
-        return Err(invalid());
-    }
-    let (config, valid) = match &args[1..] {
-        [flag, file] if flag == "--config" => {
-            let checked = load_document(file)?.check()?;
-            (checked.config, checked.shape)
+            );
         }
-        rest if rest.iter().any(|x| x == "--config") => return Err(invalid()),
-        rest => {
-            let config = flags(rest)?;
-            let valid = pipelines::check(&config)?;
-            (config, valid)
+        _ => println!(
+            "USAGE: zerogravity pipeline list | inspect NAME | check FILE | run NAME|FILE\nSelected config/profile supplies the document. --format json for list/inspect/check.\nChecks are structural only; no source, device, model, history or API is started.\nRun 'zerogravity help pipeline check' for repeatable graph flags."
+        ),
+    }
+}
+
+use crate::args::Format;
+
+/// One document or one flag-defined graph; the original typed compiler is
+/// the sole structural authority. Report only declared structure.
+pub(super) fn run(
+    args: &[String],
+    document: Option<(&'static str, String)>,
+    format: Format,
+) -> Result<()> {
+    let (operation, rest) = args.split_first().ok_or_else(invalid)?;
+    let mut selection = document
+        .as_ref()
+        .map(|(flag, value)| (*flag, value.as_str()));
+    let mut name = None;
+    let mut flags_args = None;
+    match (operation.as_str(), rest) {
+        ("list", []) => {}
+        ("inspect", [id]) => name = Some(id.as_str()),
+        ("check", [file]) if selection.is_none() && !file.starts_with('-') => {
+            selection = Some(("--config", file))
         }
+        ("run", [value]) if !value.starts_with('-') => {
+            let path = std::path::Path::new(value);
+            if selection.is_none()
+                && (path.is_absolute()
+                    || value.starts_with('.')
+                    || path
+                        .extension()
+                        .is_some_and(|ext| ext == "yaml" || ext == "yml"))
+            {
+                selection = Some(("--config", value));
+            } else {
+                name = Some(value.as_str());
+            }
+        }
+        ("check" | "run", []) => {}
+        ("check" | "run", rest)
+            if selection.is_none() && rest.first().is_some_and(|arg| arg.starts_with("--")) =>
+        {
+            flags_args = Some(rest)
+        }
+        _ => return Err(invalid()),
+    }
+    let (config, valid) = if let Some(flags_args) = flags_args {
+        let config = flags(flags_args)?;
+        let valid = pipelines::check(&config)?;
+        (config, valid)
+    } else {
+        let selected = crate::config_cli::read_selected_document(selection)?;
+        let Some((_, doc)) = selected else {
+            if operation == "list" {
+                return list_empty(format, 0);
+            }
+            return Err(Error::Malformed(
+                "select a pipeline document or explicit graph flags".into(),
+            ));
+        };
+        crate::output::install_document(doc.ui.unwrap_or_default());
+        if operation == "list" && doc.pipeline.is_empty() && doc.route.is_empty() {
+            let config = doc.compile()?;
+            config.validate_model_table()?;
+            return list_empty(format, config.models.len());
+        }
+        let checked = doc.check()?;
+        (checked.config, checked.shape)
     };
+    if let Some(name) = name
+        && !config.pipelines.iter().any(|p| p.name == name)
+    {
+        return Err(Error::Malformed(
+            "pipeline not found in selected document".into(),
+        ));
+    }
     if operation == "run" {
         return pipelines::run(&config);
+    }
+    let rows = config
+        .pipelines
+        .iter()
+        .filter(|p| name.is_none_or(|name| p.name == name));
+    if format == Format::Json {
+        let pipelines = rows
+            .map(|p| pipeline_json(&config, &valid, p))
+            .collect::<Vec<_>>();
+        return crate::output::json(&serde_json::json!({
+            "schema": "zerogravity.pipeline.structure.v1",
+            "structure_valid": true, "execution_qualified": false,
+            "pipelines": pipelines, "model_instances": config.models.len(),
+            "shared_model_refs": valid.shared_model_refs, "declared_routes": valid.route_count,
+        }));
+    }
+    if operation == "list" {
+        println!("Pipelines — declared structure only");
+        for p in rows {
+            println!(
+                "{}  {} -> {}  {} stages  {}",
+                p.name,
+                p.input.label(),
+                p.output.label(),
+                p.steps.len(),
+                if p.realtime {
+                    "realtime declared"
+                } else {
+                    "request"
+                }
+            );
+        }
+        println!("Execution not qualified.");
+        return Ok(());
+    }
+    if operation == "inspect" {
+        for p in rows {
+            println!(
+                "Pipeline: {} · {} -> {}",
+                p.name,
+                p.input.label(),
+                p.output.label()
+            );
+            for step in ordered_stages(&valid, p) {
+                let model = step.model.as_deref().unwrap_or("");
+                let target = config
+                    .models
+                    .iter()
+                    .find(|row| row.id == model)
+                    .map_or("", |row| row.target.as_str());
+                println!("  {}  {}  {} {}", step.id, step.kind, model, target);
+            }
+            for link in &p.links {
+                println!("  {} -> {}", link.from, link.to);
+            }
+            for route in config
+                .routes
+                .iter()
+                .filter(|route| route.pipeline == p.name)
+            {
+                println!(
+                    "  Route: {} ({}) — declared, not listening",
+                    route.path, route.protocol
+                );
+            }
+            if let Some(context) = &p.chat_context {
+                println!(
+                    "  Chat context: {} · {} bytes · {} filter stages",
+                    if context.enabled {
+                        "enabled"
+                    } else {
+                        "disabled"
+                    },
+                    context.max_bytes,
+                    context.selection.stages.len()
+                );
+            }
+        }
+        println!("Structure valid; execution not qualified.");
+        return Ok(());
     }
     println!("PIPELINE STRUCTURE VALIDATED (not runnable; no models or APIs started)");
     for (name, ordered) in &valid.ordered {
@@ -337,4 +493,53 @@ Single-model resident inference continues through zerogravity run MODEL.gguf."
         "Streaming audio, context-aware ASR/translation, diarization, image frames, API listeners and joint StateRoot publication: NOT IMPLEMENTED."
     );
     Ok(())
+}
+
+fn list_empty(format: Format, model_instances: usize) -> Result<()> {
+    if format == Format::Json {
+        crate::output::json(&serde_json::json!({
+            "schema": "zerogravity.pipeline.structure.v1", "structure_valid": true,
+            "execution_qualified": false, "pipelines": [], "model_instances": model_instances,
+            "shared_model_refs": 0, "declared_routes": 0,
+        }))
+    } else {
+        println!("No pipelines declared in the selected document.");
+        Ok(())
+    }
+}
+
+fn ordered_stages<'a>(
+    shape: &'a pipelines::VerifiedShape,
+    pipeline: &'a pipelines::Pipeline,
+) -> impl Iterator<Item = &'a PipelineNode> {
+    shape
+        .ordered
+        .iter()
+        .find(|(name, _)| name == &pipeline.name)
+        .into_iter()
+        .flat_map(|(_, ids)| ids)
+        .filter_map(|id| pipeline.steps.iter().find(|step| &step.id == id))
+}
+
+fn pipeline_json(
+    config: &Config,
+    shape: &pipelines::VerifiedShape,
+    pipeline: &pipelines::Pipeline,
+) -> serde_json::Value {
+    use serde_json::json;
+    let stages = ordered_stages(shape, pipeline).map(|step| json!({
+        "id": step.id, "kind": step.kind, "model": step.model,
+        "target": step.model.as_ref().and_then(|id| config.models.iter().find(|model| &model.id == id)).map(|model| &model.target),
+    })).collect::<Vec<_>>();
+    json!({
+        "name": pipeline.name, "input": pipeline.input.label(), "output": pipeline.output.label(),
+        "realtime": pipeline.realtime, "stages": stages,
+        "links": pipeline.links.iter().map(|edge| json!({"from":edge.from,"to":edge.to})).collect::<Vec<_>>(),
+        "routes": config.routes.iter().filter(|route| route.pipeline == pipeline.name).map(|route| json!({"path":route.path,"protocol":route.protocol})).collect::<Vec<_>>(),
+        "chat_context": pipeline.chat_context.as_ref().map(|context| json!({
+            "enabled": context.enabled, "from_model": context.from_model, "max_bytes": context.max_bytes,
+            "source_count": context.selection.sources.len(), "filter_stages": context.selection.stages.len(),
+        })),
+        "execution_qualified": false,
+    })
 }

@@ -9,7 +9,7 @@ use super::{
 };
 use crate::args::ModelCommand;
 use std::{path::Path, process::ExitCode};
-use zerogravity::{Error, Result};
+use zerogravity::Result;
 
 fn finish(command: &'static str, result: Result<()>) -> ExitCode {
     match result {
@@ -35,7 +35,7 @@ pub(super) fn run(command: Command) -> ExitCode {
     };
     if matches!(
         command,
-        Command::Model(_) | Command::Devices(_) | Command::DeviceInspect { .. }
+        Command::Model(_) | Command::Devices(_) | Command::DeviceInspect { model: None, .. }
     ) && let Err(error) = crate::config_cli::apply_presentation(
         selection
             .as_ref()
@@ -83,9 +83,14 @@ pub(super) fn run(command: Command) -> ExitCode {
             format,
         } => finish("run", run_cli::run(args, alias.as_deref(), format)),
         Command::Devices(args) => finish("device", run_cli::devices(&args)),
-        Command::DeviceInspect { selector, format } => {
-            finish("device inspect", run_cli::device_inspect(&selector, format))
-        }
+        Command::DeviceInspect {
+            selector,
+            model,
+            format,
+        } => finish(
+            "device inspect",
+            run_cli::device_inspect(&selector, model, selection, format),
+        ),
         Command::Model(command) => {
             let (label, result) = match command {
                 ModelCommand::Read {
@@ -117,13 +122,20 @@ pub(super) fn run(command: Command) -> ExitCode {
             #[cfg(not(all(feature = "acquisition", target_os = "linux")))]
             let result = {
                 let _ = args;
-                Err(Error::Unsupported(
+                Err(zerogravity::Error::Unsupported(
                     "pull requires the optional acquisition feature on Linux".into(),
                 ))
             };
             finish("pull", result)
         }
-        Command::Pipeline(args) => finish("pipeline", pipeline::run(&args)),
+        Command::Pipeline {
+            args,
+            document,
+            format,
+        } => finish("pipeline", pipeline::run(&args, document, format)),
+        Command::Doctor { document, format } => {
+            finish("doctor", crate::doctor::run(document, format))
+        }
         Command::Config {
             args,
             document,
@@ -148,7 +160,7 @@ pub(super) fn run(command: Command) -> ExitCode {
             #[cfg(not(feature = "web"))]
             let result = {
                 let _ = (args, selection, offline);
-                Err(Error::Unsupported(
+                Err(zerogravity::Error::Unsupported(
                     "embedded control UI requires --features web".into(),
                 ))
             };
@@ -172,7 +184,7 @@ pub(super) fn run(command: Command) -> ExitCode {
                 let _ = args;
                 finish(
                     "serve",
-                    Err(Error::Unsupported(
+                    Err(zerogravity::Error::Unsupported(
                         "native HTTP serving requires --features serve".into(),
                     )),
                 )
@@ -180,12 +192,6 @@ pub(super) fn run(command: Command) -> ExitCode {
         }
         Command::Models(args) => finish("models", models(&args)),
         Command::WithDocument { .. } => unreachable!("document selection already resolved"),
-        Command::NotImplemented(name) => finish(
-            "",
-            Err(Error::Unsupported(format!(
-                "'{name}' is not implemented (use explicit run/serve/pipeline configuration)"
-            ))),
-        ),
         Command::Invalid(detail) => {
             fail(Failure::new(
                 "",

@@ -27,7 +27,43 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — Phase 2.1 UX-9E acceptance (26 Nov)
+### Current checkpoint — Phase 2.1 UX-10 core (26 Nov)
+
+Core direct CLI implementation and focused verification complete.
+- Doctor uses existing cold selected-document resolution/validation
+  (shared SDK inspect_policy), device inventory and cache metadata.
+  Safe text/JSON status; explicit errors return 2 with report. Missing local
+  sources and incompatible selected device policy warn. Cache logical bytes
+  vs configured limit are not physical quota usage; no unobserved runtime
+  binding is claimed available.
+- Device inspect with optional source uses exact observed physical ID and
+  existing run dry-run planner. No acquisition, loading, audit write or new
+  reservation. Fresh positional model replaces configured entrypoint and
+  model table, retaining policy; legacy explicit override remains.
+- Pipeline list/inspect/check, selected profiles/config and positional
+  files; original typed topology, links, declared routes/context, text/JSON.
+  General pipeline run refuses. Help/completions reflect normal commands;
+  compatibility aliases preserved. docs/CLI.md and examples updated.
+- Final strict minimal/combined lint and isolated focused 59/0/1
+  (minimal 27/0/0; optimized combined 32/0/1). Actual synthetic GGUF
+  CPU execution and source forms; existing populated cache tree unchanged.
+  One explicit real cached serving fixture skipped in focused run.
+  Initial obsolete help expectation/document-prefixed help and conditional
+  unused-import failures corrected before final rerun.
+
+The full isolated gate passed formatting, architecture/dependency checks,
+HIP-only (1m53s) and Vulkan-only (2m08s) compilation. Intentionally
+stopped during production CUDA native transport rebuild to close this
+checkpoint; no full gate acceptance or physical qualification claimed.
+
+**Next:** finish UX-10 comprehensive gate and remaining bounded cold
+diagnostic observations (runtime-library presence and physical cache
+quota usage without introducing a second owner). Direct graph inspection
+is text/JSON; no dedicated frontend graph destination yet. Then public
+serving and ordinary benchmarks, then ordered ROCm/CUDA/Vulkan/compiled
+provider phases. Do not reopen accepted foundation or frontend ownership.
+
+### Previous checkpoint — Phase 2.1 UX-9E acceptance (26 Nov; 1a878990)
 
 UX-9D and UX-9E accepted. Same foreground runtime, one action slot,
 original ConfigFile/cache/transfer/listener owners. No new dependencies,
@@ -64,12 +100,7 @@ model execution paths, admission changes or performance claims.
   native/Web release, offline installer and scripts passed. No physical
   GPU or public serving qualification inferred.
 
-**Next:** UX-10 doctor/pipeline/device presentation polish and compatibility
-cleanup. Audit normal help/docs against original direct typed commands;
-retain hidden compatibility aliases and remove duplicate normal paths only
-after their replacements are proven. Then public serving and ordinary
-benchmarks, ROCm vs optimized vLLM, CUDA, Vulkan, optional compiled providers
-in the ordered full plan. No return to accepted foundations or UX owners.
+The following UX-10 core implementation is recorded in the current checkpoint above.
 
 ### Previous checkpoint — Phase 2.1 UX-9D (26 Nov; 543194ac)
 

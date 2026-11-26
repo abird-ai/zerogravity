@@ -530,6 +530,24 @@ fn cached(root: &Path, common: &[&str], baseline: &[u8]) {
                     .any(|row| row["snapshot"] == digest)
             );
             assert_eq!(cache_tree(&cache), tree);
+            let diagnostic = run(root, &["doctor", "--format=json"]);
+            assert!(diagnostic.status.success(), "{:?}", diagnostic.stderr);
+            let report: serde_json::Value = serde_json::from_slice(&diagnostic.stdout).unwrap();
+            let observed = report["checks"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|row| row["component"] == "cache")
+                .unwrap();
+            assert_eq!(observed["status"], "ok");
+            assert!(observed["details"]["snapshots"].as_u64().unwrap() >= 1);
+            assert_eq!(
+                observed["details"]["configured_disk_limit_bytes"],
+                16 * 1024u64.pow(3)
+            );
+            assert_eq!(observed["details"]["physical_charge_observed"], false);
+            assert_eq!(observed["details"]["payload_verified"], false);
+            assert_eq!(cache_tree(&cache), tree);
             let refused = run(root, &["model", "remove", &explicit_digest]);
             assert_eq!(refused.status.code(), Some(2));
             assert!(String::from_utf8_lossy(&refused.stderr).contains("--dry-run or --yes"));
@@ -761,6 +779,54 @@ fn run_dry_run_decision_trace_and_forced_refusal_stay_read_only() {
         stderr.contains("unsupported: no eligible local device; see dry-run exclusions"),
         "{stderr}"
     );
+    assert!(!f.0.join("cache").exists());
+
+    // A device-specific check is the same original planner with an explicit
+    // source and physical selector. It does not inherit a configured model pin.
+    let direct_profile = yaml.replace("./model.gguf", "./not-the-selected-model.gguf")
+        .replace("task: {prompt: a, raw: true, max_tokens: 1, context: 8}",
+                 "task: {prompt: a, raw: true, max_tokens: 1, context: 8}\n  diagnostics: {audit_logits_jsonl: should-not-exist}");
+    std::fs::write(f.0.join("other.yaml"), direct_profile).unwrap();
+    let decision = run(
+        &f.0,
+        &[
+            "device",
+            "inspect",
+            "cpu:0",
+            "--model",
+            "./model.gguf",
+            "--config",
+            "other.yaml",
+            "--format=json",
+        ],
+    );
+    assert!(
+        decision.status.success(),
+        "{}",
+        String::from_utf8_lossy(&decision.stderr)
+    );
+    let plan: serde_json::Value = serde_json::from_slice(&decision.stdout).unwrap();
+    assert_eq!(plan["schema"], trace["schema"]);
+    assert_eq!(plan["selected"], "cpu:0");
+    assert_eq!(plan["max_tokens"], 1);
+    assert_eq!(plan["dry_run"], true);
+    assert_eq!(plan["reservation"], "none");
+    let explicit = run(
+        &f.0,
+        &[
+            "--config",
+            "other.yaml",
+            "run",
+            "./model.gguf",
+            "--dry-run",
+            "--format=json",
+        ],
+    );
+    assert!(explicit.status.success(), "{:?}", explicit.stderr);
+    let other: serde_json::Value = serde_json::from_slice(&explicit.stdout).unwrap();
+    assert_eq!(other["selected"], plan["selected"]);
+    assert_eq!(other["planning_bytes"], plan["planning_bytes"]);
+    assert!(!f.0.join("should-not-exist").exists());
     assert!(!f.0.join("cache").exists());
 }
 

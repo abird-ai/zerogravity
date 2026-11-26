@@ -11,6 +11,17 @@ pub(super) fn run(request: Request, mode: Mode) -> Result<()> {
     run_impl(request, devices::discover, mode)
 }
 
+/// Use the original observation that resolved an exact device selector.
+/// Refresh through the same discovery owner if the planner finds it stale.
+pub(super) fn run_observed(request: Request, inventory: devices::Inventory) -> Result<()> {
+    let mut initial = Some(inventory);
+    run_impl(
+        request,
+        || initial.take().map_or_else(devices::discover, Ok),
+        Mode::default(),
+    )
+}
+
 #[cfg(all(
     test,
     feature = "qwen35-cuda-serving",

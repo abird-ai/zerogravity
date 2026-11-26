@@ -6,7 +6,7 @@ scaffolding), CLI/TUI/Web and serving, ROCm, CUDA, Vulkan, then concrete
 compiled providers. Native Hugging Face/Safetensors and GGUF are primary.
 Older ordering below is context; valid owner constraints remain authoritative.
 
-Status (26 Nov): **Phase 2.1 UX-1 through UX-9E accepted; UX-10 doctor/pipeline polish and compatibility cleanup next (§46A.28).**
+Status (26 Nov): **Phase 2.1 UX-1 through UX-9E accepted; UX-10 core implemented and focused-tested, final acceptance pending (§46A.28).**
 The bounded Phase 1 minimum exit is accepted at `d5030ad4`.
 See the [Phase 1 exit takeover](../../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-25_PHASE1_EXIT.md)
 and [live full plan](../FULL_IMPLEMENTATION_PLAN.md). The original design below
@@ -3677,6 +3677,23 @@ stale Web draft refused, Web restore observed natively, admitted
 scheduler/registration/listener unchanged and exact HTTP text preserved.
 Original 8 GiB envelope. Combined release CLI 50/0/3; idle native log
 regression passed. Full isolated workspace gate 2,491/0/109 (318 Rust suites), release Web/TUI/installer/scripts passed. UX-9D/E accepted. UX-10 next.
+
+UX-10 core implementation (26 Nov): cold doctor text/JSON over original
+configuration policy, physical inventory, compiled features and read-only
+cache metadata; redacted path warnings, independent error report. Optional
+device model check reuses the original run decision and exact physical ID;
+no source acquisition, model load or audit write. Fix fresh explicit
+positional source precedence while preserving configured override. Pipeline
+list/inspect/check share typed structural validation and expose topology,
+links, declared routes/context in text/JSON; run remains a truthful
+refusal. Canonical help/completions and docs/CLI.md; legacy aliases retained.
+Strict minimal/combined lint and isolated focused 59/0/1 pass; existing
+cache tree unchanged. Isolated formatting/architecture and HIP/Vulkan
+compilation pass; stopped comprehensive gate during CUDA native transport
+rebuild. Comprehensive acceptance and remaining cold observations
+pending: library availability beyond observed runtime binding, physical
+quota usage (logical manifest totals are not physical usage). Pipeline
+inspection remains direct text/JSON rather than a new interactive view.
 
 Build TUI before Web so the shared control surface proves it is not browser-shaped.
 

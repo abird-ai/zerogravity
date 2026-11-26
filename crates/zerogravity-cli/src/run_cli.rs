@@ -4,7 +4,7 @@ use zerogravity::pipelines::{DiagnosticDoc, TaskDoc};
 use zerogravity::{Error, Result, run_policy::*};
 mod args;
 mod config;
-mod devices;
+pub(crate) mod devices;
 mod execute;
 pub(crate) mod input;
 mod qwen35_cuda;
@@ -98,10 +98,7 @@ pub(super) fn devices(args: &[String]) -> Result<()> {
     let runtime = zerogravity::Runtime::builder().build()?;
     let inventory = runtime.control().devices()?;
     if args.iter().any(|s| s == "--json") {
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&inventory).map_err(|e| Error::State(e.to_string()))?
-        );
+        crate::output::json(&inventory)?;
     } else {
         println!("Observed hardware only; execution eligibility is checked per model by `run`.");
         for d in inventory.devices {
@@ -110,8 +107,55 @@ pub(super) fn devices(args: &[String]) -> Result<()> {
     }
     Ok(())
 }
-pub(super) fn device_inspect(selector: &str, format: crate::args::Format) -> Result<()> {
+pub(super) fn device_inspect(
+    selector: &str,
+    model: Option<String>,
+    document: Option<(&'static str, String)>,
+    format: crate::args::Format,
+) -> Result<()> {
     let selector = DeviceRef::parse(selector)?;
+    if let Some(model) = model {
+        // Reuse the original direct run resolver and dry-run planner. No
+        // prompt input, acquisition, loader or execution fallback.
+        if SourceSelector::implies_run_document(&model)? {
+            return Err(bad(
+                "device inspect --model requires a model source, not a run document",
+            ));
+        }
+        let (config, profile) = match document {
+            Some(("--config", file)) => (Some(file), None),
+            Some(("--profile", name)) => (None, Some(name)),
+            None => (None, None),
+            _ => return Err(bad("invalid document selection")),
+        };
+        // Resolve ordinals/nodes once into the exact observed physical ID.
+        // An inspect selector can never be reinterpreted as an allowlist.
+        let inventory = devices::discover()?;
+        let physical = zerogravity::devices::observe_selected(&inventory, &selector)?
+            .id
+            .clone();
+        let (mut request, _) = config::resolve_selected(
+            Arguments {
+                model: Some(model),
+                direct_positional: true,
+                devices: Some(vec![physical]),
+                config,
+                profile,
+                diagnostics: DiagnosticDoc {
+                    dry_run: Some(true),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            &std::env::current_dir()?,
+            std::env::var_os("XDG_CONFIG_HOME"),
+            std::env::var_os("HOME"),
+        )?;
+        // This check is read-only even if an active profile requests audit output.
+        request.diagnostics.audit_logits_jsonl = None;
+        request.diagnostics.audit_layers_jsonl = None;
+        return execute::run_observed(request, inventory);
+    }
     let runtime = zerogravity::Runtime::builder().build()?;
     let device = runtime.control().inspect_device(&selector)?;
     if format == crate::args::Format::Json {
@@ -122,6 +166,12 @@ pub(super) fn device_inspect(selector: &str, format: crate::args::Format) -> Res
             devices::display(&device),
             device.provenance
         );
+        if let Some(ordinal) = device.cuda_ordinal {
+            println!("CUDA driver ordinal: {ordinal} (observed, not a stable physical ID)");
+        }
+        if let Some((major, minor)) = device.cuda_cc {
+            println!("CUDA compute capability: {major}.{minor}");
+        }
         Ok(())
     }
 }

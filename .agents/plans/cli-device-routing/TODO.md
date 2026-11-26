@@ -399,11 +399,35 @@ build or general model/backend grant. Historical failures keep their source scop
   exact output. Original 8 GiB admission unchanged.
 - [x] Full isolated workspace gate 2,491/0/109 (318 Rust suites), release Web/TUI/installer/scripts passed. Initial UX-9D gate interruption recovered; UX-9D/E accepted.
 
+### Phase 2.1 UX-10 — cold diagnostics and compatibility (26 Nov)
+
+- [x] Replace doctor stub with cold selected document/policy, cache metadata,
+  physical observation, compiled-backend and obvious local source checks.
+  Safe text/JSON; errors retain report and fail, warnings remain observations.
+  Cache logical snapshot bytes and configured quota are distinct from physical
+  quota charge. Unobserved runtime bindings remain explicitly unprobed.
+- [x] Device inspect with optional source uses exact physical identity and
+  original run dry-run; positional direct source supersedes configured model
+  table/entrypoint while retaining selected policy. Audit writes and
+  acquisition excluded from device check. Explicit legacy override preserved.
+- [x] Pipeline list/inspect/check and positional file/name grammar reuse
+  typed structural validation, topology and declared route/context metadata;
+  general execution refuses. Stable JSON and compact normal help/completions;
+  compatibility aliases remain. CLI guide and examples updated.
+- [x] Strict minimal/combined lint; final isolated minimal CLI/pipeline
+  27/0/0, optimized combined CLI/pipeline/run 32/0/1. Existing populated
+  cache tree unchanged after doctor; dry-run retains original planner.
+  Full isolated gate formatting/architecture and HIP/Vulkan compilation
+  pass; intentionally stopped during production CUDA transport rebuild.
+
 ## Uncommitted
 
-- [ ] UX-10 doctor/pipeline/device presentation polish and compatibility
-  cleanup; then public serving per full plan. Broader catalog presets,
-  conversation history and unsupported routes remain explicit.
+- [ ] Finish UX-10 comprehensive gate and remaining diagnostic polish:
+  backend library presence beyond observed binding and physical cache quota
+  usage remain unprobed; graph inspection is textual/JSON rather than a new
+  native/Web destination. Preserve original cold authority; do not infer
+  runtime qualification. Then public serving per full plan. Broader catalog
+  presets, conversation history and unsupported routes remain explicit.
 - [ ] Extend advanced direct provider forced interactive/JSONL presentation
   and aggregate component download control without changing independently
   published receipts; existing direct provider progress and legacy sequential

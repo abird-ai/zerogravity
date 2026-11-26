@@ -658,3 +658,50 @@ fn yaml_alias_expansion_is_bounded_before_model_registration() {
         "{stderr}"
     );
 }
+
+#[test]
+fn pipeline_list_inspect_and_positional_check_share_the_structural_authority() {
+    let file = example("contextual-voice-assistant.yaml");
+    let path = file.to_str().unwrap();
+    let listing = output(&["--config", path, "pipeline", "list", "--format=json"]);
+    assert!(listing.status.success(), "{:?}", listing.stderr);
+    let listing: serde_json::Value = serde_json::from_slice(&listing.stdout).unwrap();
+    assert_eq!(listing["structure_valid"], true);
+    assert_eq!(listing["execution_qualified"], false);
+    let pipeline = listing["pipelines"].as_array().unwrap().first().unwrap();
+    let name = pipeline["name"].as_str().unwrap();
+    let inspection = output(&[
+        "pipeline", "inspect", name, "--config", path, "--format", "json",
+    ]);
+    assert!(inspection.status.success(), "{:?}", inspection.stderr);
+    let inspection: serde_json::Value = serde_json::from_slice(&inspection.stdout).unwrap();
+    assert_eq!(&inspection["pipelines"][0], pipeline);
+    assert_eq!(pipeline["chat_context"]["enabled"], true);
+    assert!(
+        pipeline["stages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|stage| stage["id"] == "listen" && stage["kind"] == "asr")
+    );
+    assert!(!pipeline["links"].as_array().unwrap().is_empty());
+    assert!(!pipeline["routes"].as_array().unwrap().is_empty());
+    let checked = output(&["pipeline", "check", path, "--format=json"]);
+    assert!(checked.status.success(), "{:?}", checked.stderr);
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&checked.stdout).unwrap(),
+        listing
+    );
+    let refused = output(&["pipeline", "run", name, "--config", path]);
+    assert_eq!(refused.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&refused.stderr).contains("NOT IMPLEMENTED"));
+    let refused = output(&["pipeline", "run", path]);
+    assert_eq!(refused.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&refused.stderr).contains("NOT IMPLEMENTED"));
+    assert_eq!(
+        output(&["pipeline", "inspect", "not-declared", "--config", path])
+            .status
+            .code(),
+        Some(2)
+    );
+}

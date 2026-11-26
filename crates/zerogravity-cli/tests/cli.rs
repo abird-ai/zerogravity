@@ -33,7 +33,8 @@ fn help_is_available_offline() {
     ] {
         assert!(text.contains(command), "{command}: {text}");
     }
-    assert!(text.contains("pending"));
+    assert!(text.contains("Diagnose local configuration and hardware"));
+    assert!(!text.contains("pending"));
     assert!(text.lines().count() < 35, "{text}");
     assert!(!text.contains("Phase 1:"));
     assert!(!text.contains("run-cuda"));
@@ -430,4 +431,99 @@ fn download_modes_refuse_before_provider_or_cache_io() {
         serde_json::json!([])
     );
     assert!(!root.exists());
+}
+
+#[test]
+fn doctor_observes_local_policy_without_creating_or_loading_anything() {
+    let root = std::env::temp_dir().join(format!("zg-doctor-{}", std::process::id()));
+    std::fs::create_dir(&root).unwrap();
+    struct Cleanup(std::path::PathBuf);
+    impl Drop for Cleanup {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+    let _cleanup = Cleanup(root.clone());
+    let run = |args: &[&str]| {
+        binary()
+            .args(args)
+            .current_dir(&root)
+            .env("HOME", &root)
+            .env("XDG_CONFIG_HOME", root.join("config"))
+            .env("XDG_CACHE_HOME", root.join("cache"))
+            .env("HF_TOKEN", "PRIVATE_DOCTOR_CREDENTIAL")
+            .output()
+            .unwrap()
+    };
+    let parse = |out: &std::process::Output| {
+        assert!(
+            !out.stdout
+                .windows(b"PRIVATE_DOCTOR".len())
+                .any(|w| w == b"PRIVATE_DOCTOR")
+        );
+        assert!(
+            !out.stderr
+                .windows(b"PRIVATE_DOCTOR".len())
+                .any(|w| w == b"PRIVATE_DOCTOR")
+        );
+        serde_json::from_slice::<serde_json::Value>(&out.stdout).unwrap()
+    };
+    let cold = run(&["doctor", "--format=json"]);
+    assert!(cold.status.success(), "{:?}", cold.stderr);
+    let report = parse(&cold);
+    assert_eq!(report["schema"], "zerogravity.doctor.v1");
+    assert_eq!(report["execution_qualified"], false);
+    assert_eq!(report["status"], "ok");
+    let checks = report["checks"].as_array().unwrap();
+    assert!(checks.iter().any(|c| {
+        c["component"] == "devices"
+            && c["details"]["devices"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|row| row["id"] == "cpu:0")
+    }));
+    assert!(!root.join("config").exists());
+    assert!(!root.join("cache").exists());
+    let document = "schema: zerogravity.pipeline.v2\nmodel:\n  - id: example\n    target: qwen3.5-0.8b\n    source: ./PRIVATE_DOCTOR_MISSING.gguf\nrun:\n  entrypoint: {model: example}\n  device: ['gpu:99999']\n  task: {prompt: PRIVATE_DOCTOR_PROMPT}\n";
+    std::fs::write(root.join("local.yaml"), document).unwrap();
+    let configured = run(&["doctor", "--config", "local.yaml", "--format=json"]);
+    assert!(configured.status.success(), "{:?}", configured.stderr);
+    let report = parse(&configured);
+    assert_eq!(report["status"], "warning");
+    let checks = report["checks"].as_array().unwrap();
+    assert!(
+        checks
+            .iter()
+            .any(|c| c["component"] == "model:example" && c["status"] == "warning")
+    );
+    assert!(
+        checks
+            .iter()
+            .any(|c| c["component"] == "device policy" && c["status"] == "warning")
+    );
+    std::fs::write(root.join("broken.yaml"), "PRIVATE_DOCTOR_INVALID: true").unwrap();
+    let invalid = run(&["--config", "broken.yaml", "doctor", "--format", "json"]);
+    assert_eq!(invalid.status.code(), Some(2));
+    let report = parse(&invalid);
+    assert_eq!(report["status"], "error");
+    assert!(
+        report["checks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|c| c["component"] == "devices")
+    );
+    let missing = run(&["--profile", "missing", "doctor", "--format=json"]);
+    assert_eq!(missing.status.code(), Some(2));
+    assert_eq!(parse(&missing)["status"], "error");
+    let help = run(&["--config", "broken.yaml", "help", "doctor"]);
+    assert!(help.status.success());
+    assert!(String::from_utf8_lossy(&help.stdout).contains("Cold local"));
+    assert_eq!(
+        std::fs::read_to_string(root.join("local.yaml")).unwrap(),
+        document
+    );
+    assert!(!root.join("config").exists());
+    assert!(!root.join("cache").exists());
 }

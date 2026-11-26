@@ -8,6 +8,7 @@ mod completion;
 mod config_cli;
 #[cfg(any(feature = "tui", feature = "web"))]
 mod control_host;
+mod doctor;
 mod model_cli;
 mod output;
 #[cfg(all(feature = "acquisition", target_os = "linux"))]

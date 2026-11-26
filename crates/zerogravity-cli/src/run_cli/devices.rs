@@ -6,7 +6,7 @@ pub(super) use zerogravity::devices::{Inventory, Observation, discover};
 pub(super) use zerogravity::devices::{allowed, normalize_pci};
 
 /// Human inventory, not an execution-capability claim. No source is inspected.
-pub(super) fn display(device: &Observation) -> String {
+pub(crate) fn display(device: &Observation) -> String {
     let memory = |bytes: Option<u64>| {
         bytes.map_or_else(
             || "unknown".into(),

@@ -659,8 +659,18 @@ demand. Preserve the existing detailed
   active-policy edit/stale Web refusal/Web restore; unchanged admitted
   scheduler, registration, listener and exact HTTP inference output.
   Combined release CLI 50/0/3, actual settings PTY, Full isolated workspace gate 2,491/0/109 (318 Rust suites), release Web/TUI/installer/scripts passed.
-  UX-9D/E accepted. **Next: UX-10 doctor/pipeline polish and compatibility
-  cleanup (§46A.28), then public serving.**
+  UX-9D/E accepted.
+- [x] UX-10 core direct CLI implementation: cold doctor, model-specific
+  physical device dry-run, validated pipeline list/inspect/check, fresh
+  positional model route, help/completions/compatibility and CLI guide.
+  Strict minimal/combined Clippy and isolated focused 59/0/1 pass.
+  Isolated formatting/architecture and HIP/Vulkan compilation pass;
+  comprehensive gate stopped during CUDA native transport rebuild.
+- [ ] UX-10 final acceptance: comprehensive gate and remaining bounded
+  cold diagnostics (runtime library presence / physical cache usage).
+  Do not conflate structural or metadata observations with execution;
+  graph inspection is text/JSON, no new runtime or frontend owner.
+  Then public serving (§2.3).
 
 - [ ] Close typed command tree, ConfigDocument/profile merge and shared
   presentation/action/snapshot/event model. One resolver for local paths,

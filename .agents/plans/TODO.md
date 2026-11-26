@@ -200,8 +200,12 @@ Firefox same-operation pause/resume/durable and cancel/partial, native
 policy edit/stale Web refusal/Web restore with admitted model and listener
 unchanged; real optimized cached lifecycle 1/0/0 (54.16s); release CLI
 50/0/3. Full isolated workspace gate 2,491/0/109 (318 Rust suites), release Web/TUI/installer/scripts passed. UX-9D/E accepted.
-Next: UX-10 doctor/pipeline/device presentation and compatibility cleanup,
-then public serving and ordered performance phases.
+UX-10 core direct CLI implementation: cold doctor and exact device/model
+dry-run, typed pipeline list/inspect/check, positional source precedence,
+help/compatibility/CLI guide. Strict minimal/combined lint and isolated
+focused 59/0/1 pass. Final comprehensive gate and remaining cold diagnostic
+observations pending; see CLI/device owner TODO. Next finish UX-10, then
+public serving and ordered performance phases.
 General UMA/foreign backing, device-write host read, unqualified model/
 backend/media and other expansion holds remain explicit. Historical
 CPU cache gate corrected at 00f57e7a/9374e0ca.

@@ -79,12 +79,20 @@ pub fn load_path(
 /// document may still request an uncompiled or unqualified adapter.
 pub fn validate(path: &Path, bytes: &[u8]) -> Result<ConfigDocument> {
     let doc = pipelines::parse_document(bytes)?;
-    config::inspect_document(path, doc.clone(), false)?;
-    if doc.serve.is_some() {
-        let (request, serve) = config::inspect_document(path, doc.clone(), true)?;
-        validate_serve(&request, &serve)?;
-    }
+    inspect_policy(path, &doc)?;
     Ok(doc)
+}
+
+/// Cold resolved document policy, including settings-only documents.
+/// The placeholder entrypoint in an empty document is not a runnable model.
+/// No source or device is opened; callers may inspect the returned policy.
+pub fn inspect_policy(path: &Path, doc: &ConfigDocument) -> Result<Request> {
+    let (request, _) = config::inspect_document(path, doc.clone(), false)?;
+    if doc.serve.is_some() {
+        let (serving, serve) = config::inspect_document(path, doc.clone(), true)?;
+        validate_serve(&serving, &serve)?;
+    }
+    Ok(request)
 }
 
 /// Shared finite serving policy before physical admission.

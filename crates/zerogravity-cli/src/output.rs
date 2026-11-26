@@ -80,9 +80,9 @@ pub(super) fn topic_usage(topic: Topic, child: Option<&str>) -> zerogravity::Res
             }
         },
         Topic::Device => println!(
-            "USAGE: zerogravity device list [--format json]\n       zerogravity device inspect ID [--format json]\nObserved hardware only; use exact PCI, gpu:N, cpu:0 or supported device-node selectors."
+            "USAGE: zerogravity device list [--format json]\n       zerogravity device inspect ID [--model MODEL] [--format json]\nObserved hardware only; use exact PCI, gpu:N, cpu:0 or supported device-node selectors. --model invokes the original cold run decision (JSON plan, no load)."
         ),
-        Topic::Pipeline => crate::pipeline::run(&["--help".into()])?,
+        Topic::Pipeline => crate::pipeline::help(child),
         Topic::Cache => {
             #[cfg(all(feature = "cache", target_os = "linux"))]
             crate::cache_manage::help();
@@ -93,7 +93,9 @@ pub(super) fn topic_usage(topic: Topic, child: Option<&str>) -> zerogravity::Res
         Topic::Web => println!(
             "USAGE: zerogravity [--profile NAME | --config FILE] [--offline] web [--listen IP:PORT]\nStarts the embedded local control UI (default 127.0.0.1:0). Open the printed private URL in your browser. Control authentication is independent of inference API authentication. Ctrl-C stops the foreground host."
         ),
-        Topic::Doctor => println!("{} is not implemented yet.", node(topic).name),
+        Topic::Doctor => println!(
+            "USAGE: zerogravity [--profile NAME | --config FILE] doctor [--format json]\nCold local configuration, cache metadata, device and source-path observations. No model load, remote access or execution qualification."
+        ),
         Topic::Version => println!("USAGE: zerogravity version"),
         Topic::Help => usage(),
     }

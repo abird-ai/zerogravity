@@ -25,7 +25,9 @@ source/physical/runtime gates pass.
 ## Quickstart
 
 ```sh
-zerogravity pipeline check --config examples/pipelines/text-model.yaml
+zerogravity pipeline check examples/pipelines/text-model.yaml
+zerogravity --config examples/pipelines/text-model.yaml pipeline list
+zerogravity --config examples/pipelines/text-model.yaml pipeline inspect chat --format json
 zerogravity pipeline check --config examples/pipelines/contextual-voice-filtered.yaml
 
 # Same typed graph expressed using repeated flags:
@@ -40,7 +42,10 @@ zerogravity pipeline run --config examples/pipelines/voice-assistant.yaml
 
 ## Configuration rules
 
-Canonical input is **YAML**, one `schema: zerogravity.pipeline.v1` document.
+Canonical input is **YAML**, one typed document. These examples use
+`schema: zerogravity.pipeline.v1`; v2 also supports the run/serve/UI policy.
+List and inspect expose the validated declared graph, not live model registrations.
+See the [CLI guide](../../docs/CLI.md) for configuration selection.
 Use `model:`, `pipeline:`, and `route:` lists. Each pipeline has typed
 `step:` and `link:` lists. A model referenced from several pipelines
 describes one shared instance; that never implies a new process or

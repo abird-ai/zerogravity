@@ -132,6 +132,7 @@ impl Globals {
         &mut self,
         mut args: &[String],
         takes_value: impl Fn(&str) -> bool,
+        document: bool,
     ) -> Result<Vec<String>, &'static str> {
         let mut result = Vec::new();
         while let Some(raw) = args.first() {
@@ -139,7 +140,7 @@ impl Globals {
                 result.extend_from_slice(args);
                 break;
             }
-            let used = self.take(args, false)?;
+            let used = self.take(args, document)?;
             if used != 0 {
                 args = &args[used..];
                 continue;
@@ -221,8 +222,8 @@ pub(super) const TREE: &[Node] = &[
     Node {
         topic: Topic::Pipeline,
         name: "pipeline",
-        description: "Check or run a declared pipeline",
-        children: &["check", "run"],
+        description: "List and check declared pipelines",
+        children: &["list", "inspect", "check", "run"],
     },
     Node {
         topic: Topic::Profile,
@@ -241,7 +242,7 @@ pub(super) const TREE: &[Node] = &[
     Node {
         topic: Topic::Doctor,
         name: "doctor",
-        description: "Local diagnostics (pending)",
+        description: "Diagnose local configuration and hardware",
         children: &[],
     },
     Node {
@@ -335,12 +336,21 @@ pub(super) enum Command {
     Devices(Vec<String>),
     DeviceInspect {
         selector: String,
+        model: Option<String>,
         format: Format,
     },
     Model(ModelCommand),
     Pull(Vec<String>),
     Models(Vec<String>),
-    Pipeline(Vec<String>),
+    Pipeline {
+        args: Vec<String>,
+        document: Option<(&'static str, String)>,
+        format: Format,
+    },
+    Doctor {
+        document: Option<(&'static str, String)>,
+        format: Format,
+    },
     Serve(Vec<String>),
     Web {
         args: Vec<String>,
@@ -363,7 +373,6 @@ pub(super) enum Command {
         command: Box<Command>,
         selection: (&'static str, String),
     },
-    NotImplemented(String),
     Invalid(String),
     Unknown,
 }
@@ -436,7 +445,10 @@ fn parse_command(args: &[String], g: &mut Globals) -> Result<Command, &'static s
         },
         "run" | "run-cpu" | "run-cuda" | "run-rocm" | "run-vulkan" | "run-vulkan-amd"
         | "run-vulkan-nvidia" => {
-            let mut args = g.flat(rest, crate::run_cli::takes_value)?;
+            let mut args = g.flat(rest, crate::run_cli::takes_value, false)?;
+            if help(&args) {
+                return Ok(Command::HelpTopic(Topic::Run, None));
+            }
             if let Some((flag, value)) = g.document.take() {
                 args.splice(..0, [flag.into(), value]);
             }
@@ -451,19 +463,23 @@ fn parse_command(args: &[String], g: &mut Globals) -> Result<Command, &'static s
             }
         }
         "serve" => {
-            let mut args = g.flat(rest, |raw| {
-                raw.starts_with('-')
-                    && !raw.contains('=')
-                    && !matches!(
-                        raw,
-                        "--enable-per-request-metrics"
-                            | "--pull"
-                            | "--offline"
-                            | "-h"
-                            | "--help"
-                            | "--"
-                    )
-            })?;
+            let mut args = g.flat(
+                rest,
+                |raw| {
+                    raw.starts_with('-')
+                        && !raw.contains('=')
+                        && !matches!(
+                            raw,
+                            "--enable-per-request-metrics"
+                                | "--pull"
+                                | "--offline"
+                                | "-h"
+                                | "--help"
+                                | "--"
+                        )
+                },
+                false,
+            )?;
             if help(&args) {
                 Command::HelpTopic(Topic::Serve, None)
             } else {
@@ -483,8 +499,11 @@ fn parse_command(args: &[String], g: &mut Globals) -> Result<Command, &'static s
                 let (operation, tail) = rest
                     .split_first()
                     .map_or(("list", rest), |(op, tail)| (op.as_str(), tail));
-                let tail = g.flat(tail, |_| false)?;
+                let tail = g.flat(tail, |raw| raw == "--model", true)?;
                 no_jsonl(g.format)?;
+                if !node(Topic::Device).children.contains(&operation) {
+                    return Err("unknown device subcommand");
+                }
                 if help(&tail) {
                     return Ok(Command::HelpTopic(Topic::Device, Some(operation.into())));
                 }
@@ -496,14 +515,21 @@ fn parse_command(args: &[String], g: &mut Globals) -> Result<Command, &'static s
                         }
                         Command::Devices(args)
                     }
-                    "inspect" if name == "device" => match tail.as_slice() {
-                        [selector] => Command::DeviceInspect {
+                    "inspect" if name == "device" => {
+                        let (selector, model) = match tail.as_slice() {
+                            [selector] => (selector, None),
+                            [selector, flag, model] if flag == "--model" => {
+                                (selector, Some(model.clone()))
+                            }
+                            _ => return Err("device inspect ID [--model MODEL]"),
+                        };
+                        Command::DeviceInspect {
                             selector: selector.clone(),
+                            model,
                             format: g.format,
-                        },
-                        _ => return Err("device inspect requires exactly one observed device ID"),
-                    },
-                    _ => return Err("device list [--json] | device inspect ID"),
+                        }
+                    }
+                    _ => return Err("device list [--json] | device inspect ID [--model MODEL]"),
                 }
             }
         }
@@ -522,7 +548,7 @@ fn parse_command(args: &[String], g: &mut Globals) -> Result<Command, &'static s
                     Command::Model(match operation {
                         "list" | "inspect" | "verify" | "remove" => {
                             let args =
-                                g.flat(tail, |raw| matches!(raw, "--cache" | "--snapshot"))?;
+                                g.flat(tail, |raw| matches!(raw, "--cache" | "--snapshot"), false)?;
                             no_jsonl(g.format)?;
                             let operation = match operation {
                                 "list" => ModelRead::List,
@@ -550,12 +576,37 @@ fn parse_command(args: &[String], g: &mut Globals) -> Result<Command, &'static s
             }
         }
         "pipeline" => {
-            if help(rest) {
+            let rest = g.prefix(rest, true)?;
+            if rest.is_empty() || help(rest) {
                 Command::HelpTopic(Topic::Pipeline, None)
-            } else if let Some((operation, tail)) = rest.split_first() {
-                Command::Pipeline(with_prefix(operation, g.prefix(tail, false)?))
             } else {
-                Command::Pipeline(Vec::new())
+                let (operation, tail) = rest.split_first().expect("nonempty pipeline");
+                if !node(Topic::Pipeline).children.contains(&operation.as_str()) {
+                    return Err("unknown pipeline subcommand");
+                }
+                let tail = g.flat(
+                    tail,
+                    |raw| {
+                        raw.starts_with("--")
+                            && !raw.contains('=')
+                            && raw != "--realtime"
+                            && raw != "--help"
+                    },
+                    true,
+                )?;
+                if help(&tail) {
+                    Command::HelpTopic(Topic::Pipeline, Some(operation.clone()))
+                } else {
+                    no_jsonl(g.format)?;
+                    if operation == "run" {
+                        unsupported_format(g.format)?;
+                    }
+                    Command::Pipeline {
+                        args: with_prefix(operation, &tail),
+                        document: g.document.take(),
+                        format: g.format,
+                    }
+                }
             }
         }
         "config" | "profile" => {
@@ -623,7 +674,7 @@ fn parse_command(args: &[String], g: &mut Globals) -> Result<Command, &'static s
             }
         }
         "web" => {
-            let args = g.flat(rest, |raw| raw == "--listen")?;
+            let args = g.flat(rest, |raw| raw == "--listen", false)?;
             if help(&args) {
                 Command::HelpTopic(Topic::Web, None)
             } else {
@@ -635,10 +686,17 @@ fn parse_command(args: &[String], g: &mut Globals) -> Result<Command, &'static s
             }
         }
         "doctor" => {
+            let rest = g.prefix(rest, true)?;
             if help(rest) {
-                Command::HelpTopic(topic(name).expect("known command"), None)
+                Command::HelpTopic(Topic::Doctor, None)
+            } else if rest.is_empty() {
+                no_jsonl(g.format)?;
+                Command::Doctor {
+                    document: g.document.take(),
+                    format: g.format,
+                }
             } else {
-                Command::NotImplemented(name.into())
+                return Err("doctor takes only global options");
             }
         }
         "completion" => {
@@ -663,6 +721,12 @@ fn parse_command(args: &[String], g: &mut Globals) -> Result<Command, &'static s
         "run-cache" => Command::CacheRun(rest.to_vec()),
         _ => Command::Unknown,
     };
+    if matches!(
+        command,
+        Command::Help | Command::HelpTopic(..) | Command::Version | Command::Completion(_)
+    ) {
+        g.document = None;
+    }
     if g.document.is_some()
         && !matches!(
             command,
@@ -720,6 +784,8 @@ fn parse_command(args: &[String], g: &mut Globals) -> Result<Command, &'static s
         command,
         Command::Devices(_)
             | Command::DeviceInspect { .. }
+            | Command::Pipeline { .. }
+            | Command::Doctor { .. }
             | Command::Run { .. }
             | Command::Config { .. }
             | Command::Profile { .. }

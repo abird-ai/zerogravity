@@ -7,6 +7,8 @@ implementation, tests and remaining work are tracked in
 
 ## Read according to your purpose
 
+For everyday use, start with the [CLI and local control guide](CLI.md).
+
 | Audience | Start here | Then |
 |---|---|---|
 | **Technical reader, collaborator or reviewer** | [Whitepaper](WHITEPAPER.md) | [References](REFERENCES.md) and [Publication/Review Checklist](PUBLICATION_AND_REVIEW_CHECKLIST.md) |
