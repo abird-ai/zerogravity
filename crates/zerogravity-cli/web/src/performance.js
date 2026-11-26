@@ -42,3 +42,38 @@ export function modelName(model) {
   const family = model.capabilities?.family ?? "Model";
   return aliases.length ? family+" · "+aliases[0].slice(0,8)+"…" : family;
 }
+
+// Complete, ordered compute ranges only. Compress without inventing an owner
+// for any cell spanning different devices. Same device retains its identity.
+export function layerStrip(placement, maxCells = 48) {
+  const total = placement?.total_layers;
+  if (!Number.isSafeInteger(total) || total <= 0 || !Array.isArray(placement.spans)) return null;
+  const devices = [], spans = [];
+  let end = 0;
+  for (const span of placement.spans) {
+    if (span.start !== end || !Number.isSafeInteger(span.end) || span.end <= end || span.end > total) return null;
+    const execution = span.execution;
+    const key = execution?.kind === "host_cpu" ? "host_cpu" :
+      execution?.kind === "device" && execution.device ? JSON.stringify([execution.device.backend, execution.device.device]) : null;
+    if (key === null) return null;
+    let owner = devices.findIndex(device => device.key === key);
+    if (owner < 0) {
+      owner = devices.length;
+      devices.push({key, label:deviceLabel(execution)});
+    }
+    spans.push({start:span.start,end:span.end,owner});
+    end = span.end;
+  }
+  const count = Math.min(total,maxCells);
+  if (end !== total || count < 1) return null;
+  const boundary = i => Math.floor(i * total / count);
+  const cells = Array.from({length:count}, (_,i) => {
+    const start = boundary(i), end = boundary(i+1);
+    const owners = spans.filter(span => span.start < end && span.end > start);
+    const owner = owners.every(span => span.owner === owners[0].owner) ? owners[0].owner : null;
+    return {start,end,owner};
+  });
+  return {cells,devices};
+}
+export const deviceMark = index => "123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"[index] ?? "?";
+export const providerLabel = provider => ({Cpu:"CPU",Cuda:"CUDA",Hip:"ROCm",Vulkan:"Vulkan",GraphOnly:"Graph only",Remote:"Remote"})[provider] ?? "Not reported";

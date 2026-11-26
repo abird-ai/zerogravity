@@ -166,7 +166,7 @@ pub(super) struct Workspace {
     pub focus: Pane,
     pub has_detail: bool,
     rail_width: Option<u16>,
-    horizontal: u16,
+    horizontal: Option<u16>,
     vertical: u16,
     rail: Viewport,
     views: [ViewState; 9],
@@ -177,7 +177,7 @@ impl Default for Workspace {
             focus: Pane::Main,
             has_detail: false,
             rail_width: None,
-            horizontal: 550,
+            horizontal: None,
             vertical: 500,
             rail: Viewport::default(),
             views: [ViewState {
@@ -258,13 +258,19 @@ impl Workspace {
         split(body, width, SplitKind::Rail)
     }
     /// A single split, or one visible pane when the minimums do not fit.
-    pub fn inner(&self, area: Rect, view: usize) -> (Rect, Rect, Option<(Rect, Splitter)>) {
+    pub fn inner(
+        &self,
+        area: Rect,
+        view: usize,
+        horizontal_default: u16,
+    ) -> (Rect, Rect, Option<(Rect, Splitter)>) {
         if let Some(pane) = self.views[view].maximized {
             return single(area, pane);
         }
         if area.width >= 61 && area.height >= 4 {
             let available = area.width - 1;
-            let first = portion(available, self.horizontal).clamp(32, available - 28);
+            let first = portion(available, self.horizontal.unwrap_or(horizontal_default))
+                .clamp(32, available - 28);
             split(area, first, SplitKind::Horizontal)
         } else if area.height >= 13 {
             let available = area.height - 1;
@@ -284,7 +290,7 @@ impl Workspace {
                 let n = parent.width.saturating_sub(1);
                 if n >= 60 {
                     let first = column.saturating_sub(parent.x).clamp(32, n - 28);
-                    self.horizontal = ratio(first, n);
+                    self.horizontal = Some(ratio(first, n));
                 }
             }
             SplitKind::Vertical => {
@@ -296,7 +302,7 @@ impl Workspace {
             }
         }
     }
-    pub fn adjust(&mut self, kind: SplitKind, delta: i16) {
+    pub fn adjust(&mut self, kind: SplitKind, delta: i16, horizontal_default: u16) {
         match kind {
             SplitKind::Rail => {
                 self.rail_width = Some(
@@ -307,10 +313,12 @@ impl Workspace {
                 )
             }
             SplitKind::Horizontal => {
-                self.horizontal = self
-                    .horizontal
-                    .saturating_add_signed(delta * 25)
-                    .clamp(100, 900)
+                self.horizontal = Some(
+                    self.horizontal
+                        .unwrap_or(horizontal_default)
+                        .saturating_add_signed(delta * 25)
+                        .clamp(100, 900),
+                )
             }
             SplitKind::Vertical => {
                 self.vertical = self
@@ -374,21 +382,23 @@ mod tests {
         let (_, _, rail) = state.shell(wide);
         state.drag(rail.unwrap().1, 29, 0);
         assert_eq!(state.shell(wide).0.width, 29);
-        let (_, _, inner) = state.inner(wide, 3);
+        assert_eq!(state.inner(wide, 1, 380).0.width, 57);
+        let (_, _, inner) = state.inner(wide, 3, 550);
         state.drag(inner.unwrap().1, 90, 0);
-        let preferred = state.inner(wide, 3).0;
+        let preferred = state.inner(wide, 3, 550).0;
+        assert_eq!(state.inner(wide, 1, 380).0, preferred);
         state.toggle_maximize(3, Pane::Detail);
-        assert_eq!(state.inner(wide, 3).1, wide);
+        assert_eq!(state.inner(wide, 3, 550).1, wide);
         state.toggle_maximize(3, Pane::Detail);
-        assert_eq!(state.inner(wide, 3).0, preferred);
-        assert_eq!(state.inner(Rect::new(0, 0, 40, 8), 3).1.width, 40);
-        assert_eq!(state.inner(wide, 3).0, preferred);
+        assert_eq!(state.inner(wide, 3, 550).0, preferred);
+        assert_eq!(state.inner(Rect::new(0, 0, 40, 8), 3, 550).1.width, 40);
+        assert_eq!(state.inner(wide, 3, 550).0, preferred);
         assert_eq!(state.shell(Rect::new(0, 0, 50, 8)).1.width, 50);
         assert_eq!(state.shell(wide).0.width, 29);
         let compact = Rect::new(0, 0, 40, 20);
-        let (_, _, vertical) = state.inner(compact, 3);
+        let (_, _, vertical) = state.inner(compact, 3, 550);
         state.drag(vertical.unwrap().1, 0, 18);
-        assert_eq!(state.inner(compact, 3).0.height, 13);
+        assert_eq!(state.inner(compact, 3, 550).0.height, 13);
     }
     #[test]
     fn identity_anchor_survives_reorder_clamp_and_empty_refresh() {

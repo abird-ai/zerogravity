@@ -1,6 +1,6 @@
 # Live model performance and execution inspection
 
-Status: UX-P-M1 implemented and focused-qualified (26 Nov); optional M2 and assembled P4B pending.
+Status: UX-P-M1 and user-directed M2 presentation refinement focused-qualified (26 Nov); deeper capability-bound profiling and assembled P4B pending.
 User direction 26 Nov 2026: Running models should show elegant live
 performance, average TPS/TTFT since the run began, and optionally detailed
 performance, layers and their devices. Keep the object-first toolbar-free
@@ -35,9 +35,21 @@ Illustrative placement, not a new hardware qualification:
     ━━━━━━━━━━━━━━━━━━━━━━━━  CUDA · physical device
     0–27                       original device
 
-A future genuinely split owner can show proportional contiguous spans and
-a short legend/ranges per physical device. Never infer a split by dividing
-layers by VRAM, model name or desired configuration. Distinguish compute
+The user-directed M2 visual refinement preserves the reference layout:
+38:62 default list/detail width on wide native/Web views; native explicit
+split preferences remain intact. Side-by-side metric values with compact
+fallback, two-cell-high recent chart where space permits, newest samples
+emphasized, visible exact-owner details link, and actual admitted-reader
+activity. The Web uses one accessible tooltip-labeled cell per reported
+layer up to 48; native caps cells by available width and 48. A complete
+ordered map is required for the strip. A compressed cell spanning devices
+is explicitly mixed, never assigned an invented owner. Legend identity
+and symbols supplement color; exact zero-based ranges remain in details.
+An older/unsupported adapter still has no placement. Activity is
+registration-wide (admitted readers include queue/active/retirement),
+not instantaneous layer utilization. No animation or hot-path instrumentation
+pretends to observe individual layers.
+Never infer a split by dividing layers by VRAM, model name or desired configuration. Distinguish compute
 placement, weight/storage placement, state reserve, model budget and actual
 physical usage. Layer IDs are zero-based, end-exclusive in the contract.
 Unknown placement remains unreported; host assistance does not mean host
@@ -124,7 +136,21 @@ strings, paths, token IDs, credentials or diagnostic history in samples.
   Logs target/ux-live-performance-final.log,
   target/ux-live-performance-web-final.log,
   target/ux-live-performance-resident-final.log.
-- [ ] UX-P-M2 optional richer request and phase inspection after M1:
+- [x] UX-P-M2 presentation refinement, requested before finishing P4B:
+  reference-aligned side-by-side metrics/quiet chart and larger detail
+  pane, actual provider labels, admitted-reader activity, segmented exact
+  layer map with stable device marks and mixed/unknown handling, direct
+  exact-owner details link (mouse and Alt-D/context). Original response
+  viewport, manual split and M1 measurements unchanged. Native focused
+  20/0/0 including rendered side-by-side metrics, actual pointer binding
+  and stale owner rejection; JS 5/0, offline local asset build, strict
+  focused lint. Real cached CPU/Firefox/native/HTTP 1/0/0 (53.65s):
+  exact 24 layer blocks, browser first/last layer labels, shared
+  registration metrics and existing admission/output/retirement.
+  First PTY assertion failed because blank cells were cursor moves;
+  exact render-aware assertion now passes. No new engine/backend
+  observations, timers, synchronization or profiling overhead.
+- [ ] UX-P-M2 optional richer request and phase inspection beyond the presentation refinement:
   exact current response/request identity, per-request run progress,
   prompt/prefill/queue and decode timings where original boundaries
   provide them; optional bounded recent request samples/latency

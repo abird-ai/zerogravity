@@ -5,6 +5,16 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 26 Nov — UX-P-M2 dashboard refinement
+
+Reference-aligned adaptive metrics, recent chart, complete segmented
+layer placement and actual admitted-reader activity. Native 20/0/0,
+JS 5/0, strict combined CPU lint, actual cached native/Firefox/HTTP
+1/0/0 (53.65s) with original admission, exact output and 24 reported CPU
+layers. Existing two cold_server typed-refusal assertions repaired:
+standalone serving 4/0/0. No additional hot-path observation or
+performance comparison. Complete P4B gate pending.
+
 ## 26 Nov — UX-P4B acceptance progress
 
 Full native default linked/launch and TUI/Web smoke pass. Original

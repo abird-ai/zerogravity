@@ -747,8 +747,11 @@ UX-1–10 remains accepted; this is additional presentation work.
   registration-owned TPS/TTFT and selected object details before P4B.
   P4B focused real resident/config/listener/transfer regressions, native
   full-default linked launch/strict lint and actual CUDA layer/counter
-  observations pass; complete isolated gate remains required.
-  Optional deeper profiling follows actual provider capabilities.
+  observations pass. User-directed M2 reference-aligned dashboard and
+  exact layer strip, visible details and activity refinement focused-
+  qualified; standalone serving refusal assertions corrected and pass.
+  Complete isolated gate remains required. Optional deeper profiling
+  follows actual provider capabilities.
 
 No new runtime, cache, configuration or execution owner. No inference
 protocol or backend performance work until this bounded polish exit.

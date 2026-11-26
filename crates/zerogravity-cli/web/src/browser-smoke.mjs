@@ -354,6 +354,9 @@ try {
     await waitFor(() => evaluate("!!document.querySelector('#owner-prompt')"), "running owner");
     await waitFor(() => evaluate("!!document.querySelector('.model-performance') && document.querySelector('.model-performance').textContent.includes('Avg TTFT') && !document.querySelector('.metric-number').textContent.includes('—')"), "observed performance");
     assert.equal(await evaluate("document.querySelector('.layer-map').textContent.includes('Host CPU')"), true);
+    assert.equal(await evaluate("document.querySelectorAll('.layer-track > div').length"), 24);
+    assert.equal(await evaluate("document.querySelector('.layer-track > div').title"), "Layers 0 · Host CPU");
+    assert.equal(await evaluate("document.querySelector('.layer-track > div:last-child').title"), "Layers 23 · Host CPU");
     await evaluate("document.querySelector('.performance-details > summary').click()");
     assert.equal(await evaluate("document.querySelector('.performance-details').open"), true);
     assert.equal(await evaluate("document.querySelector('.performance-details').textContent.includes('First-token samples')"), true);

@@ -11,7 +11,10 @@ fn cold_builder_reports_configuration_and_unconfigured_runtime_refuses_start() {
         .unwrap();
     assert_eq!(server.address(), address);
     assert_eq!(server.metrics().accepted_requests, 0);
-    assert!(matches!(server.start(), Err(Error::Limit(_))));
+    assert!(matches!(
+        server.start(),
+        Err(Error::Unsupported(message)) if message == "no text scheduler configured"
+    ));
     assert!(!runtime.status().closed);
     // Cold configuration is not a live listener or an actual bound-address receipt.
     let server = Server::builder(runtime.clone()).build().unwrap();
@@ -118,7 +121,8 @@ fn bearer_configuration_refuses_empty_oversized_and_header_control_bytes() {
     ] {
         assert!(matches!(
             Server::builder(runtime.clone()).api_key(Some(key)).build(),
-            Err(Error::Malformed(_))
+            Err(Error::InvalidInput(message))
+                if message == "bearer token must be 1..=1024 visible ASCII bytes"
         ));
     }
     assert!(

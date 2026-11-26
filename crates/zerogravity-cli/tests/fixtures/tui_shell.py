@@ -756,6 +756,11 @@ def lifecycle(root, expected):
         terminal.send(alt(b"2"), b"registration")
         terminal.send(b"\x1bOR",b"TTFT")
         terminal.until(b"capacity:")
+        # Ratatui can omit blank cells and use cursor movement between words.
+        terminal.until(rb"Layer(?: |\x1b\[\d+;\d+H)execution", pattern=True)
+        terminal.until(("▮" * 24).encode())
+        terminal.until(rb"Host(?: |\x1b\[\d+;\d+H)CPU", pattern=True)
+        terminal.until(b"Performance details")
         terminal.send(alt(b"D"),b"first-token")
         terminal.send(b"\x1b[6~",b"zero-based")
         os.write(terminal.master,b"\x1b")

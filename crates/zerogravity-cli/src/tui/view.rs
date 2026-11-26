@@ -64,6 +64,9 @@ impl View {
     fn index(self) -> usize {
         self as usize
     }
+    fn horizontal_default(self) -> u16 {
+        if self == Self::Running { 380 } else { 550 }
+    }
     pub fn name(self) -> &'static str {
         [
             "Home",
@@ -1155,13 +1158,17 @@ impl Navigation {
                 _ => None,
             };
             if let Some((kind, delta)) = split {
-                self.workspace.adjust(kind, delta);
+                self.workspace
+                    .adjust(kind, delta, self.view.horizontal_default());
                 return Action::Redraw;
             }
         }
         if key.modifiers.contains(KeyModifiers::ALT) && matches!(key.code, Left | Right) {
-            self.workspace
-                .adjust(SplitKind::Rail, if key.code == Left { -1 } else { 1 });
+            self.workspace.adjust(
+                SplitKind::Rail,
+                if key.code == Left { -1 } else { 1 },
+                self.view.horizontal_default(),
+            );
             return Action::Redraw;
         }
         if ctrl && matches!(key.code, Char(_)) {
@@ -1556,7 +1563,7 @@ struct Content {
     details: Vec<Line<'static>>,
     owners: Vec<(usize, Owner)>,
 }
-fn content(app: &App, theme: Theme) -> Content {
+fn content(app: &App, theme: Theme, detail: Rect) -> Content {
     let runtime = &app.snapshot.runtime;
     let mut rows = Vec::new();
     let mut detail_at = None;
@@ -1650,9 +1657,10 @@ fn content(app: &App, theme: Theme) -> Content {
                     String::new()
                 };
                 let line = text(format!(
-                    "{} {} · {:?}{busy}",
-                    if selected { ">" } else { " " },
+                    "{} {} · {} · {:?}{busy}",
+                    if selected { ">" } else { "●" },
                     super::performance::model_name(model),
+                    super::performance::provider(model),
                     model.lifecycle
                 ));
                 rows.push(if selected {
@@ -1671,40 +1679,14 @@ fn content(app: &App, theme: Theme) -> Content {
                     .iter()
                     .find(|model| model.registration_id == selected.registration)
             {
-                rows.push(Line::default());
-                rows.push(label(
-                    format!(
-                        "{} · registration {}",
-                        super::performance::model_name(model),
-                        selected.registration
-                    ),
+                rows.push(label(super::performance::model_name(model), theme));
+                rows.extend(super::performance::summary(
+                    model,
+                    &app.performance,
                     theme,
+                    detail.width.saturating_sub(2) as usize,
+                    detail.height.saturating_sub(1),
                 ));
-                rows.extend(super::performance::summary(model, &app.performance, theme));
-                rows.push(Line::default());
-                if let Some(capability) = &model.capabilities {
-                    let provider = capability.details.execution.as_ref().map_or_else(
-                        || "Not reported".into(),
-                        |execution| format!("{:?}", execution.selected.provider),
-                    );
-                    rows.push(text(format!(
-                        "Context capacity: {} · {provider}",
-                        capability.max_context
-                    )));
-                    if let Some(memory) = &capability.details.memory {
-                        use zerogravity::models::ModelMemory;
-                        match memory {
-                            ModelMemory::Resident(memory) => rows.push(text(format!(
-                                "Resident: {}",
-                                format::bytes(memory.resident_bytes as u64)
-                            ))),
-                            ModelMemory::ResidentText { resident_bytes, .. } => rows.push(text(
-                                format!("Resident: {}", format::bytes(*resident_bytes as u64)),
-                            )),
-                            ModelMemory::Host { .. } => {}
-                        }
-                    }
-                }
             }
         }
         View::Serve => {
@@ -3039,10 +3021,11 @@ fn render_library(frame: &mut Frame<'_>, area: Rect, app: &mut App, kind: Kind, 
             Rect::new(x, head.y, head.right() - x, head.height),
         );
     }
-    let (list, detail, track) = app
-        .navigation
-        .workspace
-        .inner(body, app.navigation.view.index());
+    let (list, detail, track) = app.navigation.workspace.inner(
+        body,
+        app.navigation.view.index(),
+        app.navigation.view.horizontal_default(),
+    );
     app.navigation.split_visible = !list.is_empty() && !detail.is_empty();
     divider(frame, &mut app.navigation, theme, track);
     let mut lines = Vec::new();
@@ -3443,19 +3426,21 @@ fn render_workspace(frame: &mut Frame<'_>, area: Rect, app: &mut App, theme: The
 
         _ => {}
     }
-    let Content {
-        rows,
-        details,
-        owners,
-    } = content(app, theme);
     let view = app.navigation.view;
     let (main, detail, track) = if app.navigation.workspace.has_detail {
-        app.navigation
-            .workspace
-            .inner(area, app.navigation.view.index())
+        app.navigation.workspace.inner(
+            area,
+            app.navigation.view.index(),
+            app.navigation.view.horizontal_default(),
+        )
     } else {
         (area, Rect::default(), None)
     };
+    let Content {
+        rows,
+        mut details,
+        owners,
+    } = content(app, theme, detail);
     app.navigation.split_visible = !main.is_empty() && !detail.is_empty();
     let mut menu_visible = false;
     divider(frame, &mut app.navigation, theme, track);
@@ -3562,7 +3547,24 @@ fn render_workspace(frame: &mut Frame<'_>, area: Rect, app: &mut App, theme: The
         if app.navigation.output_visible() {
             render_response(frame, inner, app, theme);
         } else {
-            scroll_rows(
+            let action = if view == View::Running && !details.is_empty() && app.selected.is_some() {
+                // Measure the actual wrapped prefix so the exact read-only
+                // selected-owner link follows scroll/resize and hit masking.
+                let width = inner.width.saturating_sub(2);
+                let line = Paragraph::new(details.clone())
+                    .wrap(Wrap { trim: false })
+                    .line_count(width);
+                let title = if width >= 21 {
+                    "Performance details ›"
+                } else {
+                    "Details ›"
+                };
+                details.push(Line::from(Span::styled(title, theme.accent())));
+                Some((line, title))
+            } else {
+                None
+            };
+            let (visible, offset) = scroll_rows(
                 frame,
                 &mut app.navigation,
                 theme,
@@ -3571,6 +3573,21 @@ fn render_workspace(frame: &mut Frame<'_>, area: Rect, app: &mut App, theme: The
                 Paragraph::new(details).wrap(Wrap { trim: false }),
                 ScrollMode::Manual,
             );
+            if let Some((line, title)) = action
+                && let Some(rect) = row_rect(visible, line, offset)
+            {
+                let scope = std::rc::Rc::new(Scope::capture(app));
+                let rect = Rect::new(
+                    rect.x,
+                    rect.y,
+                    rect.width.min(title.chars().count() as u16),
+                    1,
+                );
+                app.navigation.hits.add(
+                    rect,
+                    Target::Command(Bound::new(super::controls::Command::Details, &scope)),
+                );
+            }
         }
     }
 }
@@ -3935,6 +3952,85 @@ mod tests {
                 .offset,
             14
         );
+
+        // Render the actual selected pane and exercise the visible exact-owner
+        // details link. Fixture metrics are not an inference observation.
+        app.navigation.open(View::Running);
+        app.selected = Some(Owner {
+            alias: "fixture".into(),
+            registration: 9,
+        });
+        app.snapshot
+            .runtime
+            .catalog
+            .push(zerogravity::models::ModelSnapshot {
+                registration_id: 9,
+                source: zerogravity::identity::SourceIdentity::unbound(),
+                aliases: vec!["fixture".into()],
+                lifecycle: zerogravity::models::ModelLifecycle::Ready,
+                admitted_requests: 1,
+                performance: zerogravity::models::ModelPerformance {
+                    loaded_ms: 720_000,
+                    output_tokens: 429,
+                    completed_requests: 1,
+                    ttft_samples: 1,
+                    ttft_total_ns: 184_000_000,
+                    decode_intervals: 428,
+                    decode_total_ns: 10_000_000_000,
+                    ..Default::default()
+                },
+                independent_retirement: true,
+                capabilities: None,
+            });
+        app.snapshot.runtime.status.loaded_owners = 1;
+        let mut dashboard = Terminal::new(TestBackend::new(110, 28)).unwrap();
+        dashboard.draw(|frame| render(frame, &mut app)).unwrap();
+        let buffer = dashboard.backend().buffer();
+        let painted = (0..28)
+            .map(|y| {
+                (0..110)
+                    .map(|x| buffer[(x, y)].symbol())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>();
+        assert!(
+            painted
+                .iter()
+                .any(|line| line.contains("42.8 tok/s") && line.contains("184 ms"))
+        );
+        assert!(
+            painted
+                .iter()
+                .any(|line| line.contains("Avg decode") && line.contains("Avg TTFT"))
+        );
+        assert!(painted.iter().any(|line| line.contains("1 admitted")));
+        let (y, x) = painted
+            .iter()
+            .enumerate()
+            .find_map(|(y, line)| {
+                line.find("Performance details")
+                    .map(|byte| (y as u16, line[..byte].chars().count() as u16))
+            })
+            .expect("visible details link");
+        let mouse = |kind| MouseEvent {
+            kind,
+            column: x,
+            row: y,
+            modifiers: KeyModifiers::NONE,
+        };
+        app.navigation
+            .mouse(mouse(MouseEventKind::Down(MouseButton::Left)));
+        let Some(Action::Bound(bound)) = app
+            .navigation
+            .mouse(mouse(MouseEventKind::Up(MouseButton::Left)))
+        else {
+            panic!("performance link did not bind the selected owner");
+        };
+        assert_eq!(bound.command, super::super::controls::Command::Details);
+        assert!(bound.valid(&app));
+        app.selected = None;
+        assert!(!bound.valid(&app));
+        app.snapshot = runtime.control().snapshot().unwrap();
 
         // Render bounded response text on its own viewport. Changing
         // model-detail scroll/focus cannot move or resume that response.

@@ -8,7 +8,7 @@ import { Models, Devices } from "./library.jsx";
 import { Profiles, Config, Logs } from "./settings.jsx";
 import { QuickRun, OwnerActions, ServeActions, ActionPanel } from "./resident.jsx";
 import { Performance } from "./performance.jsx";
-import { modelName } from "./performance.js";
+import { modelName, providerLabel } from "./performance.js";
 import "./styles.css";
 
 const views = [
@@ -103,16 +103,15 @@ function Running(props) {
     if (!chosen()) props.select(models()[0]?.registration_id ?? "");
   });
   return <Show when={models().length} fallback={<Empty title="No model owners">The runtime has not registered a model. Use Home to load or run a cached source.</Empty>}>
-    <div class="split">
+    <div class="split running-split">
       <section class="panel entries"><h2>Owners</h2><For each={models()}>{model =>
         <button classList={{ row: true, selected: model.registration_id === props.selection() }} onClick={() => props.select(model.registration_id)}>
-          <span class="row-main">{modelName(model)}</span><State text={model.lifecycle} good={model.lifecycle === "ready"}/><span class="subtle">Registration {model.registration_id}</span>
+          <span class="row-main">{modelName(model)}</span><State text={model.lifecycle} good={model.lifecycle === "ready"}/><span class="subtle">{providerLabel(model.capabilities?.provider)}<Show when={model.admitted_requests > 0}> · {count(model.admitted_requests)} admitted</Show></span>
         </button>
       }</For></section>
       <Show when={chosen()}>{model => <section class="panel">
         <h2>{modelName(model())}</h2>
         <Performance model={model()} bytes={bytes}/>
-        <Facts items={[["Lifecycle", human(model().lifecycle)], ["Admitted readers", count(model().admitted_requests)], ["Provider", model().capabilities?.provider ?? "Not reported"], ["Context capacity", count(model().capabilities?.context)]]}/>
         <OwnerActions model={model()} chat={props.value.configuration.chat} work={props.work}/>
       </section>}</Show>
     </div>

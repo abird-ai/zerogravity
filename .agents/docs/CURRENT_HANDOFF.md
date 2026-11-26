@@ -34,7 +34,47 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — UX-P4B acceptance progress (26 Nov)
+### Current checkpoint — UX-P-M2 visual refinement and P4B repairs (26 Nov)
+
+User explicitly requested the Running dashboard refinements before
+returning to the two failed P4B serving tests. Revalidated clean
+`5c919c13` on L5, sole source authoring/main worktree. See
+[LIVE_MODEL_PERFORMANCE](../plans/cli-ux/LIVE_MODEL_PERFORMANCE.md).
+
+- Native reference-aligned dashboard: 38:62 default list/detail split
+  (explicit manual split retained), side-by-side measured decode/TTFT
+  values with narrow fallback, width-bounded one/two-row recent chart
+  and emphasized recent observations, concise actual provider labels,
+  admitted-reader activity, segmented reported layer map and exact
+  ranges/legend. Direct visible details link uses original bound selected
+  owner; Alt-D/context and independent response viewport retained. Web
+  same hierarchy and responsive proportions; exact tooltip layer cells,
+  on-demand details. Actual complete spans only; compressed cross-device
+  intervals marked mixed; unreported remains unknown. No new engine or
+  backend activity instrumentation; admitted readers include queued,
+  active and retiring work, not instantaneous layer execution.
+- Focused combined CPU strict Clippy, native 20/0/0 (including actual
+  rendered metric pair and link press/release, stale refusal), JS 5/0
+  and local asset build. Actual approved cached Qwen CPU/Firefox/native/
+  HTTP 1/0/0 (53.65s, five filtered) confirms 24 layer cells, exact
+  tooltip endpoints, original 8 GiB admission, output, registration
+  counters and reset, shared config/listener and joined retirement.
+  First run exposed literal-space PTY expectation where Ratatui uses
+  cursor moves; exact render-aware assertion and final rerun passed.
+- P4B prior two cold_server failures corrected only at the tests:
+  malformed bearer configuration is InvalidInput with exact existing
+  diagnostic; unconfigured scheduler is Unsupported with "no text
+  scheduler configured". Focused standalone serving 4/0/0. Production
+  classification, public redaction and owner/admission unchanged.
+- Full mandatory isolated assembled gate still required. No additional
+  GPU physical requalification or overhead/throughput benchmark claimed.
+  Reuse prior physical CPU/CUDA and full-default launch evidence where
+  unchanged. M2 deeper exact request/phase/per-layer timing remains
+  optional, capability-bound. Public serving after P4B only.
+  Logs: target/ux-pm2-focused.log, target/ux-pm2-final-focused-retry.log,
+  target/ux-pm2-p4b-gate.log.
+
+### Prior checkpoint — UX-P4B acceptance progress (26 Nov)
 
 Resume P4B, not M1 or Phase 1. Actual L5 work began from the clean
 `3df31912` handoff; main sole worktree, no source edits on X2/A1.
