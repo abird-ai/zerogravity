@@ -5,6 +5,22 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 26 Nov — Web resident model and listener actions (UX-9B)
+
+One shared native/Web host action slot, original resident planner and
+OutputStream, exact action/registration/generation IDs, authenticated
+bounded typed POST and Web-only latest receipt, explicit cancellation
+and confirmations, same-process selection and retirement. Browser Home/
+Running/Serve actions, actual cold HTTP and Firefox typed refusal,
+strict TUI/Web/Web-only CPU/combined lint, JS 3/0 and focused tests pass.
+Other five combined release tests passed; final optimized isolated
+cached browser/TUI/Web/HTTP regression 1/0/0 (46.14s, five filtered)
+passed after PTY assertion corrections and host-memory recovery,
+without reducing the 8 GiB envelope. Full isolated gate 2,489/0/109,
+release Web/TUI/installer/scripts passed. UX-9B accepted.
+No new dependencies, model downloads, physical GPU or measured
+performance change.
+
 ## 26 Nov — embedded SolidJS Web shell (UX-9A)
 
 Committed offline-built Vite assets, one shared foreground Runtime and

@@ -1,9 +1,10 @@
 //! Loopback-only embedded control transport. The process host, not a browser
-//! connection, owns the runtime. No inference listener or effects here.
+//! connection, owns the runtime and the shared action slot.
+mod actions;
 mod http;
 mod wire;
 
-use crate::control_host::{self, Document, Selection, Stop};
+use crate::control_host::{self, Actions, Document, Selection, Stop};
 use std::{
     fmt::Write as _,
     net::{SocketAddr, TcpListener},
@@ -26,6 +27,7 @@ struct Shared {
     stop: AtomicBool,
     streams: AtomicUsize,
     selection: Selection,
+    actions: Actions,
 }
 
 /// Separate listener lifetime. Drop/close never retires inference owners.
@@ -34,7 +36,12 @@ pub(crate) struct Host {
     worker: Option<JoinHandle<Result<()>>>,
 }
 impl Host {
-    pub fn start(runtime: &Runtime, address: SocketAddr, selection: Selection) -> Result<Self> {
+    pub fn start(
+        runtime: &Runtime,
+        address: SocketAddr,
+        selection: Selection,
+        actions: Actions,
+    ) -> Result<Self> {
         require_loopback(address)?;
         let mut random = [0u8; 32];
         getrandom::fill(&mut random)
@@ -61,6 +68,7 @@ impl Host {
             stop: AtomicBool::new(false),
             streams: AtomicUsize::new(0),
             selection,
+            actions,
         });
         let runtime = runtime.clone();
         let state = Arc::clone(&shared);
@@ -184,8 +192,9 @@ pub(super) fn run(args: &[String], selection: Option<(&str, &str)>, offline: boo
     let document = Selection::new(Document::new(selection, offline)?);
     let runtime = control_host::runtime()?;
     let stop = Stop::install()?;
+    let actions = Actions::default();
     let result = (|| {
-        let host = Host::start(&runtime, address, document)?;
+        let host = Host::start(&runtime, address, document, actions.clone())?;
         use std::io::Write;
         let mut output = std::io::stdout().lock();
         writeln!(output, "Web UI: {}", host.private_url())?;
@@ -196,7 +205,10 @@ pub(super) fn run(args: &[String], selection: Option<(&str, &str)>, offline: boo
         }
         host.close()
     })();
-    control_host::combine(result, control_host::retire(&runtime))
+    control_host::combine(
+        control_host::combine(result, actions.shutdown()),
+        control_host::retire(&runtime),
+    )
 }
 
 #[cfg(test)]

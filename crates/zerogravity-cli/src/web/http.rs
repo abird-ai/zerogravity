@@ -1,6 +1,6 @@
-//! Small read-only HTTP/1.1 boundary, not the inference wire parser. Explicit
+//! Small HTTP/1.1 control boundary, not the inference wire parser. Explicit
 //! route allowlist, numeric Host, same-origin bearer, finite socket owners.
-use super::{EVENT_STREAMS, Shared, wire};
+use super::{EVENT_STREAMS, Shared, actions, wire};
 use std::{
     io::{self, Read, Write},
     net::TcpStream,
@@ -10,7 +10,8 @@ use std::{
 use zerogravity::{Runtime, control::ControlPoll};
 
 const HEADERS: usize = 8192;
-const MAX_RESPONSE: usize = 256 * 1024;
+// Bounded 64 KiB display prefix can expand up to 6x in JSON.
+const MAX_RESPONSE: usize = 512 * 1024;
 const IO_BOUND: Duration = Duration::from_secs(2);
 const POLL: Duration = Duration::from_millis(250);
 const EVENT_LIFETIME: Duration = Duration::from_secs(60);
@@ -117,10 +118,6 @@ pub(super) fn connection(
             Err(error) => return Err(error),
         }
     };
-    // No request body, chunked input or pipelining accepted in this slice.
-    if used != end {
-        return error(&mut socket, "400 Bad Request");
-    }
     let mut headers = [httparse::EMPTY_HEADER; 32];
     let mut request = httparse::Request::new(&mut headers);
     request.parse(&buffer[..end]).map_err(io::Error::other)?;
@@ -129,63 +126,146 @@ pub(super) fn connection(
     if request.version != Some(1)
         || !matches!(host, Ok(Some(value)) if value == shared.authority.as_bytes() || value == authority.as_bytes())
         || header(request.headers, "Transfer-Encoding") != Ok(None)
-        || !matches!(
-            header(request.headers, "Content-Length"),
-            Ok(None | Some(b"0"))
-        )
+        || header(request.headers, "Expect") != Ok(None)
     {
         return error(&mut socket, "400 Bad Request");
     }
-    if request.method != Some("GET") {
-        return error(&mut socket, "405 Method Not Allowed");
+    let length = match header(request.headers, "Content-Length") {
+        Ok(None) => 0,
+        Ok(Some(value)) => match std::str::from_utf8(value)
+            .ok()
+            .and_then(|text| text.parse::<usize>().ok().filter(|n| n.to_string() == text))
+        {
+            Some(length) => length,
+            None => return error(&mut socket, "400 Bad Request"),
+        },
+        Err(()) => return error(&mut socket, "400 Bad Request"),
+    };
+    if length > actions::MAX_BODY {
+        return error(&mut socket, "413 Payload Too Large");
     }
-    match request.path {
-        Some("/") => response(&mut socket, "200 OK", "text/html; charset=utf-8", INDEX),
-        Some("/ui/" | "/ui/index.html") => {
+    if used - end > length {
+        return error(&mut socket, "400 Bad Request");
+    }
+    let path = request.path.unwrap_or("");
+    let post = request.method == Some("POST");
+    if post {
+        if path != "/zg/control/actions" {
+            return error(&mut socket, "405 Method Not Allowed");
+        }
+    } else if request.method != Some("GET") {
+        return error(&mut socket, "405 Method Not Allowed");
+    } else if length != 0 {
+        return error(&mut socket, "400 Bad Request");
+    }
+    // Explicit route allowlist. Static files are public, never a directory.
+    let action_id = path.strip_prefix("/zg/control/actions/");
+    let control = matches!(
+        path,
+        "/zg/control/snapshot" | "/zg/events" | "/zg/control/actions"
+    ) || action_id.is_some();
+    if control {
+        let origin = format!("http://{}", shared.authority);
+        let origin_ok = header(request.headers, "Origin").is_ok_and(|value| {
+            if post {
+                value == Some(origin.as_bytes())
+            } else {
+                value.is_none_or(|value| value == origin.as_bytes())
+            }
+        });
+        if !origin_ok
+            || !matches!(
+                header(request.headers, "Sec-Fetch-Site"),
+                Ok(None | Some(b"same-origin") | Some(b"none"))
+            )
+        {
+            return error(&mut socket, "403 Forbidden");
+        }
+        if !matches!(header(request.headers, "Authorization"), Ok(value) if bearer(value, &shared.key))
+        {
+            return error(&mut socket, "401 Unauthorized");
+        }
+        if post {
+            if length == 0
+                || header(request.headers, "Content-Type") != Ok(Some(b"application/json"))
+            {
+                return error(&mut socket, "400 Bad Request");
+            }
+            // Only authenticated, same-origin POST can allocate bounded body
+            // storage. One absolute header+body deadline; no chunking.
+            let mut body = vec![0u8; length];
+            body[..used - end].copy_from_slice(&buffer[end..used]);
+            let mut offset = used - end;
+            while offset < length {
+                if shared.stop.load(Ordering::Acquire) {
+                    return Ok(());
+                }
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                if remaining.is_zero() {
+                    return error(&mut socket, "408 Request Timeout");
+                }
+                socket.set_read_timeout(Some(remaining.min(POLL)))?;
+                match socket.read(&mut body[offset..]) {
+                    Ok(0) => return error(&mut socket, "400 Bad Request"),
+                    Ok(bytes) => offset += bytes,
+                    Err(error)
+                        if matches!(
+                            error.kind(),
+                            io::ErrorKind::WouldBlock
+                                | io::ErrorKind::TimedOut
+                                | io::ErrorKind::Interrupted
+                        ) => {}
+                    Err(error) => return Err(error),
+                }
+            }
+            return match actions::submit(runtime, shared, &body) {
+                Ok((status, value)) => json_response(&mut socket, status, &value),
+                Err(status) => error(&mut socket, status),
+            };
+        }
+        return match path {
+            "/zg/events" => events(&mut socket, runtime, shared),
+            "/zg/control/snapshot" => {
+                match wire::snapshot(runtime, &shared.selection, &shared.actions) {
+                    Ok(value) => json_response(&mut socket, "200 OK", &value),
+                    Err(_) => error(&mut socket, "503 Service Unavailable"),
+                }
+            }
+            _ if action_id.is_some() => {
+                match actions::result(shared, action_id.expect("action route")) {
+                    Ok(value) => json_response(&mut socket, "200 OK", &value),
+                    Err(status) => error(&mut socket, status),
+                }
+            }
+            _ => error(&mut socket, "405 Method Not Allowed"),
+        };
+    }
+    match path {
+        "/" | "/ui/" | "/ui/index.html" => {
             response(&mut socket, "200 OK", "text/html; charset=utf-8", INDEX)
         }
-        Some("/ui/app.js") => response(
+        "/ui/app.js" => response(
             &mut socket,
             "200 OK",
             "text/javascript; charset=utf-8",
             SCRIPT,
         ),
-        Some("/ui/licenses.txt") => {
+        "/ui/licenses.txt" => {
             response(&mut socket, "200 OK", "text/plain; charset=utf-8", LICENSES)
         }
-        Some("/ui/style.css") => response(&mut socket, "200 OK", "text/css; charset=utf-8", STYLE),
-        Some("/zg/control/snapshot" | "/zg/events") => {
-            // Static assets contain no credential or state. All owner data
-            // requires a distinct random capability plus same-origin policy.
-            let origin = format!("http://{}", shared.authority);
-            if !header(request.headers, "Origin")
-                .is_ok_and(|value| value.is_none_or(|value| value == origin.as_bytes()))
-            {
-                return error(&mut socket, "403 Forbidden");
-            }
-            if !matches!(
-                header(request.headers, "Sec-Fetch-Site"),
-                Ok(None | Some(b"same-origin") | Some(b"none"))
-            ) {
-                return error(&mut socket, "403 Forbidden");
-            }
-            if !matches!(header(request.headers, "Authorization"), Ok(value) if bearer(value, &shared.key))
-            {
-                return error(&mut socket, "401 Unauthorized");
-            }
-            if request.path == Some("/zg/events") {
-                events(&mut socket, runtime, shared)
-            } else {
-                match wire::snapshot(runtime, &shared.selection).and_then(|snapshot| {
-                    serde_json::to_vec(&snapshot)
-                        .map_err(|_| zerogravity::Error::State("snapshot encoding".into()))
-                }) {
-                    Ok(bytes) => response(&mut socket, "200 OK", "application/json", &bytes),
-                    Err(_) => error(&mut socket, "503 Service Unavailable"),
-                }
-            }
-        }
+        "/ui/style.css" => response(&mut socket, "200 OK", "text/css; charset=utf-8", STYLE),
         _ => error(&mut socket, "404 Not Found"),
+    }
+}
+
+fn json_response(
+    socket: &mut TcpStream,
+    status: &str,
+    value: &serde_json::Value,
+) -> io::Result<()> {
+    match serde_json::to_vec(value) {
+        Ok(bytes) => response(socket, status, "application/json", &bytes),
+        Err(_) => error(socket, "503 Service Unavailable"),
     }
 }
 
@@ -210,6 +290,7 @@ fn events(socket: &mut TcpStream, runtime: &Runtime, shared: &Shared) -> io::Res
     let control = runtime.control();
     let mut cursor = control.subscribe();
     let mut selection = shared.selection.revision();
+    let mut action = shared.actions.observe().0;
     write!(
         socket,
         "HTTP/1.1 200 OK\r\n{SECURITY}Content-Type: text/event-stream\r\n\r\nevent: refresh\ndata: {{}}\n\n"
@@ -235,6 +316,9 @@ fn events(socket: &mut TcpStream, runtime: &Runtime, shared: &Shared) -> io::Res
         let observed_selection = shared.selection.revision();
         changed |= observed_selection != selection;
         selection = observed_selection;
+        let observed_action = shared.actions.observe().0;
+        changed |= observed_action != action;
+        action = observed_action;
         if changed || resync {
             // Invalidation only. Clients refresh the same owner snapshot;
             // never treat transient notification delivery as state authority.

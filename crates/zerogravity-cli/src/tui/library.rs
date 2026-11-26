@@ -371,7 +371,7 @@ impl Library {
 }
 
 #[cfg(all(feature = "cache", target_os = "linux"))]
-pub(super) fn cache_root() -> Result<std::path::PathBuf> {
+pub(crate) fn cache_root() -> Result<std::path::PathBuf> {
     zerogravity::cache::paths::resolve_root(
         None,
         std::env::var_os("XDG_CACHE_HOME").as_deref(),

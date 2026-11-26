@@ -29,15 +29,20 @@ export function storeKey(key) {
 
 export class ControlError extends Error {
   constructor(status) {
-    super(status === 401 ? "Control credential is invalid or expired." : "Control request failed (" + status + ").");
+    super(status === 401 ? "Control credential is invalid or expired."
+      : status === 409 ? "An action is busy or the selected identity is stale. Refresh and try explicitly."
+      : status === 400 ? "The control action or input was refused."
+      : status === 404 ? "This action result is no longer retained."
+      : "Control request failed (" + status + ").");
     this.status = status;
   }
 }
 
-async function request(path, key, signal) {
+async function request(path, key, signal, body) {
   const response = await fetch(path, {
-    method: "GET",
-    headers: { Authorization: "Bearer " + key },
+    method: body === undefined ? "GET" : "POST",
+    headers: { Authorization: "Bearer " + key, ...(body === undefined ? {} : {"Content-Type": "application/json"}) },
+    body: body === undefined ? undefined : JSON.stringify(body),
     cache: "no-store",
     credentials: "omit",
     redirect: "error",
@@ -89,4 +94,15 @@ export async function events(key, signal, onRefresh, onConnected) {
     await reader.cancel().catch(() => {});
     reader.releaseLock();
   }
+}
+
+export async function submit(key, signal, action) {
+  const response = await request("/zg/control/actions", key, signal, action);
+  return response.json();
+}
+
+export async function actionResult(key, signal, id) {
+  if (!/^(0|[1-9][0-9]{0,19})$/.test(id)) throw new Error("Invalid action identity.");
+  const response = await request("/zg/control/actions/" + id, key, signal);
+  return response.json();
 }

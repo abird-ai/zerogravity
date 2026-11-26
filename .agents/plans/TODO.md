@@ -179,7 +179,14 @@ shared native host/Selection, independent loopback bearer/auth boundary,
 bounded read-only snapshot/SSE and responsive shell. Actual HTTP/Firefox,
 JS tests/strict lint, cached shared-owner release 6/0/0 pass. Full isolated
 rerun 2,485/0/109 and release Web/TUI/installer/scripts pass. UX-9A accepted.
-Next UX-9B Web Home / Running / Serve.
+UX-9B Web Home / Running / Serve implemented: shared original resident
+worker/one host action slot, exact identities, bounded authenticated
+typed actions and latest Web receipt, actual browser forms and output,
+native-private results, explicit cancellation. Focused/strict lint/
+HTTP/Firefox cold smoke pass; real optimized cached browser/TUI/Web/
+HTTP lifecycle passed (46.14s); full isolated gate 2,489/0/109,
+release Web/TUI/installer/scripts. UX-9B accepted. Next UX-9C Web
+Models / Downloads / Devices.
 General UMA/foreign backing, device-write host read, unqualified model/
 backend/media and other expansion holds remain explicit. Historical
 CPU cache gate corrected at 00f57e7a/9374e0ca.

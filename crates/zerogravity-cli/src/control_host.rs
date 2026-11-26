@@ -1,4 +1,9 @@
 //! Foreground interactive host policy, shared by native and browser clients.
+mod actions;
+pub(crate) mod work;
+#[cfg(feature = "tui")]
+pub(crate) use actions::ActionSummary;
+pub(crate) use actions::{Actions, Origin};
 use std::{
     path::PathBuf,
     sync::{
@@ -107,7 +112,6 @@ impl Document {
             ui: doc.ui.unwrap_or_default(),
         }
     }
-    #[cfg(feature = "tui")]
     pub(crate) fn read(
         &self,
     ) -> Result<

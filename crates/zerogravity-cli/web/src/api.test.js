@@ -25,3 +25,11 @@ test("coalesced event frames survive fragmented delivery and resync", () => {
   assert.equal(refreshes, 2);
   assert.throws(() => decode("x".repeat(16385)), /bound/);
 });
+
+// Exact decimal identity comparison is independent of JavaScript number range.
+import { newerId } from "./work-state.js";
+test("action identity ordering never coerces u64 to Number", () => {
+  assert.equal(newerId("9007199254740992","9007199254740993"),"9007199254740993");
+  assert.equal(newerId("999","1000"),"1000");
+  assert.equal(newerId(null,"18446744073709551615"),"18446744073709551615");
+});

@@ -1016,11 +1016,12 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
     } else {
         render_workspace(frame, body, app);
     }
-    let status = if let Some(job) = &app.job {
+    let status = if let Some(job) = &app.active {
         format!(
-            "{} · {} · c cancel",
-            job.title(),
-            if job.requested() {
+            "{} · {:?} · {} · c cancel",
+            job.title,
+            job.origin,
+            if job.cancel_requested {
                 "cancellation requested; waiting"
             } else {
                 "in progress"
@@ -1620,6 +1621,8 @@ mod tests {
                 super::super::work::Document::test_default(),
             ),
             job: None,
+            actions: crate::control_host::Actions::default(),
+            active: None,
             selected: None,
             response: None,
             library: super::super::library::Library::new(

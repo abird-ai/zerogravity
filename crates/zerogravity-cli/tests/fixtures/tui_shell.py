@@ -237,6 +237,12 @@ def settings_lifecycle(root):
 
 
 def lifecycle(root, expected):
+    # Independently exercise the actual browser before the cross-client
+    # PTY flow, so a terminal repaint issue does not mask that evidence.
+    if os.environ.get("ZG_TEST_WEB") == "1" and os.environ.get("ZG_TEST_BROWSER") == "1":
+        smoke = Path(__file__).resolve().parents[2] / "web/src/browser-smoke.mjs"
+        subprocess.run(["node", str(smoke), binary, "--resident", str(root), expected],
+                       env=environment(root), cwd=root, check=True)
     # Caller prepared the immutable approved GGUF cache and profile. Use one
     # process for quick run, reused invocation, listener, retirement/reload.
     with socket.socket() as reservation:
@@ -260,6 +266,7 @@ def lifecycle(root, expected):
 
     with Terminal(root, ["--profile", "local"], width=150, height=40) as terminal:
         terminal.check_started()
+        terminal.repaint_on_wait = os.environ.get("ZG_TEST_WEB") == "1"
         terminal.send(b"6", b"cpu:0", 30)
         # Original inventory ordering ends in host memory. Use the original
         # read-only CLI observation to select that exact physical row.
@@ -312,7 +319,17 @@ def lifecycle(root, expected):
             # Control capability does not authorize inference or start a new
             # runtime. Closing the URL modal is only presentation.
             assert client.request("/v1/models")[0] == 404
+            assert observed["web_action"] is None  # native inference is private
             os.write(terminal.master, b"\r")
+            generated = client.action({"kind": "invoke", "alias": loaded_alias,
+                                       "registration_id": registration, "prompt": prompt, "chat": False})
+            output = generated["response"]
+            assert output["text"] == expected
+            assert output["owner"] == {"alias": loaded_alias, "registration_id": registration}
+            assert output["usage"]["completion_tokens"] == result["usage"]["completion_tokens"]
+            assert output["usage"]["prompt_tokens"] == result["usage"]["prompt_tokens"]
+            assert client.snapshot()["runtime"]["models"][0]["registration_id"] == registration
+            client.post({"kind": "cancel", "id": generated["id"]}, status=409)
         # Activate a different startup profile without reconfiguring the
         # existing listener/scheduler. Restore the original for later load.
         terminal.repaint_on_wait = True
@@ -336,7 +353,7 @@ def lifecycle(root, expected):
             assert observed["configuration"]["profile"] == "local"
             assert observed["runtime"]["models"][0]["registration_id"] == registration
             assert observed["serving"]["generation"] == generation
-        terminal.repaint_on_wait = False
+        terminal.repaint_on_wait = client is not None
         # Navigation and a declined quit leave the same listener alive.
         terminal.send(b"1", b"Quick")
         terminal.send(b"q", b"confirm")
@@ -346,33 +363,67 @@ def lifecycle(root, expected):
         terminal.send(b"t", b"confirm")
         if client:
             with client.events() as events:
-                terminal.send(b"y", b"retained")
+                terminal.send(b"y", b"Listener stopped", 30)
                 assert events.readline() == b"event: refresh\n"
                 observed = client.snapshot()
                 assert observed["serving"]["state"] == "idle"
                 assert observed["runtime"]["models"][0]["registration_id"] == registration
         else:
-            terminal.send(b"y", b"retained")
+            terminal.send(b"y", b"Listener stopped", 30)
         closed()
         terminal.send(b"2", b"registered")
-        terminal.send(b"u", b"confirm")
-        terminal.send(b"y", b"retired", 60)
         if client:
-            assert client.snapshot()["runtime"]["status"]["loaded_owners"] == 0
-        # The last retirement makes the same runtime available for a new load.
-        terminal.send(b"l", b"MODEL")
-        terminal.send(b"\r", b"loaded", 90)
-        terminal.send(b"3", b"OpenAI-compatible")
-        terminal.send(b"s", b"IP:PORT")
-        terminal.send(address.encode() + b"\r", b"Listening:", 30)
-        assert [model["id"] for model in http("/models")["data"]] == ["configured"]
+            terminal.repaint_on_wait = True
+            retired = client.action({"kind": "unload", "alias": loaded_alias,
+                                     "registration_id": registration, "confirm": True})
+            assert retired["state"] == "completed"
+            client.observed(lambda row: row["runtime"]["status"]["loaded_owners"] == 0)
+            terminal.send(b"1", b"Quick")
+            # The Web load-and-run uses the configured alias and original
+            # resident plan, not a second service. No browser connection owns
+            # the worker once the POST has returned its exact id.
+            accepted = client.post({"kind": "run_source", "source": "", "prompt": prompt, "chat": False})
+            generated = client.result(accepted["id"])
+            assert generated["response"]["text"] == expected
+            second = client.snapshot()["runtime"]["models"][0]
+            assert second["aliases"] == ["configured"] and second["registration_id"] != registration
+            assert generated["response"]["owner"]["registration_id"] == second["registration_id"]
+            terminal.send(b"2", b"configured", 30)
+            # Stale selected owner cannot retire a replacement even when the
+            # alias is supplied from a fresh observation.
+            client.action({"kind": "unload", "alias": "configured", "registration_id": registration,
+                           "confirm": True}, state="failed")
+            assert client.snapshot()["runtime"]["models"][0]["registration_id"] == second["registration_id"]
+            client.action({"kind": "start", "address": address})
+            observed = client.observed(lambda row: row["serving"]["state"] == "listening")
+            assert observed["serving"]["generation"] != generation
+            terminal.send(b"3", address.encode(), 30)
+            assert [model["id"] for model in http("/models")["data"]] == ["configured"]
+            client.action({"kind": "stop", "generation": generation, "confirm": True}, state="failed")
+            assert client.snapshot()["serving"]["generation"] == observed["serving"]["generation"]
+            # Native invocation and Web observation still use the same
+            # registered owner. Browser receipts are not overwritten by it.
+            terminal.send(b"2", b"configured")
+            terminal.send(b"\r", b"Prompt")
+            terminal.send(b"\x1b[200~" + prompt.encode() + b"\x1b[201~\r", b"length", 30)
+            terminal.send(b"3", address.encode(), 30)
+        else:
+            terminal.send(b"u", b"confirm")
+            terminal.send(b"y", b"retired", 60)
+            # The last retirement makes the same runtime available for a new load.
+            terminal.send(b"l", b"MODEL")
+            terminal.send(b"\r", b"loaded", 90)
+            terminal.send(b"3", b"OpenAI-compatible")
+            terminal.send(b"s", b"IP:PORT")
+            terminal.send(address.encode() + b"\r", b"Listening:", 30)
+            assert [model["id"] for model in http("/models")["data"]] == ["configured"]
         terminal.send(b"q", b"confirm")
         os.write(terminal.master, b"y")
         terminal.finish()
         closed()
         if client:
             client.closed()
-            print("TUI-attached Web: same registration/listener, live profile and owner invalidations, independent client lifetime, joined process retirement")
+            print("TUI-attached Web: real invoke/unload/load-and-run/start, exact stale registration/generation refusal, profile/owner invalidations and joined retirement")
     alias = subprocess.run([binary, "model", "inspect", "by-name:tui-fixture", "--format=json"],
                            cwd=root, env=environment(root), capture_output=True, check=True)
     assert json.loads(alias.stdout)["snapshot"] == loaded_alias

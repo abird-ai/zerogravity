@@ -24,7 +24,88 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — Phase 2.1 UX-9A (26 Nov)
+### Current checkpoint — Phase 2.1 UX-9B (26 Nov)
+
+Browser Home / Running / Serve actions now use the native resident
+planner, OutputStream and inference transport, one shared host slot.
+No alternate model executor, action queue, runtime or server registry.
+
+- control_host/work.rs is the original TUI Request/Owner/Prompt,
+  resident resolve/prepare/load/invoke/unload/start/stop and cold
+  action execution. Native tui/work.rs retains only ticket/log/detail/
+  draft-retry metadata. Native-only settings/cache/download operations
+  remain in the same worker until 9C/D promote those request variants;
+  feature-minimal Web has no terminal dependencies. Existing
+  MissingSource expected-snapshot cfg includes Web-only CPU routes.
+- control_host/actions.rs: one shared Actions slot, monotonic exact
+  action ID, origin, cancellation, original scoped JoinHandle and
+  bounded response. Either native or Web action may own the slot; reject
+  another rather than queue. Finished native worker is joined/consumed
+  by its exact native ticket; Web reaps only finished worker and retains
+  at most latest Web terminal result, independent of intervening native
+  actions. Selection changes apply inside the shared worker before
+  releasing admission. TUI active footer/guards observe both origins;
+  native cancel targets exact observed action, Web cancel only its own
+  origin. Host shutdown closes Web connections, cancels/joins action
+  then retires original listener/runtime. Slot drop also joins.
+- POST /zg/control/actions uses serde deny_unknown_fields tagged
+  grammar, full same-origin Origin and application/json, independent
+  bearer, bounded 256 KiB body read only after auth, original finite
+  header+body deadline. No duplicate fields, chunked bodies, arbitrary
+  argv/credentials/device or execution overrides. load/run_source
+  accepts blank selected trusted document, exact cached name/digest/
+  catalog/by-name or pinned HF/GitHub commit, optional valid ID=MODEL;
+  explicit arbitrary filesystem paths and HTTP sources refused. No
+  automatic acquisition. invoke/unload exact alias + registration,
+  start numeric loopback or selected listener policy, stop exact
+  generation; unload/stop require confirm=true. All IDs canonical
+  decimal strings, never JS number. 202 accepted is not completion;
+  busy/stale cancellation 409, malformed 400. Original runtime may
+  refuse accepted action later.
+- GET /zg/control/actions/ID observes only that active/latest Web
+  receipt, running or terminal, safe error category, original bounded
+  UTF-8 output prefix 64 KiB and actual final usage/finish reason;
+  no native prompt/output, raw path/errors or credentials in general
+  snapshots/events. OutputStream unchanged, UI samples only active
+  Web receipt (200ms visible/1s hidden), SSE coalesced action lifecycle/
+  selection and owner invalidations, no token event history. Explicit
+  cancellation request remains distinct from terminal result. Browser
+  retains last Web receipt across reload, no automatic POST retry.
+- Solid Home quick load/run from cached/configured source or exact
+  ready owner, Running selected owner prompt/retire confirmation,
+  Serve start/stop with generation-confirmation; bounded response panel
+  shows live text, actual usage, action status and cancel. Same
+  loopback control credential, inference API key host-configured only.
+  Cold libraries/config/log actions still native until UX-9C/D.
+  New frontend sources resident.jsx and work-state.js, committed Vite
+  output, same dependency graph.
+- Focused strict TUI-only/Web-only/Web-only CPU/combined lint pass,
+  Web parser/intent and shared-slot exact cancel/private native receipt
+  regression pass, TUI reducers 5/0, JS 3/0. Actual cold HTTP POST/auth/
+  body/identity/security/SSE and Firefox responsive typed refusal pass.
+  Initial combined release other five tests passed. Cached lifecycle
+  needed differential PTY status/endpoint assertion corrections; one
+  rerun also correctly refused the unchanged 8 GiB envelope at only
+  7,615 MiB available. Final isolated optimized cached regression
+  passed 1/0/0 (46.14s, five filtered): actual Firefox resident
+  load/invoke/output/usage, separately authenticated inference
+  start/stop, unload, combined load/run and receipt reload;
+  TUI-attached Web invoke/unload/load-and-run/start, stale registration/
+  generation refusal, profile/owner invalidation and joined retirement.
+  Full isolated workspace gate passed 2,489/0/109, release Web/TUI/
+  installer/script checks. UX-9B accepted. No remote download/physical
+  GPU/public exposure or measured performance claim.
+
+**Next: UX-9C — Web Models / Downloads / Devices.**
+Lift existing cache/pull/device actions and observations out of native
+presentation into shared host. Exact digest and operation identity,
+explicit pinned acquisition consent, original pause/resume/cancel
+available even while pull owns slot, no hidden file/credential grant.
+Reuse current authenticated transport, bounded observation/worker,
+native and Web cross-client event path. UX-9D settings/profile/logs then
+UX-9E simultaneous mutation acceptance, UX-10 and public serving.
+
+### Previous checkpoint — Phase 2.1 UX-9A (26 Nov; 4e472aed)
 
 Embedded SolidJS/Vite Web shell over the original Runtime/ControlPlane.
 UX-9A is intentionally read-only; real Web effect routes and the remaining
@@ -98,16 +179,8 @@ management views are UX-9B–E, not fake actions or another runtime.
   2,485/0/109, release Web/TUI, installer and scripts. UX-9A accepted.
   No physical GPU/remote transfer, performance or public exposure claim.
 
-**Next: UX-9B — Web Home / Running / Serve (§46A.28).**
-Promote the existing resident plan and TUI action-worker operations into
-a shared host/client-neutral action seam, not a second execution path.
-Authenticated bounded typed JSON actions, exact registration/generation,
-explicit input/consent, original OutputStream and listener ownership;
-do not expose arbitrary paths/argv, credentials or unvalidated wire
-fields. Browser changes affect the original Runtime/Selection and
-native observation events. Reuse current fixture and SSE/HTTP auth.
-Then UX-9C model/download/device, UX-9D config/profile/logs, UX-9E
-simultaneous mutation acceptance, UX-10 and public serving.
+Historical next UX-9B is implemented at the current checkpoint.
+UX-9C–E follow the live order.
 
 ### Previous checkpoint — Phase 2.1 UX-8D (26 Nov; 71e36933)
 

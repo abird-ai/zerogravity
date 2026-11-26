@@ -1,10 +1,14 @@
 //! Deliberate wire projection of original owner observations. Never serialize
 //! the full runtime diagnostic graph, raw errors, credentials, or file paths.
-use crate::control_host::Selection;
+use crate::control_host::{Actions, Selection};
 use serde_json::{Value, json};
 use zerogravity::{Result, Runtime, control::ServeSummary};
 
-pub(super) fn snapshot(runtime: &Runtime, selection: &Selection) -> Result<Value> {
+pub(super) fn snapshot(
+    runtime: &Runtime,
+    selection: &Selection,
+    actions: &Actions,
+) -> Result<Value> {
     let owner = runtime.control().snapshot()?;
     let selected = selection.snapshot();
     let models: Vec<_> = owner.runtime.catalog.iter().map(|model| {
@@ -79,18 +83,27 @@ pub(super) fn snapshot(runtime: &Runtime, selection: &Selection) -> Result<Value
     });
     #[cfg(not(all(feature = "acquisition", target_os = "linux")))]
     let download: Option<Value> = None;
+    let (_, action, last_web) = actions.observe();
+    let action = action.map(|job| {
+        json!({
+            "id": job.id.to_string(), "origin": job.origin, "title": job.title,
+            "cancel_requested": job.cancel_requested,
+        })
+    });
     Ok(json!({
         "schema": "zerogravity.control.v1",
         "capabilities": {
             "serve": cfg!(feature = "serve"),
             "cache": cfg!(all(feature = "cache", target_os = "linux")),
             "acquisition": cfg!(all(feature = "acquisition", target_os = "linux")),
-            "actions": false,
+            "actions": true,
         },
         // Named selection only, never a portable path or document bytes.
-        "configuration": { "profile": selected.target.profile, "offline": selected.offline },
+        "configuration": { "profile": selected.target.profile, "offline": selected.offline, "chat": selected.chat },
         "runtime": { "status": owner.runtime.status, "models": models, "scheduler": scheduler },
         "serving": serving,
         "download": download,
+        "action": action,
+        "web_action": last_web.map(|id| id.to_string()),
     }))
 }

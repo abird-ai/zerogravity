@@ -2,6 +2,8 @@ import { render } from "solid-js/web";
 import { createEffect, createMemo, createSignal, For, onCleanup, Show, Switch, Match } from "solid-js";
 import { takeKey, storeKey, validKey } from "./api.js";
 import { createControl } from "./control-state.js";
+import { createWork } from "./work-state.js";
+import { QuickRun, OwnerActions, ServeActions, ActionPanel } from "./resident.jsx";
 import "./styles.css";
 
 const views = [
@@ -38,6 +40,7 @@ function Serve(props) {
       <div class="endpoint">http://{serving().address}/v1</div>
       <Facts items={[["Listener generation", serving().generation], ["Accepted requests", count(serving().accepted_requests)], ["Connections", count(serving().active_connections)]]}/>
     </Show>
+    <Show when={props.work && props.value.capabilities.serve}><ServeActions value={props.value} work={props.work}/></Show>
     <p class="note">The inference API is independent of this authenticated control listener.</p>
   </section>;
 }
@@ -62,10 +65,12 @@ function Home(props) {
       <Stat label="Active / queued" value={scheduler() ? count(scheduler().active) + " / " + count(scheduler().queued) : "—"} detail={scheduler() ? "Admitted scheduler" : "No scheduler installed"}/>
       <Stat label="Generated tokens" value={count(scheduler()?.output_tokens)} detail="Observed runtime counter"/>
     </div>
+    <QuickRun value={props.value} work={props.work} selection={props.selection} select={props.select}/>
+    <ActionPanel value={props.value} work={props.work}/>
     <div class="overview"><Serve value={props.value}/><Download value={props.value}/></div>
     <section class="panel">
       <div class="panel-title"><h2>Registered models</h2><button class="quiet" onClick={() => props.navigate("Running")}>Inspect</button></div>
-      <Show when={props.value.runtime.models.length} fallback={<p class="subtle">No registered model owners. Load through the native client to observe it here.</p>}>
+      <Show when={props.value.runtime.models.length} fallback={<p class="subtle">No registered model owners. Load a model above.</p>}>
         <For each={props.value.runtime.models}>{model => <div class="model-line"><span>{model.aliases.join(", ")}</span><State text={model.lifecycle} good={model.lifecycle === "ready"}/></div>}</For>
       </Show>
     </section>
@@ -77,7 +82,7 @@ function Running(props) {
   createEffect(() => {
     if (!chosen()) props.select(models()[0]?.registration_id ?? "");
   });
-  return <Show when={models().length} fallback={<Empty title="No model owners">The runtime has not registered a model. Native model actions remain available in the TUI.</Empty>}>
+  return <Show when={models().length} fallback={<Empty title="No model owners">The runtime has not registered a model. Use Home to load or run a cached source.</Empty>}>
     <div class="split">
       <section class="panel entries"><h2>Owners</h2><For each={models()}>{model =>
         <button classList={{ row: true, selected: model.registration_id === props.selection() }} onClick={() => props.select(model.registration_id)}>
@@ -87,6 +92,7 @@ function Running(props) {
       <Show when={chosen()}>{model => <section class="panel">
         <h2>{model().aliases.join(", ")}</h2>
         <Facts items={[["Registration", model().registration_id], ["Lifecycle", human(model().lifecycle)], ["Admitted requests", count(model().admitted_requests)], ["Provider", model().capabilities?.provider ?? "Not reported"], ["Family", model().capabilities?.family ?? "Not reported"], ["Context capacity", count(model().capabilities?.context)], ["Host source reservation", bytes(model().capabilities?.source_host_reserved_bytes)]]}/>
+        <OwnerActions model={model()} chat={props.value.configuration.chat} work={props.work}/>
       </section>}</Show>
     </div>
   </Show>;
@@ -121,6 +127,7 @@ function App() {
   let previousFocus;
   const lock = () => { storeKey(""); setKey(""); setInput(""); };
   const control = createControl(key, lock);
+  const work = createWork(key, control, lock);
   const navigate = name => { setView(name); setNav(false); };
   const openPalette = () => { previousFocus = document.activeElement; setPalette(true); };
   const closePalette = () => { setPalette(false); queueMicrotask(() => previousFocus?.focus()); };
@@ -175,9 +182,9 @@ function App() {
         <Show when={observation()} fallback={<Empty title={control.status() === "disconnected" ? "Control host unavailable" : "Connecting"}>Waiting for the original runtime observation. Refresh or reopen the host's private URL.</Empty>}>{row =>
           <><Show when={control.status() !== "connected"}><div role="status" class="notice">Connection interrupted — showing the last observation, not live state.</div></Show>
           <Switch>
-            <Match when={view() === "Home"}><Home value={row()} navigate={navigate}/></Match>
-            <Match when={view() === "Running"}><Running value={row()} selection={selection} select={select}/></Match>
-            <Match when={view() === "Serve"}><Serve value={row()}/></Match>
+            <Match when={view() === "Home"}><Home value={row()} navigate={navigate} work={work} selection={selection} select={select}/></Match>
+            <Match when={view() === "Running"}><Running value={row()} selection={selection} select={select} work={work}/></Match>
+            <Match when={view() === "Serve"}><Serve value={row()} work={work}/></Match>
             <Match when={view() === "Downloads"}><Download value={row()}/></Match>
             <Match when={view() === "Profiles" || view() === "Config"}>
               <section class="panel"><h2>Active configuration</h2><Facts items={[["Selection", row().configuration.profile ?? "Portable file"], ["Acquisition", row().configuration.offline ? "Offline" : "Explicit consent required"]]}/><p class="note">Editing and profile management are available in the native client. This browser shell does not expose raw documents.</p></section>
@@ -185,11 +192,12 @@ function App() {
             <Match when={view() === "Models"}><Empty title="Model management">{row().capabilities.cache ? "Cached source inventory and mutations are not yet exposed in this browser slice. Use Models in the native client." : "Cache support is not compiled into this binary."}</Empty></Match>
             <Match when={view() === "Devices"}><Empty title="Device inventory">Physical device management remains in the native client. No backend or execution eligibility is inferred here.</Empty></Match>
             <Match when={view() === "Logs"}><Empty title="Operational logs">The native client's bounded operational log is not yet exposed to this browser. Model output is never used as log history.</Empty></Match>
-          </Switch></>
+          </Switch>
+          <Show when={["Running","Serve"].includes(view())}><ActionPanel value={row()} work={work}/></Show></>
         }</Show>
       </Show>
     </main>
-    <footer><span>Read-only control shell · no implicit execution</span><a class="license" href="/ui/licenses.txt" target="_blank" rel="noopener noreferrer">Licenses</a><span class="footer-detail">Events: {control.eventStatus()} · {control.updated() ? control.updated().toLocaleTimeString() : "No observation"}</span><Show when={key()}><button class="quiet" onClick={lock}>Lock</button></Show></footer>
+    <footer><span>Explicit local actions · no implicit acquisition</span><a class="license" href="/ui/licenses.txt" target="_blank" rel="noopener noreferrer">Licenses</a><span class="footer-detail">Events: {control.eventStatus()} · {control.updated() ? control.updated().toLocaleTimeString() : "No observation"}</span><Show when={key()}><button class="quiet" onClick={lock}>Lock</button></Show></footer>
     <Show when={palette()}><Palette navigate={navigate} close={closePalette}/></Show>
   </div>;
 }

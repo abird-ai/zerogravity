@@ -43,7 +43,7 @@ pub(crate) struct MissingSource {
 #[cfg(all(feature = "cache", target_os = "linux"))]
 impl MissingSource {
     #[cfg(all(
-        any(feature = "serve", feature = "tui"),
+        any(feature = "serve", feature = "tui", feature = "web"),
         feature = "model-qwen35",
         feature = "text"
     ))]

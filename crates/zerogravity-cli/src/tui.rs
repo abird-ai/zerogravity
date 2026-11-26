@@ -1,14 +1,14 @@
 //! Native client shell. Runtime lifetime belongs to the outer host; view
 //! selection owns no model, task, listener or download.
-mod library;
+pub(crate) mod library;
 mod logs;
-mod settings;
+pub(crate) mod settings;
 mod terminal;
 mod view;
 mod work;
 
 use crate::{
-    control_host::{self, Selection},
+    control_host::{self, ActionSummary, Actions, Origin, Selection},
     output,
 };
 use crossterm::event::{self, Event, KeyEventKind};
@@ -77,6 +77,8 @@ fn session(
         notice: None,
         color,
         document,
+        actions: Actions::default(),
+        active: None,
         job: None,
         selected: None,
         response: None,
@@ -90,6 +92,10 @@ fn session(
         let mut sampled = Instant::now();
         while !stop.requested() {
             dirty |= app.poll_job(runtime, control);
+            let active = app.actions.active();
+            let action_changed = active != app.active;
+            app.active = active;
+            dirty |= action_changed;
             dirty |= app.library.poll(runtime);
             let mut changed = false;
             let mut cache_changed = false;
@@ -125,7 +131,8 @@ fn session(
                 }
             }
             if changed
-                || ((app.live() || app.job.is_some())
+                || action_changed
+                || ((app.live() || app.active.is_some())
                     && sampled.elapsed() >= Duration::from_secs(1))
             {
                 app.refresh(control);
@@ -181,7 +188,7 @@ fn session(
                         && key
                             .modifiers
                             .contains(crossterm::event::KeyModifiers::CONTROL)
-                        && app.job.is_some()
+                        && app.active.is_some()
                     {
                         app.cancel();
                     } else {
@@ -204,12 +211,7 @@ fn session(
         app.web.take().map_or(Ok(()), crate::web::Host::close),
     );
     // Never hold raw terminal state over a synchronous load/retirement join.
-    let joined = if let Some(mut job) = app.job.take() {
-        job.cancel();
-        job.join().map(|_| ())
-    } else {
-        Ok(())
-    };
+    let joined = app.actions.shutdown();
     let observed = app.library.join();
     work::combine(
         work::combine(work::combine(result, restored), joined),
@@ -226,6 +228,8 @@ struct App {
     notice: Option<String>,
     color: bool,
     document: Selection,
+    actions: Actions,
+    active: Option<ActionSummary>,
     job: Option<Job>,
     selected: Option<Owner>,
     response: Option<Response>,
@@ -276,17 +280,25 @@ impl App {
     }
 
     fn cancel(&mut self) {
-        if let Some(job) = &self.job {
-            if !job.requested() {
-                self.logs.cancel(job.log_id);
+        if let Some(active) = &self.active {
+            match self.actions.cancel(active.id, None) {
+                Ok(()) => {
+                    if let Some(job) = &self.job
+                        && job.id == active.id
+                        && !active.cancel_requested
+                    {
+                        self.logs.cancel(job.log_id);
+                    }
+                    self.notice =
+                        Some("Cancellation requested; waiting for the action owner".into());
+                }
+                Err(error) => self.notice = Some(error.to_string()),
             }
-            job.cancel();
-            self.notice = Some("Cancellation requested; waiting for the action owner".into());
         }
     }
 
     fn start(&mut self, runtime: &Runtime, request: Request) {
-        if self.job.is_some() {
+        if self.job.is_some() || self.active.is_some() {
             self.notice =
                 Some("An action is already in progress; wait or request cancellation".into());
             return;
@@ -294,13 +306,19 @@ impl App {
         let generates = request.generates();
         let title = request.title();
         let log_id = self.logs.start(title, request.correlation());
-        match Job::start(runtime, &self.document.snapshot(), request, log_id) {
-            Ok(job) => {
+        let mut job = Job::ticket(&request, log_id);
+        match self
+            .actions
+            .start(runtime, &self.document, request, Origin::Native)
+        {
+            Ok(id) => {
+                job.id = id;
                 if generates {
                     self.response = Some(Response::default());
                 }
                 self.notice = None;
                 self.job = Some(job);
+                self.active = self.actions.active();
             }
             Err(error) => {
                 self.logs.finish(log_id, title, false);
@@ -317,36 +335,20 @@ impl App {
             .response
             .as_ref()
             .map_or(0, |response| response.revision);
-        let changed = if let Some(response) = job.sample(revision) {
+        let (sample, result) = self.actions.poll_native(job.id, revision);
+        let changed = sample.is_some();
+        if let Some(response) = sample {
             self.response = Some(response);
-            true
-        } else {
-            false
-        };
-        if !job.finished() {
-            // Redraw output without traversing device or cache owners.
+        }
+        let Some(result) = result else {
             return changed;
-        }
-        let mut job = self.job.take().expect("finished owned worker");
-        // Join before the final sample, so fast terminal output is never lost.
-        let result = job.join();
-        let revision = self
-            .response
-            .as_ref()
-            .map_or(0, |response| response.revision);
-        if let Some(response) = job.sample(revision) {
-            self.response = Some(response);
-        }
-        self.logs.finish(job.log_id, job.title(), result.is_ok());
+        };
+        let mut job = self.job.take().expect("finished native ticket");
+        self.logs.finish(job.log_id, job.title, result.is_ok());
         let message = match result {
             Ok(Completed::Message(message)) => message,
             Ok(Completed::Settings(outcome)) => {
-                if let Some((target, doc)) = outcome.active {
-                    let document =
-                        Document::from_config(target, doc, self.document.snapshot().offline);
-                    self.color = output::document_color(document.ui);
-                    self.document.update(document);
-                }
+                self.color = output::document_color(self.document.snapshot().ui);
                 if let Some(editor) = outcome.editor {
                     self.library.set_editor(editor);
                     if matches!(self.navigation.view(), View::Config | View::Profiles) {
@@ -376,7 +378,7 @@ impl App {
                         _ => {}
                     }
                 }
-                format!("{} failed: {error}", job.title())
+                format!("{} failed: {error}", job.title)
             }
         };
         self.notice = Some(message.lines().next().unwrap_or("").to_owned());
@@ -389,7 +391,7 @@ impl App {
 
     fn handle(&mut self, runtime: &Runtime, control: ControlPlane<'_>, action: Action) -> bool {
         match action {
-            Action::Quit if self.live() || self.job.is_some() || self.web_owned() => self.navigation.confirm(
+            Action::Quit if self.live() || self.active.is_some() || self.web_owned() => self.navigation.confirm(
                 "Quit this process? Its Web/inference listeners and loaded models will be retired after owned work joins.".into(),
                 view::Confirmation::Quit,
             ),
@@ -420,7 +422,7 @@ impl App {
             Action::Cancel => self.cancel(),
             Action::MoveOwner(delta) => self.move_owner(delta),
             // A modal or repeated key cannot queue another effectful operation.
-            _ if self.job.is_some() => {
+            _ if self.active.is_some() || self.job.is_some() => {
                 self.notice = Some("An action is already in progress; wait or request cancellation".into());
             }
             Action::Load => {
@@ -545,7 +547,7 @@ impl App {
             }
             _ => {}
         }
-        if self.job.is_some() {
+        if self.active.is_some() || self.job.is_some() {
             self.notice =
                 Some("An action is already in progress; wait or request cancellation".into());
             return;
@@ -785,7 +787,7 @@ impl App {
             }
             _ => {}
         }
-        if self.job.is_some() {
+        if self.active.is_some() || self.job.is_some() {
             self.notice =
                 Some("An action is already in progress; wait or request cancellation".into());
             return;
@@ -892,6 +894,7 @@ impl App {
                     runtime,
                     "127.0.0.1:0".parse().expect("loopback default"),
                     self.document.clone(),
+                    self.actions.clone(),
                 ) {
                     Ok(host) => self.web = Some(host),
                     Err(error) => {

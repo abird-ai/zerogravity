@@ -632,7 +632,16 @@ demand. Preserve the existing detailed
   Actual HTTP/Firefox responsive smoke, JS tests/strict lint and serial
   cached TUI/HTTP/Web shared-owner release 6/0/0 pass. Complete isolated
   rerun 2,485/0/109, release Web/TUI/installer/scripts pass. UX-9A accepted.
-  **Next: UX-9B Web Home / Running / Serve (§46A.28).**
+- [x] UX-9B Web Home / Running / Serve: original resident worker promoted
+  into one shared host action slot, exact identities and native-private
+  results, bounded authenticated JSON POST/action receipt, explicit
+  cached/configured source load/run/invoke/unload and listener start/stop,
+  cancellation and original streaming output. Solid actual forms and
+  terminal usage, original runtime/inference owners. Strict lint,
+  JS/focused/cold HTTP/Firefox pass; real optimized cached browser/
+  TUI/Web/HTTP lifecycle passed (46.14s), full isolated gate
+  2,489/0/109 plus release Web/TUI/installer/scripts. Accepted.
+  **Next: UX-9C Web Models / Downloads / Devices (§46A.28).**
 
 - [ ] Close typed command tree, ConfigDocument/profile merge and shared
   presentation/action/snapshot/event model. One resolver for local paths,

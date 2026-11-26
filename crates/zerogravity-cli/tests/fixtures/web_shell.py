@@ -28,11 +28,11 @@ class Client:
     def connection(self):
         return http.client.HTTPConnection("127.0.0.1", self.port, timeout=8)
 
-    def request(self, path, *, auth=True, headers=None, method="GET"):
+    def request(self, path, *, auth=True, headers=None, method="GET", body=None):
         fields = {"Authorization": "Bearer " + self.key} if auth else {}
         fields.update(headers or {})
         with contextlib.closing(self.connection()) as connection:
-            connection.request(method, path, headers=fields)
+            connection.request(method, path, body=body, headers=fields)
             response = connection.getresponse()
             return response.status, dict(response.getheaders()), response.read()
 
@@ -41,6 +41,39 @@ class Client:
         assert status == 200
         assert self.key.encode() not in body
         return json.loads(body)
+
+    def post(self, value, *, status=202, auth=True, headers=None):
+        body = value if isinstance(value, bytes) else json.dumps(value).encode()
+        fields = {"Origin": self.origin, "Content-Type": "application/json"}
+        fields.update(headers or {})
+        actual, _, data = self.request("/zg/control/actions", auth=auth, headers=fields, method="POST", body=body)
+        assert actual == status, f"control action HTTP {actual}, expected {status}"
+        return json.loads(data) if status == 202 else None
+
+    def result(self, identity, *, state="completed", timeout=90):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            status, _, data = self.request("/zg/control/actions/" + identity)
+            assert status == 200
+            value = json.loads(data)
+            assert value["id"] == identity
+            if value["state"] != "running":
+                assert value["state"] == state, value["message"]
+                return value
+            time.sleep(0.1)
+        raise AssertionError("control action did not reach a terminal outcome")
+
+    def action(self, value, *, state="completed"):
+        return self.result(self.post(value)["id"], state=state)
+
+    def observed(self, predicate, timeout=10):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            value = self.snapshot()
+            if predicate(value):
+                return value
+            time.sleep(0.1)
+        raise AssertionError("control snapshot did not reach expected owner state")
 
     @contextlib.contextmanager
     def events(self):
@@ -113,12 +146,43 @@ def smoke(binary):
             assert client.request("/zg/control/snapshot", headers={"Content-Length": "1"})[0] == 400
             value = client.snapshot()
             assert value["schema"] == "zerogravity.control.v1"
-            assert value["configuration"] == {"profile": "desk", "offline": True}
+            assert value["configuration"] == {"profile": "desk", "offline": True, "chat": True}
             assert value["runtime"]["status"]["phase"] == "empty"
             assert value["runtime"]["models"] == []
             assert "PRIVATE_PROMPT_NOT_IN_WIRE" not in json.dumps(value)
             assert "fixture-inference-only" not in json.dumps(value)
-            assert value["capabilities"]["actions"] is False
+            assert value["capabilities"]["actions"] is True
+            assert value["action"] is None and value["web_action"] is None
+            # No untrusted body effects before the independent credential,
+            # exact same-origin and bounded typed grammar checks.
+            load = {"kind": "load", "source": ""}
+            client.post(load, auth=False, status=401)
+            client.post(load, headers={"Authorization": "Bearer fixture-inference-only"}, status=401)
+            client.post(load, headers={"Origin": "http://127.0.0.1:1"}, status=403)
+            client.post(load, headers={"Sec-Fetch-Site": "cross-site"}, status=403)
+            assert client.request("/zg/control/actions", method="POST",
+                                  headers={"Content-Type": "application/json"},
+                                  body=json.dumps(load))[0] == 403
+            client.post(load, headers={"Content-Type": "text/plain"}, status=400)
+            client.post({"kind": "load", "source": "/tmp/model.gguf"}, status=400)
+            client.post({"kind": "load", "source": "", "api_key": "private"}, status=400)
+            client.post(b'{"kind":"load","source":"","source":"other"}', status=400)
+            client.post({"kind": "unload", "alias": "model", "registration_id": "1", "confirm": False}, status=400)
+            assert client.request("/zg/control/actions", method="POST",
+                                  headers={"Origin": client.origin, "Content-Type": "application/json",
+                                           "Content-Length": str(256 * 1024 + 1)})[0] == 413
+            assert client.snapshot()["web_action"] is None
+            # Actual original stale-registration refusal, not an invented
+            # browser-side success. Only the exact action route retains a
+            # bounded response; snapshots/events do not contain prompts.
+            failed = client.action({"kind": "invoke", "alias": "missing", "registration_id": "1",
+                                    "prompt": "PRIVATE_WEB_PROMPT_NOT_IN_WIRE", "chat": False}, state="failed")
+            identity = failed["id"]
+            assert client.request("/zg/control/actions/" + identity, auth=False)[0] == 401
+            assert client.request("/zg/control/actions/0001")[0] == 404
+            client.post({"kind": "cancel", "id": identity}, status=409)
+            assert "PRIVATE_WEB_PROMPT_NOT_IN_WIRE" not in json.dumps(client.snapshot())
+            assert client.snapshot()["runtime"]["status"]["phase"] == "empty"
             # Four SSE slots leave capacity for snapshots and refuse excess
             # streams; process retirement joins every stream and slow reader.
             with contextlib.ExitStack() as active:
@@ -133,7 +197,7 @@ def smoke(binary):
             client.closed()
             assert profile.read_text() == original
             assert not (root / "cache").exists()
-            print("Web control HTTP: embedded assets, independent bearer, Host/Origin/CSRF refusal, owner snapshot, SSE and joined retirement")
+            print("Web control HTTP: assets, independent bearer and same-origin typed POST, bounded bodies/stale refusal, owner snapshot/SSE and joined retirement")
         finally:
             if process.poll() is None:
                 process.terminate()

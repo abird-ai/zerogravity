@@ -344,14 +344,33 @@ build or general model/backend grant. Historical failures keep their source scop
   cached TUI-attached Web release 6/0/0 (32.71s). Full isolated rerun
   2,485/0/109 and release Web/TUI/installer/scripts pass. UX-9A accepted.
 
+### Phase 2.1 UX-9B — Web resident actions (26 Nov)
+
+- [x] Original resident action worker/OutputStream promoted to one
+  native/Web host slot; exact action identities, no queue, selection
+  update before release, native ticket/private result, latest Web
+  receipt, exact cancel and owned join.
+- [x] Typed same-origin authenticated bounded POST, cached selectors/
+  trusted document only; actual load/run/invoke/unload/start/stop,
+  destructive confirmation and exact registration/generation.
+  Solid quick-run/owner/serve forms and bounded progressive output/
+  original usage; no implicit acquisition or inference-key exposure.
+- [x] Strict lint incl Web-only CPU, focused owner/intent/TUI/JS,
+  actual cold HTTP/Firefox pass. Real optimized cached Firefox and
+  TUI-attached Web/HTTP regression passed (46.14s, five filtered;
+  other five previously passed). Exact stale-owner refusal, unchanged
+  8 GiB envelope, independent inference auth and joined retirement.
+  Full isolated gate 2,489/0/109 plus release Web/TUI/installer/scripts.
+  UX-9B accepted.
+
 ## Uncommitted
 
-- [ ] UX-9B Web Home / Running / Serve: shared resident/action worker
-  seam, typed authenticated bounded action routes and original
-  invocation/registration/listener ownership. UX-9C–E follow; dynamic
-  completions and UX-10 remain ordered. Broader catalog presets,
-  conversation history and unsupported routes remain explicit;
-  preserve exact acquisition and factual refusal.
+- [ ] UX-9C Web Models / Downloads / Devices: same original shared
+  cache/pull/device owners, typed exact digest/operation/physical IDs,
+  explicit acquisition consent, live transfer controls while worker
+  owns action. UX-9D/E and UX-10 remain ordered; no new runtime, cache
+  or scheduler. Broader catalog presets, conversation history and
+  unsupported routes remain explicit.
 - [ ] Extend advanced direct provider forced interactive/JSONL presentation
   and aggregate component download control without changing independently
   published receipts; existing direct provider progress and legacy sequential

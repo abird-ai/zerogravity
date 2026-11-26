@@ -6,7 +6,7 @@ scaffolding), CLI/TUI/Web and serving, ROCm, CUDA, Vulkan, then concrete
 compiled providers. Native Hugging Face/Safetensors and GGUF are primary.
 Older ordering below is context; valid owner constraints remain authoritative.
 
-Status (26 Nov): **Phase 2.1 UX-1 through UX-9A accepted; UX-9B Web Home / Running / Serve next (§46A.28).**
+Status (26 Nov): **Phase 2.1 UX-1 through UX-9B accepted; UX-9C Web Models / Downloads / Devices next (§46A.28).**
 The bounded Phase 1 minimum exit is accepted at `d5030ad4`.
 See the [Phase 1 exit takeover](../../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-25_PHASE1_EXIT.md)
 and [live full plan](../FULL_IMPLEMENTATION_PLAN.md). The original design below
@@ -3627,6 +3627,21 @@ refinement HTTP/Firefox pass. Complete isolated rerun 2,485/0/109 and
 release Web/TUI/installer/scripts pass after TCP status-line fixture
 correction. UX-9A accepted. No physical GPU or public exposure/new
 inference qualification. UX-9B next.
+
+UX-9B implementation (26 Nov): original native resident/action execution
+and OutputStream moved into shared foreground host, one action slot with
+exact IDs/owner/receipt, no effect queue, native-private response and
+latest Web result. Native and Web same runtime/selection/retirement.
+Authenticated same-origin bounded typed JSON actions for cached/configured
+load, quick run, exact invoke/unload/start/stop and cancel, no arbitrary
+browser paths/credentials/implicit acquisition. Original registration/
+generation and explicit confirmation, live bounded output/actual usage.
+Solid Home/Running/Serve actions, exact receipt polling only during active
+work and SSE owner/action invalidation. Strict lint, focused Rust/JS,
+actual cold HTTP/Firefox pass; optimized real cached Firefox and
+TUI-attached Web/HTTP lifecycle passed (46.14s), full isolated
+workspace gate 2,489/0/109 and release Web/TUI/installer/scripts.
+UX-9B accepted; UX-9C next.
 
 Build TUI before Web so the shared control surface proves it is not browser-shaped.
 

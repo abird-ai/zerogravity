@@ -9,7 +9,7 @@ use zerogravity::{
 pub(super) use crate::control_host::Target;
 
 #[derive(Clone)]
-pub(super) struct Snapshot {
+pub(crate) struct Snapshot {
     pub target: Target,
     file: Arc<ConfigFile>,
 }
@@ -227,7 +227,7 @@ pub(super) fn profiles() -> Result<Vec<Row>> {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(super) enum Action {
+pub(crate) enum Action {
     Create(String),
     Copy {
         source: Snapshot,
@@ -262,7 +262,7 @@ impl Action {
         }
     }
 }
-pub(super) struct Outcome {
+pub(crate) struct Outcome {
     pub message: String,
     pub editor: Option<Target>,
     pub active: Option<(Target, ConfigDocument)>,
@@ -309,7 +309,7 @@ fn save(file: Snapshot, bytes: Vec<u8>, active: &Target) -> Result<Outcome> {
     }
     Ok(outcome)
 }
-pub(super) fn perform(action: Action, active: &Target) -> Result<Outcome> {
+pub(crate) fn perform(action: Action, active: &Target) -> Result<Outcome> {
     match action {
         Action::Create(name) => new_profile(&name, INITIAL.as_bytes(), None),
         Action::Copy { source, name } => {

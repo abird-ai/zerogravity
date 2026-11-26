@@ -2,6 +2,7 @@ import { createEffect, createSignal, onCleanup } from "solid-js";
 import * as api from "./api.js";
 
 export const live = value => !!value && (
+  value.action != null ||
   value.runtime.status.loaded_owners > 0 ||
   !["empty", "closed"].includes(value.runtime.status.phase) ||
   ["listening", "transitioning"].includes(value.serving.state) ||
