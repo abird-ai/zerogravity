@@ -17,6 +17,7 @@ pub struct ServeOptions {
     pub limits: IngressLimits,
     pub api_key: Option<String>,
     pub enable_per_request_metrics: bool,
+    pub enable_error_details: bool,
     pub prefix_sharing_scope: Option<PrefixSharingScope>,
 }
 
@@ -78,6 +79,7 @@ impl ControlPlane<'_> {
                 .generation
                 .checked_add(1)
                 .ok_or_else(|| Error::Limit("serving generation exhausted".into()))?;
+            let events = std::sync::Arc::clone(&self.state.events);
             let handle = self
                 .runtime
                 .server()
@@ -85,6 +87,13 @@ impl ControlPlane<'_> {
                 .limits(options.limits)
                 .api_key(options.api_key)
                 .enable_per_request_metrics(options.enable_per_request_metrics)
+                .enable_error_details(options.enable_error_details)
+                .observe_errors(move |details| {
+                    events.publish(ControlEventKind::ServeRequestFailed {
+                        generation,
+                        details,
+                    });
+                })
                 .prefix_sharing_scope(options.prefix_sharing_scope)
                 .build()?
                 .start()?;

@@ -122,14 +122,41 @@ impl Logs {
             .into_iter()
             .find(|entry| entry.sequence == sequence)
             .map(|entry| {
-                vec![
+                let mut lines = vec![
                     entry.message,
                     String::new(),
                     format!("Level: {}", entry.level.label()),
                     format!("Component: {}", entry.component.label()),
                     format!("Correlation: {}", entry.correlation),
                     format!("Sequence: {}", entry.sequence),
-                ]
+                ];
+                if let Some(details) = entry.details {
+                    lines.push(String::new());
+                    lines.push(format!(
+                        "Error: {} ({})",
+                        details.code,
+                        details.category.label()
+                    ));
+                    if let Some(status) = details.status {
+                        lines.push(format!("HTTP status: {status}"));
+                    }
+                    if let (Some(requested), Some(available)) =
+                        (details.requested_bytes, details.available_bytes)
+                    {
+                        lines.push(format!(
+                            "Requested: {} ({requested} bytes)",
+                            super::format::bytes(requested)
+                        ));
+                        lines.push(format!(
+                            "Available: {} ({available} bytes)",
+                            super::format::bytes(available)
+                        ));
+                    }
+                    if let Some(code) = details.os_error {
+                        lines.push(format!("OS error: {code}"));
+                    }
+                }
+                lines
             })
     }
     pub fn dropped(&self) -> u64 {
@@ -154,10 +181,29 @@ mod tests {
             })
         });
         logs.toggle_follow();
-        logs.actions
-            .with_logs_mut(|ring| ring.finish(1, "Run", false));
+        logs.actions.with_logs_mut(|ring| {
+            ring.finish(
+                1,
+                "Run",
+                false,
+                Some(zerogravity::runtime::text::FailureDetails::core(
+                    &zerogravity::Error::resource("PRIVATE-PATH", "admission", 12, 8),
+                )),
+            )
+        });
         assert_eq!(logs.entries().len(), 1);
         logs.toggle_follow();
+        let failure = logs
+            .entries()
+            .into_iter()
+            .find(|entry| entry.details.is_some())
+            .expect("safe failure details");
+        let detail = logs.detail(failure.sequence).unwrap().join("\n");
+        assert!(
+            detail.contains("resource_exhausted")
+                && detail.contains("12 bytes")
+                && !detail.contains("PRIVATE")
+        );
         logs.query = "registration 17".into();
         assert_eq!(logs.entries().len(), 1);
         let id = logs.entries()[0].sequence;

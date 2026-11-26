@@ -326,8 +326,8 @@ fn prepare_routes(
             profile.validate_base()?;
             let target =
                 zerogravity::models::qwen_target_for_snapshot(&digest).expect("approved digest");
-            let selected = qwen_source::select_backend(&request, &inventory, target).map_err(core)?
-                .ok_or_else(|| invalid("no eligible compiled original-source GPU route; select an acquired GGUF for CPU"))?;
+            let selected =
+                qwen_source::require_source_backend(&request, &inventory, target).map_err(core)?;
             if let Some(missing) = &missing {
                 match source::acquire_missing(
                     &request,
@@ -398,7 +398,7 @@ fn prepare_routes(
             return Err(ServiceError::new(
                 400,
                 "backend_not_compiled",
-                "original source serving requires a compiled CUDA/ROCm source route",
+                "Original-source Qwen models require CUDA or ROCm/HIP. Neither backend is compiled. Build the default CLI or enable cuda/hip; use a supported GGUF for CPU.",
             ));
         }
     }

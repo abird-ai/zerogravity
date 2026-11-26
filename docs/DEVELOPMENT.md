@@ -11,8 +11,12 @@ platform, model or release target.
 
 The [toolchain](../rust-toolchain.toml) pins Rust 1.95.0 with rustfmt and Clippy.
 The virtual [workspace](../Cargo.toml) has one Cargo.lock and one package-version
-authority. Its default members are the library facade and CLI; default inference
-features select CPU, Qwen3.5 and text without the GPU dependency closure.
+authority. Its default members are the library facade and CLI. The CLI default
+feature is `all`: every current production model/backend plus acquisition,
+serving, TUI and Web. The embedded library facade keeps its smaller CPU/Qwen3.5
+defaults. Production features do not select diagnostic or qualification tools.
+The full native CLI needs the applicable build/runtime dependencies for the
+enabled backends; compilation alone does not qualify a device or model route.
 
 From the repository root, with the locked crate sources already available:
 
@@ -46,15 +50,24 @@ selects GPU diagnostics and is not the default CPU gate. Trained-model and
 physical-device tests require their actual fixtures, permissions and qualified
 scope; ordinary builds and source-free tests do not replace them.
 
-GPU products are explicit builds, for example the Vulkan text frontend:
+For a smaller or portable product, select features explicitly. For example,
+the CPU-only CLI (the portable Nix/release choice):
+
+```sh
+cargo build --release --locked --offline -p zerogravity-cli \
+  --no-default-features --features cpu,model-qwen35,text,tui,web
+```
+
+Or the Vulkan text frontend:
 
 ```sh
 cargo build --release --locked --offline -p zerogravity-cli \
   --no-default-features --features model-qwen35,text,vulkan
 ```
 
-CUDA and HIP use their explicit `cuda` or `hip` feature and the required existing
-native runtime/toolchain setup. Follow the [GPU library runbook](../crates/zerogravity-gpu/README.md)
+CUDA and HIP are included in the CLI default; narrower builds can choose
+`cuda` or `hip` explicitly with `--no-default-features`. Both require their
+applicable native runtime/toolchain setup. Follow the [GPU library runbook](../crates/zerogravity-gpu/README.md)
 for backend-specific builds, source/physical limits and downstream Cargo patches.
 The [qualification tool](../tools/gpu-qualify/README.md) is separate from the
 product. There is no independent probe workspace or second lockfile. Optional

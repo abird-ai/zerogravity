@@ -5,6 +5,18 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 26 Nov — full native CLI defaults and typed error diagnostics
+
+Default Cargo CLI production all; explicit embedded/portable CPU profiles
+unchanged. Typed failure chain and resource/I/O detail preserved; HTTP/SSE
+safe public projection, explicit authenticated loopback diagnostic opt-in,
+safe structured operational log metadata. Focused core/engine/serving,
+SDK and CLI/config/pipeline suites passed; full default cargo check passed.
+Linked default cargo run timed out during final CLI compilation; launch
+not yet verified.
+No new performance or physical GPU/model qualification claim. Full GPU
+Clippy pre-existing debt and assembled P4B gate remain pending.
+
 ## 26 Nov — UX-P4A2 final ergonomics
 
 Stable identity/byte scroll anchors, distinct response/detail viewport,

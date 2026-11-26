@@ -202,6 +202,39 @@ unsupported routes, models, parameters and backends refuse. It is loopback
 only at this checkpoint; optional `ZEROGRAVITY_API_KEY` protects inference.
 Public serving compatibility and performance qualification are separate work.
 
+### Error diagnostics
+
+HTTP and SSE errors keep their status/code and a safe public message. The
+original typed failure remains in-process; missing backends, unsupported
+devices, invalid input, resource shortages and malformed artifacts are
+distinct. Native and attached Web Logs retain bounded structured failure
+metadata (category, code, HTTP status when applicable, measured requested
+and available bytes, OS error code when available) without arbitrary
+diagnostic text, prompts, paths or credentials.
+
+For trusted local debugging only, explicitly enable diagnostic responses:
+
+```sh
+zerogravity config set serve.enable_error_details true
+# Or use --enable-error-details on an explicit serve invocation.
+```
+
+The listener requires a configured `ZEROGRAVITY_API_KEY` and a valid bearer
+credential on the request. It remains loopback-only. Errors before successful
+authentication (including framing and connection admission) never reveal
+details. Authorized diagnostic responses add an `error.details` object
+with the structured metadata and bounded original diagnostic/cause text.
+That text can contain internal information: never enable it on a public
+or reverse-proxied service intended for untrusted callers. The setting
+defaults to false; the browser-safe configuration editor cannot enable it.
+Changing the document applies to subsequent listener starts, not the
+already-owned listener. To disable:
+
+```sh
+zerogravity config set serve.enable_error_details false
+```
+
+
 ## Scripts and compatibility
 
 Use `--format json` on supported structured read commands, `--color never`

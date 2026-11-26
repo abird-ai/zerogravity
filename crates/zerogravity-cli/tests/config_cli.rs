@@ -67,7 +67,23 @@ fn config_profile_lifecycle_is_cold_and_refuses_invalid_edits() {
         value(root, &["config", "get", "ui.theme", "--format=json"])["value"],
         "auto"
     );
+    assert_eq!(
+        value(
+            root,
+            &[
+                "config",
+                "get",
+                "serve.enable_error_details",
+                "--format=json"
+            ]
+        )["value"],
+        false
+    );
     assert!(!base.exists());
+    refuse(
+        root,
+        &["config", "set", "serve.enable_error_details", "yes-please"],
+    );
     refuse(root, &["config", "set", "ui.theme", "carbon"]);
     refuse(root, &["config", "set", "ui.mouse", "invalid"]);
     refuse(root, &["config", "set", "ui.color", "pink"]);
@@ -131,6 +147,42 @@ fn config_profile_lifecycle_is_cold_and_refuses_invalid_edits() {
         "--quiet"
     );
     pass(root, &["profile", "create", "empty"]);
+    pass(
+        root,
+        &[
+            "--profile",
+            "empty",
+            "config",
+            "set",
+            "serve.enable_error_details",
+            "true",
+        ],
+    );
+    assert_eq!(
+        value(
+            root,
+            &[
+                "--profile",
+                "empty",
+                "config",
+                "get",
+                "serve.enable_error_details",
+                "--format=json"
+            ]
+        )["value"],
+        true
+    );
+    pass(
+        root,
+        &[
+            "--profile",
+            "empty",
+            "config",
+            "unset",
+            "serve.enable_error_details",
+        ],
+    );
+
     pass(root, &["--profile", "empty", "model", "search"]);
     refuse(root, &["--profile", "missing", "model", "search"]);
     let plain = run(

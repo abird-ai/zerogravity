@@ -9,7 +9,9 @@ license = "MIT"
 default-run = "zerogravity"
 
 [features]
-default = ["cpu", "model-qwen35", "text", "tui", "web"]
+# Full product by default while the model/backend set is small.
+# Embedded SDK and portable release builds choose features independently.
+default = ["all"]
 # Native terminal presentation only; no runtime or backend feature grant.
 tui = ["dep:ratatui", "dep:crossterm", "dep:signal-hook", "dep:unicode-segmentation", "dep:unicode-width"]
 # Embedded control frontend; no inference serving or backend grant.

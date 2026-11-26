@@ -29,6 +29,7 @@ pub struct ServerBuilder {
     limits: IngressLimits,
     api_key: Option<String>,
     enable_per_request_metrics: bool,
+    errors: http::ErrorReporting,
     prefix_sharing_scope: Option<PrefixSharingScope>,
 }
 pub struct Server {
@@ -74,6 +75,7 @@ impl ServerBuilder {
             limits: IngressLimits::default(),
             api_key: None,
             enable_per_request_metrics: false,
+            errors: http::ErrorReporting::default(),
             prefix_sharing_scope: None,
         }
     }
@@ -94,6 +96,19 @@ impl ServerBuilder {
         self.enable_per_request_metrics = enabled;
         self
     }
+    /// Trusted diagnostic responses are opt-in and require bearer authentication.
+    pub fn enable_error_details(mut self, enabled: bool) -> Self {
+        self.errors.details = enabled;
+        self
+    }
+    /// Safe error metadata only. The observer must be fast and nonblocking.
+    pub fn observe_errors(
+        mut self,
+        observer: impl Fn(zerogravity_engine::router::FailureDetails) + Send + Sync + 'static,
+    ) -> Self {
+        self.errors.observer = Some(Arc::new(observer));
+        self
+    }
     /// Trusted server-owned authorization scope for cross-request prefix reuse.
     /// HTTP clients cannot supply or override this value.
     pub fn prefix_sharing_scope(mut self, scope: Option<PrefixSharingScope>) -> Self {
@@ -106,6 +121,9 @@ impl ServerBuilder {
         auth::require_loopback(self.address)?;
         self.limits.validate()?;
         auth::validate_key(self.api_key.as_deref())?;
+        if self.errors.details && self.api_key.is_none() {
+            return Err(Error::InvalidInput("Detailed HTTP errors require explicit bearer authentication; configure an API key.".into()));
+        }
         Ok(Server { builder: self })
     }
 }
@@ -171,6 +189,7 @@ impl Server {
             config: http::ServeConfig {
                 api_key: builder.api_key,
                 enable_per_request_metrics: builder.enable_per_request_metrics,
+                errors: builder.errors,
                 prefix_sharing_scope: builder.prefix_sharing_scope,
                 limits: builder.limits,
             },

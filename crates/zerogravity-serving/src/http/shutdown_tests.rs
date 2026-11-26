@@ -156,7 +156,17 @@ fn shutdown_cancels_original_queued_and_active_streaming_and_nonstream_receipts(
             begun.send(()).unwrap();
             let mut wire = Wire::new(&mut stream, 1 << 20);
             if streaming {
-                assert!(stream_events(&mut wire, request, false, false, &stop).is_err());
+                assert!(
+                    stream_events(
+                        &mut wire,
+                        request,
+                        false,
+                        false,
+                        &stop,
+                        &ErrorReporting::default()
+                    )
+                    .is_err()
+                );
             } else {
                 assert_eq!(
                     completion_events(&mut wire, request, false, &stop)
@@ -205,7 +215,17 @@ fn disconnect_cancels_generation_before_the_first_token() {
             let stop = AtomicBool::new(false);
             let mut wire = Wire::new(&mut stream, 1 << 20);
             if streaming {
-                assert!(stream_events(&mut wire, request, false, false, &stop).is_err());
+                assert!(
+                    stream_events(
+                        &mut wire,
+                        request,
+                        false,
+                        false,
+                        &stop,
+                        &ErrorReporting::default()
+                    )
+                    .is_err()
+                );
             } else {
                 assert_eq!(
                     completion_events(&mut wire, request, false, &stop)

@@ -95,6 +95,7 @@ impl fmt::Display for ResourceLimit {
 pub enum Error {
     Io(io::Error),
     Malformed(String),
+    InvalidInput(String),
     Unsupported(String),
     Resource(ResourceLimit),
     Limit(String),
@@ -120,6 +121,7 @@ impl fmt::Display for Error {
         match self {
             Self::Io(e) => write!(f, "I/O error: {e}"),
             Self::Malformed(s) => write!(f, "malformed model artifact: {s}"),
+            Self::InvalidInput(s) => write!(f, "invalid input: {s}"),
             Self::Unsupported(s) => write!(f, "unsupported: {s}"),
             Self::Resource(limit) => write!(f, "{limit}"),
             Self::Limit(s) => write!(f, "limit exceeded: {s}"),

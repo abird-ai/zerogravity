@@ -11,6 +11,19 @@ Status: **design only / dormant**.
 26 Nov user decision: [UX-P native TUI polish](../cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md)
 must be accepted before this iteration begins.
 
+26 Nov user follow-up: normal Cargo CLI defaults are the production
+superset (all current model features, CPU/CUDA/ROCm/Vulkan, acquisition,
+serving, TUI/Web), not diagnostic/qualification features. Existing
+HTTP/SSE error boundary now keeps stable code/status, safe public
+messages, original typed internal failures and payload-free operational
+FailureDetails. The native document's serve.enable_error_details opt-in
+requires authenticated loopback; only authenticated requests receive
+bounded diagnostic text/causes in error.details. Preserve redaction
+by default and pre-auth refusal; any future public/admin/debug scope
+must not expose these details to ordinary untrusted clients. Logs use
+the original bounded event ring and safe metadata, not raw prompts,
+paths or credentials. No public serving acceptance implied.
+
 This iteration runs **after**
 `../cli-ux/NEXT_ITERATION_CLI_UX_AND_MODEL_LIFECYCLE.md`
 and **before**

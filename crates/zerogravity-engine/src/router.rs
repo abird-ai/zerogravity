@@ -1,5 +1,6 @@
 //! Prepared-source routing and the original bounded scheduler/presentation owners.
 mod dispatch;
+mod error;
 pub mod event_channel;
 mod host;
 pub mod pending;

@@ -229,7 +229,11 @@ impl<'a> Failure<'a> {
         use std::error::Error as _;
         use zerogravity::Error;
         let (code, hint) = match error {
-            Error::Malformed(_) => ("malformed", Some("Check the input and command help.")),
+            Error::Malformed(_) => (
+                "malformed",
+                Some("Check the model source and artifact metadata."),
+            ),
+            Error::InvalidInput(_) => ("invalid_input", Some("Check the input and command help.")),
             Error::Unsupported(_) => ("unsupported", None),
             Error::Resource(_) => (
                 "resource_exhausted",

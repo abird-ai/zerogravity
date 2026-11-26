@@ -107,6 +107,9 @@ fn help(key: &str) -> &'static str {
             "Optional finite queue count; host admission still applies."
         }
         "serve.enable_per_request_metrics" => "Enable supported per-request inference metrics.",
+        "serve.enable_error_details" => {
+            "Trusted diagnostic responses; requires an authenticated listener. Off by default."
+        }
         "ui.mouse" => {
             "Native mouse capture: auto/always on a capable terminal, never disables it; F8 toggles this session."
         }

@@ -22,6 +22,21 @@ printf 'Checking production CUDA native transport without qualification...\n'
 cargo check --locked --offline -p zerogravity-gpu --no-default-features \
   --features cuda-native
 
+printf 'Checking default production CLI feature boundary and compilation...\n'
+default_tree="$(cargo tree --locked --offline -p zerogravity-cli --edges features --invert zerogravity-cli)"
+for feature in all all-models all-backends cpu cuda hip vulkan model-qwen35 model-gemma4 acquisition serve tui web; do
+  grep -Fq "zerogravity-cli feature \"$feature\"" <<<"$default_tree" || {
+    printf 'Default CLI is missing production feature %s\n' "$feature" >&2
+    exit 1
+  }
+done
+default_gpu_tree="$(cargo tree --locked --offline -p zerogravity-cli --edges features --invert zerogravity-gpu)"
+if grep -Eq 'zerogravity-(cli|gpu|model-qwen35|model-gemma4|artifacts|core) feature "(.*qualification.*|diagnostic-.*|hardware-abort-probe|cuda-flash-attn|cuda-flashinfer)"' <<<"$default_gpu_tree"; then
+  printf 'Default CLI selected a diagnostic/qualification or opt-in attention feature\n' >&2
+  exit 1
+fi
+cargo check --locked --offline -p zerogravity-cli
+
 printf 'Checking ordinary Qwen CUDA serving/refusal feature boundary...\n'
 ordinary_tree="$(cargo tree --locked --offline -p zerogravity-cli --no-default-features \
   --features qwen35-cuda-serving --edges features --invert zerogravity-gpu)"

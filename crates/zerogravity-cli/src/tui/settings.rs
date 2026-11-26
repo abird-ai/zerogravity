@@ -25,6 +25,7 @@ pub(super) fn choices(key: &str) -> Option<&'static [&'static str]> {
         "run.task.raw"
         | "run.diagnostics.explain"
         | "run.diagnostics.dry_run"
+        | "serve.enable_error_details"
         | "serve.enable_per_request_metrics"
         | "downloads.ask_before_pull" => &["false", "true"],
         _ => return None,

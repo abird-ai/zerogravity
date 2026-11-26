@@ -313,6 +313,33 @@ pub(crate) fn select_backend(
     }
 }
 
+/// Resident original-source routes require an eligible GPU. Report why
+/// selection refused instead of treating missing capability as corruption.
+pub(crate) fn require_source_backend(
+    request: &Request,
+    inventory: &devices::Inventory,
+    target: &str,
+) -> Result<SelectedBackend> {
+    if let Some(backend) = select_backend(request, inventory, target)? {
+        return Ok(backend);
+    }
+    if matches!(request.backend, Backend::Cpu | Backend::Vulkan) {
+        return Err(Error::Unsupported(
+            "Original-source Qwen execution currently requires CUDA or ROCm/HIP; CPU and Vulkan are not eligible for this source route. Select an eligible GPU or a supported GGUF for CPU.".into(),
+        ));
+    }
+    let allowed = zerogravity::devices::allowed(request, inventory)?;
+    let cuda = require_cuda(&allowed, target, &request.headroom)
+        .err()
+        .map_or_else(|| "not eligible".into(), |error| error.to_string());
+    let hip = require_hip(&allowed)
+        .err()
+        .map_or_else(|| "not eligible".into(), |error| error.to_string());
+    Err(Error::Unsupported(format!(
+        "No eligible original-source Qwen GPU route. CUDA: {cuda}; ROCm/HIP: {hip}. Select an eligible device or a supported GGUF for CPU."
+    )))
+}
+
 #[cfg(feature = "acquisition")]
 pub(super) fn preflight_acquisition(
     request: &Request,
@@ -405,9 +432,13 @@ fn require_cuda(devices: &[devices::Observation], target: &str, headroom: &Headr
                     .unwrap_or_else(|| "unknown".into())
             )));
         }
-        if cuda_fit(device, headroom)? < 5 * GIB {
-            return Err(Error::Limit(
-                "current Qwen CUDA source path requires 5 GiB available VRAM after headroom".into(),
+        let available = cuda_fit(device, headroom)?;
+        if available < 5 * GIB {
+            return Err(Error::resource(
+                "CUDA VRAM after headroom",
+                "original-source Qwen admission",
+                5 * GIB,
+                available,
             ));
         }
         Ok(())

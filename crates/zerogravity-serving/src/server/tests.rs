@@ -132,6 +132,7 @@ struct Script {
     requests: Mutex<Vec<(Request, Vec<ServingCharge>)>>,
     cancellations: Mutex<Vec<CancelToken>>,
     raw_only: bool,
+    failure: Option<ServiceError>,
 }
 impl Script {
     fn new(host: ServingHost) -> Arc<Self> {
@@ -140,6 +141,7 @@ impl Script {
             requests: Mutex::new(Vec::new()),
             cancellations: Mutex::new(Vec::new()),
             raw_only: false,
+            failure: None,
         })
     }
 }
@@ -185,6 +187,18 @@ impl TextService for Script {
             ));
         }
         let (tx, rx) = mpsc::try_sync_channel(&self.host, "fixture", "events", 2)?;
+        if let Some(error) = &self.failure {
+            tx.try_send(ResponseEvent::Error(error.clone()))
+                .unwrap_or_else(|_| panic!("fixture channel"));
+            return Ok(RequestEvents::new(
+                12,
+                request.model,
+                rx,
+                test_support::cancel(&self.host),
+                None,
+                None,
+            ));
+        }
         if request.stream {
             tx.try_send(ResponseEvent::Text("transport fixture".into()))
                 .unwrap_or_else(|_| panic!("fixture channel"));
@@ -201,6 +215,108 @@ impl TextService for Script {
         let events = RequestEvents::new(12, request.model.clone(), rx, cancel, None, None);
         self.requests.lock().unwrap().push((request, ingress));
         Ok(events)
+    }
+}
+
+#[test]
+fn actual_http_and_sse_error_details_are_opt_in_authenticated_and_logs_are_safe() {
+    use zerogravity_engine::router::FailureDetails;
+    let _lock = test_support::lock();
+    let host = test_support::host();
+    let baseline = host.serving_bytes();
+    assert!(matches!(
+        ServerBuilder::from_service(test_support::idle(&host))
+            .enable_error_details(true)
+            .build(),
+        Err(Error::InvalidInput(_))
+    ));
+    for enabled in [false, true] {
+        let mut service = Script::new(host.clone());
+        Arc::get_mut(&mut service).unwrap().failure =
+            Some(ServiceError::inference(Error::Resource(
+                zerogravity_core::ResourceLimit::new("PRIVATE-PATH", "model admission", 4096, 2048)
+                    .with_scope("PRIVATE-SECRET"),
+            )));
+        let observations = Arc::new(Mutex::new(Vec::<FailureDetails>::new()));
+        let observed = Arc::clone(&observations);
+        let server = ServerBuilder::from_service(service)
+            .bind("127.0.0.1:0".parse().unwrap())
+            .api_key(Some("fixture-key".into()))
+            .enable_error_details(enabled)
+            .observe_errors(move |details| observed.lock().unwrap().push(details))
+            .build()
+            .unwrap()
+            .start()
+            .unwrap();
+        let address = server.local_addr();
+        let unauthorized = exchange(address, &get("/health", ""));
+        assert!(unauthorized.starts_with("HTTP/1.1 401"));
+        assert!(document(&unauthorized)["error"].get("details").is_none());
+        let before_auth = exchange(
+            address,
+            "POST /v1/completions HTTP/1.1\r\nHost: localhost\r\nContent-Length: 999999999\r\n\r\n",
+        );
+        assert!(document(&before_auth)["error"].get("details").is_none());
+        for stream in [false, true] {
+            let body = format!(
+                r#"{{"model":"fixture","prompt":"hello","max_tokens":1,"stream":{stream}}}"#
+            );
+            let request = post("/v1/completions", &body).replacen(
+                "Host: localhost\r\n",
+                "Host: localhost\r\nAuthorization: Bearer fixture-key\r\n",
+                1,
+            );
+            let response = exchange(address, &request);
+            let error = if stream {
+                assert!(response.starts_with("HTTP/1.1 200"));
+                let line = response
+                    .lines()
+                    .find(|line| line.starts_with("data: ") && line.contains("\"error\""))
+                    .unwrap();
+                serde_json::from_str::<serde_json::Value>(&line[6..]).unwrap()["error"].clone()
+            } else {
+                assert!(response.starts_with("HTTP/1.1 503"));
+                document(&response)["error"].clone()
+            };
+            assert_eq!(error["code"], "resource_exhausted");
+            assert_eq!(error["type"], "server_error");
+            assert!(!error["message"].as_str().unwrap().contains("PRIVATE"));
+            if enabled {
+                assert_eq!(error["details"]["status"], 503);
+                assert_eq!(error["details"]["requested_bytes"], 4096);
+                assert_eq!(error["details"]["available_bytes"], 2048);
+                assert!(
+                    error["details"]["diagnostic"]
+                        .as_str()
+                        .unwrap()
+                        .contains("PRIVATE-PATH")
+                );
+            } else {
+                assert!(error.get("details").is_none());
+                assert!(!response.contains("PRIVATE"));
+            }
+        }
+        server.shutdown().unwrap();
+        let entries = observations.lock().unwrap();
+        assert_eq!(
+            entries
+                .iter()
+                .filter(|d| d.code == "resource_exhausted")
+                .count(),
+            2
+        );
+        assert!(
+            entries
+                .iter()
+                .filter(|d| d.code == "resource_exhausted")
+                .all(|d| d.requested_bytes == Some(4096) && d.available_bytes == Some(2048))
+        );
+        assert!(
+            !serde_json::to_string(&*entries)
+                .unwrap()
+                .contains("PRIVATE")
+        );
+        assert_eq!(host.serving_bytes(), baseline);
     }
 }
 

@@ -198,7 +198,9 @@ fn external_sdk_compiles_without_cli_or_concrete_model_features() {
         let _also_builder = zerogravity::serving::ServerBuilder::new(runtime.clone());
         let _runtime_builder = runtime.server();
         assert!(server.address().ip().is_loopback());
-        assert!(matches!(server.start(), Err(Error::Limit(_))));
+        assert!(
+            matches!(server.start(), Err(Error::Unsupported(message)) if message == "no text scheduler configured")
+        );
     }
     runtime.shutdown().unwrap();
     assert!(matches!(
@@ -1702,6 +1704,7 @@ fn control_clients_share_exact_model_and_listener_lifecycle() {
             limits: Default::default(),
             api_key: None,
             enable_per_request_metrics: false,
+            enable_error_details: false,
             prefix_sharing_scope: None,
         };
         let ControlReply::Serving(binding) = first
@@ -1739,6 +1742,32 @@ fn control_clients_share_exact_model_and_listener_lifecycle() {
             "{response}"
         );
         drop(connection);
+        let mut connection = TcpStream::connect(binding.address).unwrap();
+        connection
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        connection
+            .write_all(
+                b"GET /not-an-endpoint HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+            )
+            .unwrap();
+        let mut refusal = String::new();
+        connection.read_to_string(&mut refusal).unwrap();
+        assert!(refusal.starts_with("HTTP/1.1 404"));
+        assert!(!refusal.contains("\"details\""));
+        expect_event(
+            &mut observer,
+            &mut other_observer,
+            ControlEventKind::ServeRequestFailed {
+                generation: binding.generation,
+                details: zerogravity::runtime::text::ServiceError::new(
+                    404,
+                    "not_found",
+                    "not exposed",
+                )
+                .details(),
+            },
+        );
         second
             .dispatch(ControlAction::StopServing {
                 generation: binding.generation,

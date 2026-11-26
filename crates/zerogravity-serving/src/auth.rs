@@ -16,7 +16,7 @@ pub fn validate_key(key: Option<&str>) -> Result<()> {
     if key.is_some_and(|key| {
         key.is_empty() || key.len() > 1024 || !key.bytes().all(|b| b.is_ascii_graphic())
     }) {
-        return Err(Error::Malformed(
+        return Err(Error::InvalidInput(
             "bearer token must be 1..=1024 visible ASCII bytes".into(),
         ));
     }

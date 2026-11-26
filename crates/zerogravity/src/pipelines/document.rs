@@ -263,6 +263,7 @@ pub struct ServeDoc {
     pub host_mib: Option<usize>,
     pub max_pending_requests: Option<usize>,
     pub enable_per_request_metrics: Option<bool>,
+    pub enable_error_details: Option<bool>,
 }
 
 #[derive(Clone, Debug, Deserialize)]

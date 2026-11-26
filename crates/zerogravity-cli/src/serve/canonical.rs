@@ -86,7 +86,7 @@ impl Invocation {
             }
             if matches!(
                 flag,
-                "--pull" | "--offline" | "--enable-per-request-metrics"
+                "--pull" | "--offline" | "--enable-per-request-metrics" | "--enable-error-details"
             ) {
                 if inline.is_some() {
                     return Err(invalid("serve switch takes no value"));
@@ -98,6 +98,10 @@ impl Invocation {
                     }
                     "--offline" => {
                         p.offline = true;
+                        p.canonical = true;
+                    }
+                    "--enable-error-details" => {
+                        p.settings.enable_error_details = Some(true);
                         p.canonical = true;
                     }
                     _ => p.settings.enable_per_request_metrics = Some(true),
@@ -254,7 +258,8 @@ impl Invocation {
             workers,
             active_per_worker,
             host_mib,
-            enable_per_request_metrics
+            enable_per_request_metrics,
+            enable_error_details
         );
         #[cfg(not(test))]
         crate::output::install_document(preferences.0);
@@ -284,6 +289,7 @@ pub(super) fn run(
     let listener = Listener::new(
         settings.listen.as_deref().unwrap_or("127.0.0.1:8000"),
         settings.enable_per_request_metrics.unwrap_or(false),
+        settings.enable_error_details.unwrap_or(false),
     )?;
     let offer = crate::run_cli::input::interaction().map_err(core)? && !offline && ask_before_pull;
     let Some(plan) = crate::resident::prepare(

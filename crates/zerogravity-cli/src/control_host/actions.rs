@@ -103,7 +103,12 @@ impl Slot {
         let summary = job.summary();
         let response = job.sample(None);
         let settings = job.settings;
-        let (state, message) = match job.join() {
+        let result = job.join();
+        let details = result
+            .as_ref()
+            .err()
+            .map(zerogravity::runtime::text::FailureDetails::core);
+        let (state, message) = match result {
             Ok(Completed::Message(message)) => ("completed", message),
             #[cfg(all(feature = "cache", target_os = "linux"))]
             Ok(Completed::Refused {
@@ -127,7 +132,7 @@ impl Slot {
             } else { safe_error(&error) }.into()),
         };
         self.logs
-            .finish(summary.id, summary.title, state == "completed");
+            .finish(summary.id, summary.title, state == "completed", details);
         self.latest = Some(WebResult {
             summary,
             state,
@@ -281,7 +286,11 @@ impl Actions {
         let success = result.is_ok();
         #[cfg(all(feature = "cache", target_os = "linux"))]
         let success = success && !matches!(&result, Ok(Completed::Refused { .. }));
-        slot.logs.finish(id, title, success);
+        let details = result
+            .as_ref()
+            .err()
+            .map(zerogravity::runtime::text::FailureDetails::core);
+        slot.logs.finish(id, title, success, details);
         slot.changed();
         (response, Some(result))
     }
@@ -345,8 +354,9 @@ fn safe_error(error: &Error) -> &'static str {
         Error::Io(_) => {
             "Source or local I/O unavailable; inspect the selected cache/configuration in the native client."
         }
-        Error::Malformed(_) => {
-            "The original source, configuration or request validator refused this action."
+        Error::Malformed(_) => "The original source or artifact validator refused this action.",
+        Error::InvalidInput(_) => {
+            "The configuration or request is invalid; check the selected settings and input."
         }
         Error::Unsupported(_) => {
             "The selected source or execution route is unavailable; check the cached model and compiled backend."

@@ -27,7 +27,66 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — UX-P4A2 final ergonomics (26 Nov)
+### Current checkpoint — full native CLI defaults and typed error diagnostics (26 Nov)
+
+User requested sane full-production Cargo defaults and accurate failure
+classification after pvl-a1 original-source load reported missing CUDA/ROCm
+as a malformed model. User also requested optional HTTP diagnostic metadata,
+hidden from public responses by default and carried in operational logs.
+
+- CLI default = ["all"], existing production all-models/all-backends plus
+  acquisition, serve, TUI, Web. CPU/CUDA/HIP/Vulkan and current Qwen/Gemma
+  source/model features; no experimental attention or diagnostic/qualification
+  features. Facade embedding defaults and explicit portable CPU Nix/release
+  definitions unchanged. No physical capability grant: CUDA source still
+  SM86-qualified, HIP needs eligible AMD and runtime, Gemma source contract
+  is not native inference qualification. Explicit --no-default-features
+  remains supported; default feature graph/compile added to GPU boundary gate.
+- engine router/error.rs owns ServiceError conversion and FailureDetails.
+  Retain original core failure through shared Arc on error path, including
+  concrete resource budget and I/O causes. InvalidInput distinct from
+  malformed artifact; synthetic service errors classified by code, then
+  status fallback, no invented resource amount. Native original-source
+  preflight reports missing backends, unsupported source/device and exact
+  CUDA capacity; no qualification/selection or admission guard relaxed.
+- One ordinary HTTP/SSE error projection: original status/code/type and
+  fixed safe public message. serve.enable_error_details false by default,
+  --enable-error-details or typed native config; explicit loopback listener
+  with configured bearer key required before loading/listening. Only
+  successfully authenticated requests get error.details (safe metadata,
+  bounded diagnostic and up to three causes). Pre-auth/framing/admission
+  errors always redacted. Browser-safe editor cannot enable diagnostics.
+  Trusted debugging only, not an untrusted reverse-proxied endpoint.
+- FailureDetails contains safe category/code/status and measured requested/
+  available bytes/OS code when present, no arbitrary text. Listener's
+  optional error observer captures only the existing bounded control event
+  ring, tagged by listener generation. Shared native/Web operational logs
+  retain structured metadata regardless of HTTP detail setting, expose
+  details on demand, never raw error paths/prompts/credentials. Original
+  full diagnostic remains in native error/CLI. No new runtime/history owner.
+- Focused core/engine/serving 190/108/27, SDK 5, native CLI 63/0/3,
+  CLI grammar 15, config 1, pipeline 13 passed across final affected suites.
+  Actual loopback HTTP and SSE failure test checks authenticated opt-in,
+  public and pre-auth redaction and safe observer data. Existing SDK
+  assertion updated from generic limit to exact unconfigured-runtime
+  refusal. New config test uses valid separate serving profile; original
+  run-only context fixture retained. Native log filter test checks failure
+  metadata before unrelated registration filtering. Minimal and combined
+  CPU-feature strict lint, JS build/tests and default cargo check passed.
+  Linked default cargo run --version reached final CLI compilation but
+  timed out at 300s; linked launch and doctor not yet verified. New
+  control-listener event assertion in cached SDK fixture awaits P4B.
+  Full-production strict lint exposed existing GPU primitive dead-code/
+  Clippy debt; not removed/hidden. Full workspace gate, assembled actual
+  model/client acceptance and hardware qualification remain pending.
+- Logs: target/ux-default-error-chain-check.log,
+  target/ux-default-production.log, target/ux-error-details-final.log,
+  target/ux-error-default-acceptance.log, target/ux-error-default-finish.log.
+  Next P4B full isolated gate and resident/transfer/config acceptance;
+  public serving remains dormant. Keep error projection and defaults in
+  subsequent serving design.
+
+### Previous checkpoint — UX-P4A2 final ergonomics (26 Nov; 0ee66351)
 
 Toolbar-free/object-first layout retained; no new permanent chrome.
 

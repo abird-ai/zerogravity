@@ -403,6 +403,11 @@ pub fn explain(path: &Path, bytes: &[u8]) -> Result<BTreeMap<String, Setting>> {
         yaml(serve.enable_per_request_metrics.unwrap_or(false)),
         None,
     )?;
+    add(
+        "serve.enable_error_details",
+        yaml(serve.enable_error_details.unwrap_or(false)),
+        None,
+    )?;
     Ok(rows)
 }
 

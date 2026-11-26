@@ -834,16 +834,9 @@ pub(crate) fn submit_text(
     )
 }
 
-/// Legacy SDK error categories; structured task callers keep the actual code.
+/// Legacy SDK conversion uses the same typed service-error boundary.
 pub(crate) fn task_error(error: ServiceError) -> Error {
-    match error.code {
-        "runtime_unconfigured" => Error::Unsupported(error.message),
-        "runtime_closed" | "runtime_state" | "stale_pipeline" | "model_retired" => {
-            Error::State(error.message)
-        }
-        "limit_exceeded" => Error::Limit(error.message),
-        _ => error.into_core(),
-    }
+    error.into_core()
 }
 
 pub(crate) fn service_error(error: ServiceError) -> Error {

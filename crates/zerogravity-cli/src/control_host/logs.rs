@@ -1,6 +1,7 @@
 //! Bounded operational observations; no prompts, model text or credentials.
 use std::collections::VecDeque;
 use zerogravity::control::{ControlEvent, ControlEventKind, ReclaimStatus};
+use zerogravity::runtime::text::FailureDetails;
 
 pub(crate) const CAPACITY: usize = 128;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -61,6 +62,7 @@ pub(crate) struct Entry {
     pub component: Component,
     pub correlation: String,
     pub message: String,
+    pub details: Option<FailureDetails>,
 }
 #[cfg(feature = "tui")]
 impl Entry {
@@ -108,6 +110,7 @@ impl Ring {
             component,
             correlation,
             message: message.into(),
+            details: None,
         });
     }
     pub fn start(&mut self, id: u64, title: &str, correlation: String) {
@@ -118,7 +121,7 @@ impl Ring {
             format!("{title} started"),
         );
     }
-    pub fn finish(&mut self, id: u64, title: &str, success: bool) {
+    pub fn finish(&mut self, id: u64, title: &str, success: bool, details: Option<FailureDetails>) {
         self.push(
             if success { Level::Info } else { Level::Error },
             Component::Action,
@@ -132,6 +135,7 @@ impl Ring {
                 }
             ),
         );
+        self.entries.back_mut().expect("pushed entry").details = details;
     }
     pub fn cancel(&mut self, id: u64) {
         self.push(
@@ -199,6 +203,23 @@ impl Ring {
                 "reclaim".into(),
                 format!("Reclamation {outcome:?}"),
             ),
+            E::ServeRequestFailed {
+                generation,
+                details,
+            } => {
+                self.push(
+                    if details.status.is_some_and(|status| status >= 500) {
+                        Level::Error
+                    } else {
+                        Level::Warning
+                    },
+                    Component::Serve,
+                    format!("event {} · generation {generation}", event.sequence),
+                    details.public_message(),
+                );
+                self.entries.back_mut().expect("pushed entry").details = Some(details);
+                return;
+            }
             E::ServeStartFinished { success } => (
                 outcome(success),
                 Component::Serve,

@@ -481,6 +481,14 @@ Retain accepted UX-1–10 ownership and keyboard behavior.
     dialogs and palette, editor edge selection. 18 focused TUI tests,
     optimized 91/0/3, strict lint, 20x7 native PTY and all native/
     controlled and simultaneous Firefox transfer regressions passed.
+  - [x] User follow-up: full production Cargo CLI default (all current
+    models/CPU/CUDA/HIP/Vulkan/acquisition/serve/TUI/Web), explicit
+    minimal/portable CPU profiles retained. Accurate original-source
+    eligibility errors and typed service/core translation; measured
+    resource/I/O causes preserved. Safe HTTP/SSE default, authenticated
+    opt-in details and safe native/Web operational log metadata.
+    Core/engine/serving, SDK, CLI/config/pipeline focused regressions and
+    full default cargo check passed. Full-GPU lint debt remains separate.
   - [ ] P4B full simultaneous owner regressions and isolated gate.
 
 Deferred public serving until UX-P exit. Optional terminal background

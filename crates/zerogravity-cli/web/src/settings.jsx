@@ -151,7 +151,7 @@ export function Logs(props) {
       <select aria-label="Log level" value={level()} onChange={event=>setLevel(event.currentTarget.value)}><option value="">All levels</option><For each={["INFO","WARN","ERROR"]}>{name=><option>{name}</option>}</For></select>
       <select aria-label="Log component" value={component()} onChange={event=>setComponent(event.currentTarget.value)}><option value="">All components</option><For each={["action","models","requests","serve","cache","download","control"]}>{name=><option>{name}</option>}</For></select>
     </div>
-    <div class="log-rows"><For each={rows()}>{row=><div class="log-row"><span class="mono subtle">#{row.sequence}</span><span class="mono">{row.level}</span><span>{row.component}</span><span class="wrap">{row.message}<small class="subtle"> · {row.correlation}</small></span></div>}</For></div>
+    <div class="log-rows"><For each={rows()}>{row=><div class="log-row"><span class="mono subtle">#{row.sequence}</span><span class="mono">{row.level}</span><span>{row.component}</span><span class="wrap">{row.message}<small class="subtle"> · {row.correlation}</small><Show when={row.details}>{detail=><details><summary class="subtle">Details</summary><pre class="mono wrap">{JSON.stringify(detail(),null,2)}</pre></details>}</Show></span></div>}</For></div>
     <Show when={!rows().length}><p class="subtle">{data() ? "No matching operational observations." : "Waiting for operational observations…"}</p></Show>
   </section>;
 }

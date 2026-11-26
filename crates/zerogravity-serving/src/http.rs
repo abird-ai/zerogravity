@@ -18,13 +18,14 @@ use zerogravity_engine::router::token_metrics::json_allocation::{
 };
 use zerogravity_engine::router::token_metrics::{TokenMetrics, validate_wire_id};
 use zerogravity_engine::router::{
-    Request, RequestEvents, ResponseEvent, ServiceError, TokenMetricsRequest,
+    FailureDetails, Request, RequestEvents, ResponseEvent, ServiceError, TokenMetricsRequest,
 };
 use zerogravity_engine::state_cache::PrefixSharingScope;
 
 pub(crate) struct ServeConfig {
     pub api_key: Option<String>,
     pub enable_per_request_metrics: bool,
+    pub errors: ErrorReporting,
     pub prefix_sharing_scope: Option<PrefixSharingScope>,
     pub limits: IngressLimits,
 }
@@ -741,12 +742,60 @@ fn parse_body(
         include_usage,
     ))
 }
-fn error_json(e: &ServiceError) -> Value {
-    json!({"error":{
-        "message":e.message,
+/// One opt-in reporting policy for ordinary HTTP and streaming errors.
+/// The observer receives only safe bounded metadata, never raw messages.
+pub(crate) type ErrorObserver = Arc<dyn Fn(FailureDetails) + Send + Sync>;
+#[derive(Clone, Default)]
+pub(crate) struct ErrorReporting {
+    pub details: bool,
+    pub observer: Option<ErrorObserver>,
+}
+impl ErrorReporting {
+    fn report(&self, error: &ServiceError, authorized: bool) -> Value {
+        if let Some(observer) = &self.observer {
+            observer(error.details());
+        }
+        error_json(error, self.details && authorized)
+    }
+}
+fn diagnostic_text(value: &str) -> String {
+    // Only explicit, authenticated diagnostics use arbitrary error text.
+    value
+        .chars()
+        .take(512)
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .collect()
+}
+fn error_json(e: &ServiceError, details: bool) -> Value {
+    let metadata = e.details();
+    let mut value = json!({"error":{
+        "message":metadata.public_message(),
         "type":if e.status >= 500 {"server_error"} else {"invalid_request_error"},
         "code":e.code
-    }})
+    }});
+    if details {
+        use std::error::Error as _;
+        let mut diagnostic = serde_json::to_value(metadata).expect("fixed failure metadata");
+        let message = diagnostic_text(&e.message);
+        let mut causes = Vec::new();
+        let mut cause = e.source();
+        for _ in 0..3 {
+            let Some(error) = cause else {
+                break;
+            };
+            let text = diagnostic_text(&error.to_string());
+            if text != message && causes.last() != Some(&text) {
+                causes.push(text);
+            }
+            cause = error.source();
+        }
+        diagnostic["diagnostic"] = json!(message);
+        if !causes.is_empty() {
+            diagnostic["causes"] = json!(causes);
+        }
+        value["error"]["details"] = diagnostic;
+    }
+    value
 }
 fn status_text(code: u16) -> &'static str {
     match code {
@@ -819,6 +868,7 @@ fn stream_events(
     chat: bool,
     include_usage: bool,
     shutdown: &AtomicBool,
+    errors: &ErrorReporting,
 ) -> std::io::Result<()> {
     check_running(shutdown).map_err(|error| std::io::Error::other(error.message))?;
     let id = format!("chatcmpl-zg-{}", req.id);
@@ -854,11 +904,10 @@ fn stream_events(
         if started.elapsed() > RESPONSE_TIMEOUT {
             sse(
                 stream,
-                &error_json(&ServiceError::new(
-                    504,
-                    "timeout",
-                    "stream generation deadline reached",
-                )),
+                &errors.report(
+                    &ServiceError::new(504, "timeout", "stream generation deadline reached"),
+                    true,
+                ),
             )?;
             break;
         }
@@ -870,16 +919,19 @@ fn stream_events(
                 let Some(observations) = metrics.as_mut() else {
                     sse(
                         stream,
-                        &error_json(&ServiceError::new(
-                            500,
-                            "unexpected_token_observation",
-                            "unrequested token observation",
-                        )),
+                        &errors.report(
+                            &ServiceError::new(
+                                500,
+                                "unexpected_token_observation",
+                                "unrequested token observation",
+                            ),
+                            true,
+                        ),
                     )?;
                     break;
                 };
                 if let Err(error) = observations.record(token) {
-                    sse(stream, &error_json(&error))?;
+                    sse(stream, &errors.report(&error, true))?;
                     break;
                 }
                 let choice = if chat {
@@ -915,7 +967,7 @@ fn stream_events(
                     match observations.finish(completion_tokens) {
                         Ok(value) => Some(value),
                         Err(error) => {
-                            sse(stream, &error_json(&error))?;
+                            sse(stream, &errors.report(&error, true))?;
                             break;
                         }
                     }
@@ -946,7 +998,7 @@ fn stream_events(
                 break;
             }
             Ok(ResponseEvent::Error(error)) => {
-                sse(stream, &error_json(&error))?;
+                sse(stream, &errors.report(&error, true))?;
                 break;
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {
@@ -969,11 +1021,14 @@ fn stream_events(
             Err(mpsc::RecvTimeoutError::Disconnected) => {
                 sse(
                     stream,
-                    &error_json(&ServiceError::new(
-                        503,
-                        "worker_unavailable",
-                        "worker disconnected before completion",
-                    )),
+                    &errors.report(
+                        &ServiceError::new(
+                            503,
+                            "worker_unavailable",
+                            "worker disconnected before completion",
+                        ),
+                        true,
+                    ),
                 )?;
                 break;
             }
@@ -982,16 +1037,7 @@ fn stream_events(
     chunk(stream, "data: [DONE]\n\n")?;
     stream.write_all(b"0\r\n\r\n")
 }
-fn respond(
-    stream: &mut Wire<'_>,
-    mut req: HttpRequest,
-    router: &dyn TextService,
-    api_key: Option<&str>,
-    enable_per_request_metrics: bool,
-    prefix_sharing_scope: Option<PrefixSharingScope>,
-    shutdown: &AtomicBool,
-) -> Result<(), ServiceError> {
-    check_running(shutdown)?;
+fn authorize(req: &HttpRequest, api_key: Option<&str>) -> Result<(), ServiceError> {
     if let Some(expected) = api_key {
         let got = req
             .header("authorization")
@@ -1012,6 +1058,18 @@ fn respond(
             ));
         }
     }
+    Ok(())
+}
+fn respond(
+    stream: &mut Wire<'_>,
+    mut req: HttpRequest,
+    router: &dyn TextService,
+    errors: &ErrorReporting,
+    enable_per_request_metrics: bool,
+    prefix_sharing_scope: Option<PrefixSharingScope>,
+    shutdown: &AtomicBool,
+) -> Result<(), ServiceError> {
+    check_running(shutdown)?;
     if req.method == "GET" && req.path == "/health" {
         write_json(
             stream,
@@ -1062,7 +1120,7 @@ fn respond(
         None => router.request_admitted(task, ingress)?,
     };
     if stream_response {
-        stream_events(stream, events, chat, include_usage, shutdown).map_err(|_| {
+        stream_events(stream, events, chat, include_usage, shutdown, errors).map_err(|_| {
             ServiceError::new(499, "client_closed", "streaming client disconnected")
         })?;
     } else {
@@ -1293,6 +1351,7 @@ struct ConnectionCaptures {
     router: Arc<dyn TextService>,
     api_key: Option<String>,
     enable_per_request_metrics: bool,
+    errors: ErrorReporting,
     prefix_sharing_scope: Option<PrefixSharingScope>,
     shutdown: Arc<AtomicBool>,
     limits: IngressLimits,
@@ -1311,13 +1370,16 @@ impl ConnectionCaptures {
             )
         });
         let mut wire = Wire::new(&mut self.stream, self.limits.output_bytes);
+        let mut authorized = false;
         let result = request.and_then(|req| {
             self.metrics.accept_request();
+            authorize(&req, self.api_key.as_deref())?;
+            authorized = self.api_key.is_some();
             respond(
                 &mut wire,
                 req,
                 self.router.as_ref(),
-                self.api_key.as_deref(),
+                &self.errors,
                 self.enable_per_request_metrics,
                 self.prefix_sharing_scope,
                 &self.shutdown,
@@ -1327,7 +1389,11 @@ impl ConnectionCaptures {
             Ok(()) => {}
             Err(error) if error.status == 499 || self.shutdown.load(Ordering::Acquire) => {}
             Err(error) => {
-                let _ = write_json(&mut wire, error.status, &error_json(&error));
+                let _ = write_json(
+                    &mut wire,
+                    error.status,
+                    &self.errors.report(&error, authorized),
+                );
             }
         }
     }
@@ -1371,6 +1437,7 @@ pub(crate) fn serve(
     let ServeConfig {
         api_key,
         enable_per_request_metrics,
+        errors,
         prefix_sharing_scope,
         limits,
     } = config;
@@ -1384,11 +1451,14 @@ pub(crate) fn serve(
                 let _ = write_json(
                     &mut Wire::new(&mut stream, limits.output_bytes),
                     503,
-                    &error_json(&ServiceError::new(
-                        503,
-                        "connections_full",
-                        "connection admission capacity reached",
-                    )),
+                    &errors.report(
+                        &ServiceError::new(
+                            503,
+                            "connections_full",
+                            "connection admission capacity reached",
+                        ),
+                        false,
+                    ),
                 );
                 return Ok(());
             }
@@ -1414,7 +1484,7 @@ pub(crate) fn serve(
                     let _ = write_json(
                         &mut Wire::new(&mut stream, limits.output_bytes),
                         error.status,
-                        &error_json(&error),
+                        &errors.report(&error, false),
                     );
                     return Ok(());
                 }
@@ -1424,6 +1494,7 @@ pub(crate) fn serve(
                 router: Arc::clone(&router),
                 api_key: api_key.as_deref().map(str::to_owned),
                 enable_per_request_metrics,
+                errors: errors.clone(),
                 prefix_sharing_scope,
                 shutdown: Arc::clone(&connections.shutdown),
                 limits,
@@ -1453,13 +1524,12 @@ mod tests {
 
     #[test]
     fn error_json_distinguishes_client_and_server_failures() {
-        let client = error_json(&ServiceError::new(400, "invalid_model", "bad model"));
+        let client = error_json(&ServiceError::new(400, "invalid_model", "bad model"), false);
         assert_eq!(client["error"]["type"], "invalid_request_error");
-        let server = error_json(&ServiceError::new(
-            503,
-            "resource_exhausted",
-            "VRAM exhausted",
-        ));
+        let server = error_json(
+            &ServiceError::new(503, "resource_exhausted", "VRAM exhausted"),
+            false,
+        );
         assert_eq!(server["error"]["type"], "server_error");
         assert_eq!(server["error"]["code"], "resource_exhausted");
     }
@@ -1694,6 +1764,7 @@ mod tests {
                 chat,
                 false,
                 &AtomicBool::new(false),
+                &ErrorReporting::default(),
             )
             .unwrap();
         });
@@ -1807,6 +1878,7 @@ mod tests {
                 true,
                 false,
                 &AtomicBool::new(false),
+                &ErrorReporting::default(),
             )
             .unwrap();
         });

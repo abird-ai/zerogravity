@@ -249,6 +249,7 @@ pub(super) fn connection(
                             "sequence": entry.sequence.to_string(),
                             "level": entry.level.label(), "component": entry.component.label(),
                             "correlation": entry.correlation, "message": entry.message,
+                            "details": entry.details,
                         })).collect::<Vec<_>>(),
                     })
                 });

@@ -333,7 +333,7 @@ fn execute(
             }
             let (request, settings) = resolve_request(document, &source, device.as_deref())?;
             if prompt.is_some() && request.graph.models.len() != 1 {
-                return Err(Error::Malformed("Quick run requires one source; load the configured route set and select an owner".into()));
+                return Err(Error::InvalidInput("Quick run requires one source; load the configured route set and select an owner".into()));
             }
             let alias = request.graph.models.first().map(|model| model.id.clone());
             let Some(plan) = resident::prepare(
@@ -412,6 +412,7 @@ fn execute(
                 let listener = crate::serve::Listener::new(
                     address,
                     settings.enable_per_request_metrics.unwrap_or(false),
+                    settings.enable_error_details.unwrap_or(false),
                 )
                 .map_err(|e| e.into_core())?;
                 if cancel.load(Ordering::Acquire) {

@@ -740,7 +740,10 @@ UX-1–10 remains accepted; this is additional presentation work.
   context menus and inline live local search, explicit Alt shortcuts.
   P4A2 identity scroll anchors, separate response, safe log details,
   compact scrollable dialogs/editor drag edges focused-qualified
-  (91/0/3 and native/shared transfer PTY). P4B final full gate.
+  (91/0/3 and native/shared transfer PTY). User follow-up: CLI Cargo
+  default full production, preserve typed errors and safe public/opt-in
+  authenticated diagnostic projection and structured logs. P4B final
+  full gate remains next.
 
 No new runtime, cache, configuration or execution owner. No inference
 protocol or backend performance work until this bounded polish exit.

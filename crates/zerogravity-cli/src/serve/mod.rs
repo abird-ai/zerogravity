@@ -51,6 +51,8 @@ struct YamlConfig {
     max_pending_requests: Option<usize>,
     #[serde(default)]
     enable_per_request_metrics: bool,
+    #[serde(default)]
+    enable_error_details: bool,
 }
 fn yaml_pending_limit<'de, D>(deserializer: D) -> Result<Option<usize>, D::Error>
 where
@@ -171,6 +173,7 @@ impl YamlConfig {
             native_batch_rows: 0,
             max_pending_requests: None,
             enable_per_request_metrics: false,
+            enable_error_details: false,
         };
         if args.first().is_some_and(|x| x == "--config") {
             if args.len() != 2 {
@@ -190,6 +193,10 @@ impl YamlConfig {
         while let Some(flag) = it.next() {
             if flag == "--enable-per-request-metrics" {
                 config.enable_per_request_metrics = true;
+                continue;
+            }
+            if flag == "--enable-error-details" {
+                config.enable_error_details = true;
                 continue;
             }
             let value = it.next().ok_or_else(|| {
@@ -285,7 +292,7 @@ pub(super) fn help() {
              [--host-mib 4096|8192] [--provider-mib 2048] [--device-mib 4096] \
              [--batch-mode interleaved|fused] [--batch-rows 2|4|8] \
              [--max-pending-requests N|none] \
-             [--enable-per-request-metrics]\n\
+             [--enable-per-request-metrics] [--enable-error-details]\n\
              ENDPOINTS: GET /health, GET /v1/models, \
              POST /v1/chat/completions, POST /v1/completions.\n\
              Qwen3.5 greedy text CPU or resident GPU, no inference fallback. \
@@ -320,9 +327,14 @@ pub(crate) struct Listener {
     address: SocketAddr,
     key: Option<String>,
     metrics: bool,
+    error_details: bool,
 }
 impl Listener {
-    pub(crate) fn new(listen: &str, metrics: bool) -> Result<Self, ServiceError> {
+    pub(crate) fn new(
+        listen: &str,
+        metrics: bool,
+        error_details: bool,
+    ) -> Result<Self, ServiceError> {
         let address: SocketAddr = listen.parse().map_err(|_| {
             ServiceError::new(400, "invalid_listen", "--listen requires numeric IP:PORT")
         })?;
@@ -338,10 +350,18 @@ impl Listener {
             .filter(|v| !v.is_empty());
         zerogravity::serving::auth::validate_key(key.as_deref())
             .map_err(ServiceError::inference)?;
+        if error_details && key.is_none() {
+            return Err(ServiceError::new(
+                400,
+                "invalid_config",
+                "--enable-error-details requires ZEROGRAVITY_API_KEY; use only for trusted local debugging",
+            ));
+        }
         Ok(Self {
             address,
             key,
             metrics,
+            error_details,
         })
     }
     pub(crate) fn options(self) -> zerogravity::control::ServeOptions {
@@ -353,13 +373,18 @@ impl Listener {
                 ..Default::default()
             },
             enable_per_request_metrics: self.metrics,
+            enable_error_details: self.error_details,
             prefix_sharing_scope: None,
         }
     }
 }
 
 fn legacy(options: YamlConfig, shutdown: &mut shutdown::Shutdown) -> Result<(), ServiceError> {
-    let listener = Listener::new(&options.listen, options.enable_per_request_metrics)?;
+    let listener = Listener::new(
+        &options.listen,
+        options.enable_per_request_metrics,
+        options.enable_error_details,
+    )?;
     let profile = options.profile();
     profile.validate()?;
     let max_active = options

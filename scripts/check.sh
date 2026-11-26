@@ -29,7 +29,7 @@ cpu_packages=(
 cpu_features='zerogravity-cli/cpu,zerogravity-cli/model-qwen35,zerogravity-cli/text,zerogravity-cli/tui,zerogravity-cli/web,zerogravity-cli/diagnostic-cpu-checkpoint,zerogravity/state-checkpoint,zerogravity-cli/diagnostic-gdn-trace,zerogravity-model-qwen35/source-binding,zerogravity/model-gemma4-text-reference,zerogravity-model-gemma4/text-tokenizer,zerogravity-cli/gemma4-cpu-candidate'
 cpu_args=(--locked --offline --no-default-features "${cpu_packages[@]}" --features "$cpu_features")
 
-echo "Checking workspace owners and default CPU dependency isolation..."
+echo "Checking workspace owners and explicit CPU dependency isolation..."
 python3 - <<'PYWORKSPACE'
 import json, subprocess
 metadata = json.loads(subprocess.check_output([
@@ -147,7 +147,7 @@ if [[ "$(uname -s)" == Linux ]]; then
   cargo test --locked --offline -p zerogravity-cli --no-default-features --features acquisition,diagnostic-acquisition --all-targets
 fi
 
-echo "Building the default CPU release CLI..."
+echo "Building the portable CPU release CLI..."
 cargo build --locked --offline --release --no-default-features -p zerogravity-cli --bin zerogravity --features cpu,model-qwen35,text,tui,web
 ./target/release/zerogravity --version
 

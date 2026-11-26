@@ -52,6 +52,10 @@ pub enum ControlEventKind {
     ServeStartFinished {
         success: bool,
     },
+    ServeRequestFailed {
+        generation: u64,
+        details: zerogravity_engine::router::FailureDetails,
+    },
     ServeStopFinished {
         generation: u64,
         success: bool,

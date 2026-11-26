@@ -32,7 +32,7 @@ use std::{net::SocketAddr, path::Path};
 
 #[derive(Default)]
 pub(crate) struct ControlState {
-    events: events::Events,
+    events: std::sync::Arc<events::Events>,
     #[cfg(all(feature = "acquisition", target_os = "linux"))]
     downloads: downloads::Downloads,
     #[cfg(feature = "serve")]
