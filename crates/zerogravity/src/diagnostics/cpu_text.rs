@@ -168,7 +168,9 @@ fn generate_inner(
         ));
     }
     let mut engine = model_source.new_session()?;
-    let tokens = tokenizer.prompt_tokens(&prompt, !raw)?;
+    let input = zerogravity_core::task::TextInput::from_text(prompt, !raw);
+    let tokens = tokenizer.semantic_prompt_tokens(&input)?;
+    drop(input);
     if tokens.is_empty() {
         return Err(crate::Error::Malformed("prompt tokenization empty".into()));
     }

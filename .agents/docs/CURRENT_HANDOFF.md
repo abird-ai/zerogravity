@@ -34,7 +34,56 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — OA-1 accepted; OA-2 semantic request next (27 Nov)
+### Current checkpoint — OA-2 accepted; OA-3 Models and Responses text next (27 Nov)
+
+Started from clean signed 3f8329f2 on L5. Core task text intent now has
+ChatRole, ChatMessage and TextInput::{Raw, User, Conversation}. Engine
+SemanticRequest retains the original model/output/stream/token-observation
+controls and RequestLease/Scheduled/Active ownership. Legacy Request and
+borrowed TextTask converge at canonical semantic admission; existing
+ResponseEvent already provides typed text, token, terminal and error events.
+No duplicate registry, runtime, scheduler, queue, model owner or event
+publication. Existing direct CPU diagnostic runner uses the same model
+intent/renderer without changing its physical/audit executor.
+
+HTTP copies validated typed turns and charges their exact vector/text
+backing rather than model-specific ChatML. Original selected source reader
+and queue/host admission precede model-owned template measurement and
+worker tokenization. PromptBounds prices exact rendered conversation bytes,
+prompt tokens and existing admitted tokenizer scratch; enforce 1 MiB
+rendered ceiling and configured Runtime input-byte ceiling. Raw and
+legacy single-text input contracts stay intact. Qwen tokenizer owns the
+existing qualified ChatML spelling and assistant prefix, supports the
+four existing text roles, preserves order and exact UTF-8. Typed chat
+refuses literal role delimiters, now including CLI/SDK single-user chat;
+explicit raw prompt remains raw. No arbitrary Jinja/template execution,
+media/tool content or new model support. Legacy TextService/TextTokenizer
+adapters keep single-text methods; structured conversation requires an
+explicit implementation. PreparedModel validation now takes SemanticRequest.
+Public facade request_semantic returns the original typed cancellation
+receipt. Original text events are retained rather than inventing another
+protocol event stream.
+
+Focused final engine/serving 163/0/0, strict lint; Qwen tokenizer suite
+7/0/0 and explicit cached approved-tokenizer 1/0/0 (5.02s) passed,
+including exact single/multi-turn token IDs versus previous raw framing.
+Real CLI/TUI/Web and SDK regressions compare structured and previous
+raw prompts, same alias owner and usage, single-user SDK equivalence,
+model-owned role-token refusal and rendered configured byte cap. Actual cached CLI/TUI/Web and SDK regressions passed (67.77s and 15.85s).
+Full isolated assembled gate exited 0 (878.6s): 2,553/0/109 across 318
+Rust suites, release TUI/Web, installer and scripts passed. Subsequent
+non-behavioral import cleanup and public PromptBounds re-export passed
+finite CUDA qualification compilation and CPU facade strict lint
+(`target/oa2-export-cleanup.log`). Logs:
+`target/oa2-focused-final.log`, `target/oa2-focused.log`,
+`target/oa2-approved-tokenizer.log`, `target/oa2-real-consumers-final.log`,
+`target/oa2-assembled-final.log`. Initial broad validation cancelled to
+preserve configured rendered chat cap before final acceptance. Exact Nix
+source-integrity remains separately blocked by unavailable locked inputs.
+No new physical GPU/performance claim. OA-2 accepted. Next: OA-3 Models
+and Responses text with the same semantic boundary and original scheduler.
+
+### Prior checkpoint — OA-1 accepted; OA-2 semantic request next (27 Nov)
 
 Started from clean signed 715127cc on L5. Acquired only multer 3.1.0
 from crates.io after user continuation of the explicit dependency request.

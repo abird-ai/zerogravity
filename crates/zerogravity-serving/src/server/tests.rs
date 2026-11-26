@@ -11,7 +11,7 @@ use std::{
     time::{Duration, Instant},
 };
 use zerogravity_engine::router::{
-    ResponseEvent,
+    ChatMessage, ChatRole, ResponseEvent, SemanticRequest, TextInput,
     event_channel::mpsc,
     pending::{CancelToken, ServingHost},
 };
@@ -130,7 +130,7 @@ fn configured_connection_and_body_limits_are_real_and_drop_joins() {
 
 struct Script {
     host: ServingHost,
-    requests: Mutex<Vec<(Request, Vec<ServingCharge>)>>,
+    requests: Mutex<Vec<(SemanticRequest, Vec<ServingCharge>)>>,
     cancellations: Mutex<Vec<CancelToken>>,
     raw_only: bool,
     failure: Option<ServiceError>,
@@ -180,6 +180,16 @@ impl TextService for Script {
         request: Request,
         ingress: Vec<ServingCharge>,
     ) -> std::result::Result<RequestEvents, ServiceError> {
+        self.request_semantic_admitted(request.into(), ingress)
+    }
+    fn request_semantic_admitted(
+        &self,
+        request: SemanticRequest,
+        ingress: Vec<ServingCharge>,
+    ) -> std::result::Result<RequestEvents, ServiceError> {
+        if request.input.is_chat() {
+            self.validate_chat(&request.model)?;
+        }
         if request.model != "fixture" {
             return Err(ServiceError::new(
                 404,
@@ -426,9 +436,11 @@ fn actual_json_and_chunked_sse_use_one_service_and_preserve_chat_framing() {
     assert_eq!(requests[0].0.max_tokens, 4);
     assert_eq!(
         requests[1].0.input,
-        "<|im_start|>user\nhello<|im_end|>\n<|im_start|>assistant\n"
+        TextInput::Conversation(vec![ChatMessage {
+            role: ChatRole::User,
+            text: "hello".into()
+        }])
     );
-    assert!(!requests[1].0.chat);
     drop(requests);
     let refusal = exchange(
         address,
@@ -824,13 +836,16 @@ fn chunked_text_routes_admit_only_after_complete_body_and_reuse_connection() {
     assert!(result.contains("transport fixture") && result.ends_with("data: [DONE]\n\n"));
     let requests = service.requests.lock().unwrap();
     assert_eq!(requests.len(), 2);
-    assert_eq!(requests[0].0.input, "hello");
-    assert!(!requests[0].0.chat && !requests[0].0.stream);
+    assert_eq!(requests[0].0.input, TextInput::Raw("hello".into()));
+    assert!(!requests[0].0.input.is_chat() && !requests[0].0.stream);
     assert_eq!(
         requests[1].0.input,
-        "<|im_start|>user\nhéllo<|im_end|>\n<|im_start|>assistant\n"
+        TextInput::Conversation(vec![ChatMessage {
+            role: ChatRole::User,
+            text: "héllo".into()
+        }])
     );
-    assert!(!requests[1].0.chat && requests[1].0.stream);
+    assert!(requests[1].0.input.is_chat() && requests[1].0.stream);
     drop(requests);
     assert_eq!(server.metrics().active_connections, 1);
     assert_eq!(server.metrics().accepted_requests, 3);

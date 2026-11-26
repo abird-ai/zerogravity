@@ -450,9 +450,6 @@ impl Connection {
                 Some(host.service.as_ref()),
                 &mut ingress,
             )?;
-            if chat {
-                host.service.validate_chat(&task.model)?;
-            }
             bind_token_metrics(
                 &mut task,
                 header_value(&parts.headers, "x-request-id"),
@@ -464,8 +461,10 @@ impl Connection {
             drop(parts);
             host.shutdown.check()?;
             let events = match host.config.prefix_sharing_scope {
-                Some(scope) => host.service.request_admitted_scoped(task, ingress, scope)?,
-                None => host.service.request_admitted(task, ingress)?,
+                Some(scope) => host
+                    .service
+                    .request_semantic_admitted_scoped(task, ingress, scope)?,
+                None => host.service.request_semantic_admitted(task, ingress)?,
             };
             if stream {
                 Ok(body::streaming(

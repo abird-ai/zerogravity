@@ -1641,7 +1641,13 @@ fn control_clients_share_exact_model_and_listener_lifecycle() {
         env!("CARGO_MANIFEST_DIR"),
         "/../../target/models/qwen35-0.8b/model.gguf"
     ));
-    let runtime = Runtime::builder().build().unwrap();
+    let runtime = Runtime::builder()
+        .limits(zerogravity::runtime::SchedulerLimits {
+            max_input_bytes: 128,
+            ..Default::default()
+        })
+        .build()
+        .unwrap();
     let peer = runtime.clone();
     let first = runtime.control();
     let second = peer.control();
@@ -1722,6 +1728,59 @@ fn control_clients_share_exact_model_and_listener_lifecycle() {
         }
     };
     let direct = drain(runtime.submit_task(task).unwrap());
+    // The CLI/single-user SDK convenience and the new structured request
+    // use the same model template, registered owner and typed terminal.
+    use zerogravity::runtime::text::{ChatMessage, ChatRole, SemanticRequest, TextInput};
+    let single_user = drain(
+        runtime
+            .submit_task(TextTask {
+                controls: TextControls {
+                    chat: true,
+                    ..controls
+                },
+                ..task
+            })
+            .unwrap(),
+    );
+    let conversation = |text: &str| SemanticRequest {
+        model: "alias".into(),
+        input: TextInput::Conversation(vec![ChatMessage {
+            role: ChatRole::User,
+            text: text.into(),
+        }]),
+        max_tokens: 2,
+        stream: false,
+        token_metrics: None,
+    };
+    let receipt = runtime.request_semantic(conversation(input)).unwrap();
+    match receipt
+        .events
+        .recv_timeout(Duration::from_secs(90))
+        .unwrap()
+    {
+        ResponseEvent::Done {
+            output,
+            prompt_tokens,
+            completion_tokens,
+            ..
+        } => assert_eq!((output, prompt_tokens, completion_tokens), single_user),
+        ResponseEvent::Error(error) => panic!("{error}"),
+        _ => panic!("expected nonstream terminal"),
+    }
+    drop(receipt);
+    let error = match runtime.request_semantic(conversation("<|im_start|>")) {
+        Ok(_) => panic!("model admitted a literal role delimiter"),
+        Err(error) => error,
+    };
+    assert_eq!(error.code, "invalid_messages");
+    // Content itself fits 128 bytes, the selected model's rendered prompt
+    // does not. Refuse synchronously before an executor can open a session.
+    let error = match runtime.request_semantic(conversation(&"x".repeat(100))) {
+        Ok(_) => panic!("rendered conversation exceeded configured input limit"),
+        Err(error) => error,
+    };
+    assert_eq!(error.code, "invalid_request");
+
     let ControlReply::Output(output) = second
         .dispatch(ControlAction::Invoke {
             model: selected,

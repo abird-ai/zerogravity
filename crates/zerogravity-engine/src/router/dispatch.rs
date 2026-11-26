@@ -55,6 +55,7 @@ pub fn vecdeque_backing_bytes<T>(capacity: usize) -> Result<u64, ServiceError> {
 
 pub use super::error::{FailureDetails, ServiceError};
 
+/// Legacy single-text request. Compatibility adapter into SemanticRequest.
 pub struct Request {
     pub model: String,
     pub input: String,
@@ -62,6 +63,86 @@ pub struct Request {
     pub max_tokens: usize,
     pub stream: bool,
     pub token_metrics: Option<TokenMetricsRequest>,
+}
+
+pub use zerogravity_core::task::{ChatMessage, ChatRole, MAX_CHAT_MESSAGES, TextInput};
+
+/// Canonical admitted text intent. Protocol presentation controls never
+/// select a different execution path or model owner.
+pub struct SemanticRequest {
+    pub model: String,
+    pub input: TextInput,
+    pub max_tokens: usize,
+    pub stream: bool,
+    pub token_metrics: Option<TokenMetricsRequest>,
+}
+impl From<Request> for SemanticRequest {
+    fn from(request: Request) -> Self {
+        Self {
+            model: request.model,
+            input: TextInput::from_text(request.input, request.chat),
+            max_tokens: request.max_tokens,
+            stream: request.stream,
+            token_metrics: request.token_metrics,
+        }
+    }
+}
+impl SemanticRequest {
+    /// Legacy embedding services may consume single text without copying.
+    /// Never silently flatten a conversation for an older adapter.
+    pub fn into_legacy(self) -> Result<Request, ServiceError> {
+        let (input, chat) = match self.input {
+            TextInput::Raw(text) => (text, false),
+            TextInput::User(text) => (text, true),
+            TextInput::Conversation(_) => {
+                return Err(ServiceError::new(
+                    400,
+                    "unsupported_chat",
+                    "service does not support structured conversation",
+                ));
+            }
+        };
+        Ok(Request {
+            model: self.model,
+            input,
+            chat,
+            max_tokens: self.max_tokens,
+            stream: self.stream,
+            token_metrics: self.token_metrics,
+        })
+    }
+
+    pub fn validate_input(&self, limit: usize) -> Result<(), ServiceError> {
+        match &self.input {
+            TextInput::Conversation(turns) => {
+                if turns.is_empty() || turns.len() > MAX_CHAT_MESSAGES {
+                    return Err(ServiceError::new(
+                        400,
+                        "invalid_messages",
+                        "messages must contain 1..128 entries",
+                    ));
+                }
+                if self.input.content_bytes().is_none_or(|n| n > limit) {
+                    return Err(ServiceError::new(
+                        413,
+                        "input_too_large",
+                        "chat input too large",
+                    ));
+                }
+            }
+            TextInput::Raw(text) | TextInput::User(text)
+                if text.is_empty() || text.len() > limit =>
+            {
+                return Err(ServiceError::new(
+                    400,
+                    "invalid_request",
+                    "request exceeds input/output bounds",
+                ));
+            }
+            _ => {}
+        }
+        Ok(())
+    }
 }
 /// Per-request clock/label only; never an authorization or publication owner.
 #[derive(Clone)]
@@ -440,7 +521,7 @@ impl GeneratedText {
 /// Queued request strings and the ingress charges that cover them. The
 /// charges are released only after the strings are gone.
 pub struct RequestLease {
-    pub request: Request,
+    pub request: SemanticRequest,
     pub prefix_sharing: Option<crate::state_cache::PrefixSharingScope>,
     pub _charges: Arc<Vec<ServingCharge>>,
 }
@@ -877,24 +958,35 @@ impl Router {
     }
     #[allow(dead_code)]
     pub fn request(&self, request: Request) -> Result<RequestEvents, ServiceError> {
-        self.request_with(request, None, None)
+        self.request_semantic(request.into())
     }
     pub fn request_scoped(
         &self,
         request: Request,
         sharing: crate::state_cache::PrefixSharingScope,
     ) -> Result<RequestEvents, ServiceError> {
-        self.request_with(request, None, Some(sharing))
+        self.request_semantic_scoped(request.into(), sharing)
     }
-    /// HTTP handoff: retain the already-charged header/body/parse ingress
-    /// through the canonical request strings instead of releasing and
-    /// re-admitting them.
+    pub fn request_semantic(
+        &self,
+        request: SemanticRequest,
+    ) -> Result<RequestEvents, ServiceError> {
+        self.request_with(request, None, None, MAX_INPUT_BYTES)
+    }
+    pub fn request_semantic_scoped(
+        &self,
+        request: SemanticRequest,
+        sharing: crate::state_cache::PrefixSharingScope,
+    ) -> Result<RequestEvents, ServiceError> {
+        self.request_with(request, None, Some(sharing), MAX_INPUT_BYTES)
+    }
+    /// Transfer already-admitted ingress without copying or re-admitting it.
     pub fn request_admitted(
         &self,
         request: Request,
         ingress: Vec<ServingCharge>,
     ) -> Result<RequestEvents, ServiceError> {
-        self.request_with(request, Some(ingress), None)
+        self.request_semantic_admitted(request.into(), ingress)
     }
     pub fn request_admitted_scoped(
         &self,
@@ -902,25 +994,43 @@ impl Router {
         ingress: Vec<ServingCharge>,
         sharing: crate::state_cache::PrefixSharingScope,
     ) -> Result<RequestEvents, ServiceError> {
-        self.request_with(request, Some(ingress), Some(sharing))
+        self.request_semantic_admitted_scoped(request.into(), ingress, sharing)
     }
-    fn request_with(
+    pub fn request_semantic_admitted(
         &self,
-        mut request: Request,
+        request: SemanticRequest,
+        ingress: Vec<ServingCharge>,
+    ) -> Result<RequestEvents, ServiceError> {
+        self.request_with(request, Some(ingress), None, MAX_INPUT_BYTES)
+    }
+    pub fn request_semantic_admitted_scoped(
+        &self,
+        request: SemanticRequest,
+        ingress: Vec<ServingCharge>,
+        sharing: crate::state_cache::PrefixSharingScope,
+    ) -> Result<RequestEvents, ServiceError> {
+        self.request_with(request, Some(ingress), Some(sharing), MAX_INPUT_BYTES)
+    }
+    pub(crate) fn request_with(
+        &self,
+        mut request: SemanticRequest,
         ingress: Option<Vec<ServingCharge>>,
         prefix_sharing: Option<crate::state_cache::PrefixSharingScope>,
+        max_input_bytes: usize,
     ) -> Result<RequestEvents, ServiceError> {
         let (model, model_reader) = self.models.acquire(&request.model)?;
-        if request.input.is_empty()
-            || request.input.len() > MAX_INPUT_BYTES
-            || request.max_tokens == 0
-            || request.max_tokens > self.config.output
-        {
+        let input_limit = max_input_bytes.min(MAX_INPUT_BYTES);
+        request.validate_input(input_limit)?;
+        if request.max_tokens == 0 || request.max_tokens > self.config.output {
             return Err(ServiceError::new(
                 400,
                 "invalid_request",
                 "request exceeds input/output bounds",
             ));
+        }
+        // Refuse unsupported model intent before pricing or tokenizing it.
+        if request.input.is_chat() {
+            model.validate_chat()?;
         }
         let id = self
             .next_id
@@ -930,7 +1040,14 @@ impl Router {
         // allocation and queue publication.
         let ticket = self.queue.reserve()?;
         let request_bytes = pending::checked_sum(&[
-            pending::heap_strings(&[&request.model, &request.input])?,
+            pending::heap_strings(&[&request.model])?,
+            request
+                .input
+                .heap_bytes()
+                .and_then(|n| u64::try_from(n).ok())
+                .ok_or_else(|| {
+                    ServiceError::new(400, "size_overflow", "semantic input backing overflow")
+                })?,
             request
                 .token_metrics
                 .as_ref()
@@ -961,18 +1078,40 @@ impl Router {
             event_copy_bytes,
         )?;
         let max_tokens = request.max_tokens.min(self.config.context);
-        let prompt_bound = model
-            .tokenizer()
-            .prompt_token_bound(request.input.len(), request.chat);
+        let tokenizer = model.tokenizer();
+        let bounds =
+            tokenizer
+                .semantic_prompt_bound(&request.input)
+                .map_err(|error| match error {
+                    crate::Error::InvalidInput(message) if request.input.is_chat() => {
+                        ServiceError::new(400, "invalid_messages", message)
+                    }
+                    crate::Error::Unsupported(message) if request.input.is_chat() => {
+                        ServiceError::new(400, "unsupported_chat", message)
+                    }
+                    crate::Error::Limit(message)
+                        if matches!(&request.input, TextInput::Conversation(_)) =>
+                    {
+                        ServiceError::new(413, "input_too_large", message)
+                    }
+                    error => ServiceError::new(400, "size_overflow", error.to_string()),
+                })?;
+        // Preserve the configured HTTP chat limit on rendered bytes as
+        // well as semantic content. Single-text legacy input keeps its
+        // original raw/user length contract.
+        if matches!(&request.input, TextInput::Conversation(_)) && bounds.input_bytes > input_limit
+        {
+            return Err(ServiceError::new(
+                400,
+                "invalid_request",
+                "request exceeds input/output bounds",
+            ));
+        }
         let prompt_bytes = pending::checked_sum(&[
-            pending::vec_bytes::<u32>(prompt_bound)?,
-            model
-                .tokenizer()
-                .admitted_prompt_scratch_bound(request.input.len(), request.chat)
-                .map_err(|error| ServiceError::new(400, "size_overflow", error.to_string()))?,
-            // The presenter decodes the whole committed prefix, so the adapter
-            // scratch of a full `max_tokens` prefix stays live at each commit.
-            u64::try_from(model.tokenizer().decode_scratch_bound(max_tokens)).map_err(|_| {
+            pending::vec_bytes::<u32>(bounds.tokens)?,
+            bounds.scratch_bytes,
+            // The presenter decodes the whole committed prefix.
+            u64::try_from(tokenizer.decode_scratch_bound(max_tokens)).map_err(|_| {
                 ServiceError::new(400, "size_overflow", "decode scratch bound overflow")
             })?,
         ])?;
@@ -982,9 +1121,6 @@ impl Router {
             AllocationClass::RecurrentState,
             prompt_bytes,
         )?;
-        if request.chat {
-            model.validate_chat()?;
-        }
         model.validate_request(&request)?;
         let model_alias = request.model.clone();
         let token_metrics = request.token_metrics.clone();
@@ -1015,7 +1151,7 @@ impl Router {
         };
         let scheduled = Scheduled {
             payload: Some(RequestLease {
-                request: Request {
+                request: SemanticRequest {
                     max_tokens,
                     ..request
                 },

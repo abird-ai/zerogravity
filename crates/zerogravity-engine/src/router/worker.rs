@@ -95,7 +95,7 @@ impl<A: Executor> Active<A> {
         let prefix_sharing = lease.prefix_sharing;
         let tokenizer = model.model().tokenizer();
         let prompt = tokenizer
-            .prompt_tokens(&request.input, request.chat)
+            .semantic_prompt_tokens(&request.input)
             .map_err(ServiceError::inference)?;
         if request.max_tokens == 0
             || request.max_tokens > config.output

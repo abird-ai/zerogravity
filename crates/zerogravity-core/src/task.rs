@@ -1,8 +1,10 @@
 //! Task-stage descriptions; no worker, interpreter or state publisher.
 mod media;
+mod text;
 pub use crate::targets::TaskKind;
 pub use media::{ConvertedTicks, IngressMilestone, MediaClockId, MediaPosition};
 use std::num::NonZeroU64;
+pub use text::{ChatMessage, ChatRole, MAX_CHAT_MESSAGES, TextInput};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TimeBase {

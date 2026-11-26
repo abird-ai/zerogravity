@@ -212,7 +212,8 @@ impl Fixture {
                         max_tokens: maximum,
                         stream: true,
                         token_metrics: None,
-                    },
+                    }
+                    .into(),
                     prefix_sharing: None,
                     _charges: Arc::new(Vec::new()),
                 }),

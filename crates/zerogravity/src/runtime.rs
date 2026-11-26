@@ -58,6 +58,14 @@ impl Runtime {
     ) -> std::result::Result<Box<dyn OutputStream>, text::ServiceError> {
         self.engine.submit_task(task)
     }
+    /// Owned structured text intent, on the same registered model and queue.
+    pub fn request_semantic(
+        &self,
+        request: text::SemanticRequest,
+    ) -> std::result::Result<text::RequestEvents, text::ServiceError> {
+        self.engine.request_semantic(request)
+    }
+
     /// On-demand selected owners/controls; no model loading or task admission.
     pub fn inspect_task(
         &self,
@@ -188,7 +196,7 @@ impl From<Runtime> for zerogravity_engine::Runtime {
 }
 
 pub use zerogravity_engine::model_instance::{
-    LogitModel, ModelInstance, PreparedModel, TextSession, TextTokenizer,
+    LogitModel, ModelInstance, PreparedModel, PromptBounds, TextSession, TextTokenizer,
 };
 pub use zerogravity_engine::router as text;
 pub use zerogravity_engine::scheduler::SchedulerLimits;

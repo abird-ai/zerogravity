@@ -1,7 +1,7 @@
 //! Transport seam over the caller's existing scheduler; never owns shutdown.
 use serde_json::Value;
 pub use zerogravity_engine::router::{
-    Request, RequestEvents, ServiceError, pending::ServingCharge,
+    Request, RequestEvents, SemanticRequest, ServiceError, pending::ServingCharge,
 };
 use zerogravity_engine::{Runtime, router::Router, state_cache::PrefixSharingScope};
 
@@ -28,11 +28,34 @@ pub trait TextService: Send + Sync + 'static {
             "text service does not support scoped prefix sharing",
         ))
     }
+    /// Protocol-neutral ingress. Legacy embedders retain their single-text
+    /// API; a conversation requires an actual template-capable adapter.
+    fn request_semantic_admitted(
+        &self,
+        request: SemanticRequest,
+        ingress: Vec<ServingCharge>,
+    ) -> Result<RequestEvents> {
+        if request.input.is_chat() {
+            self.validate_chat(&request.model)?;
+        }
+        self.request_admitted(request.into_legacy()?, ingress)
+    }
+    fn request_semantic_admitted_scoped(
+        &self,
+        request: SemanticRequest,
+        ingress: Vec<ServingCharge>,
+        sharing: PrefixSharingScope,
+    ) -> Result<RequestEvents> {
+        if request.input.is_chat() {
+            self.validate_chat(&request.model)?;
+        }
+        self.request_admitted_scoped(request.into_legacy()?, ingress, sharing)
+    }
     fn charge_ingress(&self, session: &str, bytes: u64) -> Result<ServingCharge>;
     fn model_ids(&self) -> Result<Vec<String>>;
     fn max_output(&self) -> Result<usize>;
     fn admission(&self) -> Result<Value>;
-    /// Preserve source endpoint policy even when HTTP has already framed chat.
+    /// Capability check for legacy embedding adapters.
     fn validate_chat(&self, _model: &str) -> Result<()> {
         Ok(())
     }
@@ -51,14 +74,7 @@ impl TextService for Runtime {
         request: Request,
         ingress: Vec<ServingCharge>,
     ) -> Result<RequestEvents> {
-        if request.input.len() > self.limits().max_input_bytes {
-            return Err(ServiceError::new(
-                400,
-                "invalid_request",
-                "request exceeds input/output bounds",
-            ));
-        }
-        self.with_text_router(|router| router.request_admitted(request, ingress))
+        self.request_semantic_admitted(request.into(), ingress)
     }
     fn request_admitted_scoped(
         &self,
@@ -66,14 +82,22 @@ impl TextService for Runtime {
         ingress: Vec<ServingCharge>,
         sharing: PrefixSharingScope,
     ) -> Result<RequestEvents> {
-        if request.input.len() > self.limits().max_input_bytes {
-            return Err(ServiceError::new(
-                400,
-                "invalid_request",
-                "request exceeds input/output bounds",
-            ));
-        }
-        self.with_text_router(|router| router.request_admitted_scoped(request, ingress, sharing))
+        self.request_semantic_admitted_scoped(request.into(), ingress, sharing)
+    }
+    fn request_semantic_admitted(
+        &self,
+        request: SemanticRequest,
+        ingress: Vec<ServingCharge>,
+    ) -> Result<RequestEvents> {
+        self.request_semantic_ingress(request, ingress, None)
+    }
+    fn request_semantic_admitted_scoped(
+        &self,
+        request: SemanticRequest,
+        ingress: Vec<ServingCharge>,
+        sharing: PrefixSharingScope,
+    ) -> Result<RequestEvents> {
+        self.request_semantic_ingress(request, ingress, Some(sharing))
     }
     fn charge_ingress(&self, session: &str, bytes: u64) -> Result<ServingCharge> {
         self.with_text_router(|router| router.charge_ingress(session, bytes))
@@ -110,6 +134,21 @@ impl TextService for Router {
         sharing: PrefixSharingScope,
     ) -> Result<RequestEvents> {
         Router::request_admitted_scoped(self, request, ingress, sharing)
+    }
+    fn request_semantic_admitted(
+        &self,
+        request: SemanticRequest,
+        ingress: Vec<ServingCharge>,
+    ) -> Result<RequestEvents> {
+        Router::request_semantic_admitted(self, request, ingress)
+    }
+    fn request_semantic_admitted_scoped(
+        &self,
+        request: SemanticRequest,
+        ingress: Vec<ServingCharge>,
+        sharing: PrefixSharingScope,
+    ) -> Result<RequestEvents> {
+        Router::request_semantic_admitted_scoped(self, request, ingress, sharing)
     }
     fn charge_ingress(&self, session: &str, bytes: u64) -> Result<ServingCharge> {
         Router::charge_ingress(self, session, bytes)

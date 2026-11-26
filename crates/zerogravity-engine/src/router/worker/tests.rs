@@ -310,7 +310,8 @@ impl Rig {
                         max_tokens: 1,
                         stream: false,
                         token_metrics: None,
-                    },
+                    }
+                    .into(),
                     prefix_sharing: None,
                     _charges: Arc::new(Vec::new()),
                 }),

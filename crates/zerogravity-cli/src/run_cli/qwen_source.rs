@@ -2,7 +2,7 @@
 use super::*;
 use zerogravity::cache::{CacheMetadata, CacheOptions};
 use zerogravity::models::{ModelLoadRequest, QwenServingProfile};
-use zerogravity::runtime::text::{Request as TextRequest, ResponseEvent};
+use zerogravity::runtime::text::{ResponseEvent, SemanticRequest, TextInput};
 
 const GIB: u64 = 1024 * 1024 * 1024;
 
@@ -181,10 +181,9 @@ pub(super) fn run(
         }
         let invoke = |prompt| {
             let receipt = runtime
-                .request_text(TextRequest {
+                .request_semantic(SemanticRequest {
                     model: resolved.alias.clone(),
-                    input: prompt,
-                    chat: !request.task.raw,
+                    input: TextInput::from_text(prompt, !request.task.raw),
                     max_tokens: request.task.max_tokens,
                     stream: false,
                     token_metrics: None,

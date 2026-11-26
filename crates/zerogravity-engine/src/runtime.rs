@@ -372,38 +372,61 @@ impl Runtime {
         callback(router)
     }
 
-    /// Original bounded text events and exact service status/code, without HTTP.
+    /// Legacy text request adapter into the original bounded semantic queue.
     pub fn request_text(
         &self,
         request: Request,
     ) -> std::result::Result<RequestEvents, ServiceError> {
+        self.request_semantic(request.into())
+    }
+    pub fn request_semantic(
+        &self,
+        request: crate::router::SemanticRequest,
+    ) -> std::result::Result<RequestEvents, ServiceError> {
         self.with_text_router(|router| {
-            if request.input.len() > self.inner.limits.max_input_bytes {
-                return Err(ServiceError::new(
-                    400,
-                    "invalid_request",
-                    "request exceeds input/output bounds",
-                ));
-            }
-            router.request(request)
+            request.validate_input(self.inner.limits.max_input_bytes)?;
+            router.request_with(request, None, None, self.inner.limits.max_input_bytes)
         })
     }
-    /// Explicit cross-request prefix sharing. The scope is supplied by the
-    /// trusted embedding layer; ordinary requests remain isolated by default.
+    /// Explicit cross-request prefix sharing by the trusted embedding layer.
     pub fn request_text_scoped(
         &self,
         request: Request,
         sharing: crate::state_cache::PrefixSharingScope,
     ) -> std::result::Result<RequestEvents, ServiceError> {
+        self.request_semantic_scoped(request.into(), sharing)
+    }
+    pub fn request_semantic_scoped(
+        &self,
+        request: crate::router::SemanticRequest,
+        sharing: crate::state_cache::PrefixSharingScope,
+    ) -> std::result::Result<RequestEvents, ServiceError> {
         self.with_text_router(|router| {
-            if request.input.len() > self.inner.limits.max_input_bytes {
-                return Err(ServiceError::new(
-                    400,
-                    "invalid_request",
-                    "request exceeds input/output bounds",
-                ));
-            }
-            router.request_scoped(request, sharing)
+            request.validate_input(self.inner.limits.max_input_bytes)?;
+            router.request_with(
+                request,
+                None,
+                Some(sharing),
+                self.inner.limits.max_input_bytes,
+            )
+        })
+    }
+    /// Admitted protocol payload, retaining the caller's existing ingress
+    /// charges and this runtime's configured semantic/rendered input limit.
+    pub fn request_semantic_ingress(
+        &self,
+        request: crate::router::SemanticRequest,
+        ingress: Vec<crate::router::pending::ServingCharge>,
+        sharing: Option<crate::state_cache::PrefixSharingScope>,
+    ) -> std::result::Result<RequestEvents, ServiceError> {
+        self.with_text_router(|router| {
+            request.validate_input(self.inner.limits.max_input_bytes)?;
+            router.request_with(
+                request,
+                Some(ingress),
+                sharing,
+                self.inner.limits.max_input_bytes,
+            )
         })
     }
     pub fn invalidate_prefix_scope(
@@ -816,11 +839,10 @@ pub(crate) fn submit_text(
         router
             .host()
             .charge(alias, "sdk-request-copy", AllocationClass::Scratch, bytes)?;
-    router.request_admitted(
-        Request {
+    router.request_semantic_admitted(
+        crate::router::SemanticRequest {
             model: alias.to_owned(),
-            input: input.into_owned(),
-            chat: controls.chat,
+            input: crate::router::TextInput::from_text(input.into_owned(), controls.chat),
             max_tokens: controls.max_output.get(),
             stream: controls.stream,
             token_metrics: controls

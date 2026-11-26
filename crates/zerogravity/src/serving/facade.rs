@@ -1,7 +1,7 @@
 //! Facade view of the original engine service; no registry, queue or transport IO.
 use super::{
     TextService,
-    service::{Request, RequestEvents, ServiceError, ServingCharge},
+    service::{Request, RequestEvents, SemanticRequest, ServiceError, ServingCharge},
 };
 type Result<T> = std::result::Result<T, ServiceError>;
 
@@ -15,6 +15,13 @@ impl TextService for crate::Runtime {
         ingress: Vec<ServingCharge>,
     ) -> Result<RequestEvents> {
         self.engine.request_admitted(request, ingress)
+    }
+    fn request_semantic_admitted(
+        &self,
+        request: SemanticRequest,
+        ingress: Vec<ServingCharge>,
+    ) -> Result<RequestEvents> {
+        self.engine.request_semantic_admitted(request, ingress)
     }
     fn charge_ingress(&self, session: &str, bytes: u64) -> Result<ServingCharge> {
         self.engine.charge_ingress(session, bytes)

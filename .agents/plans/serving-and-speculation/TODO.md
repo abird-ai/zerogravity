@@ -100,10 +100,25 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   318 Rust suites, release TUI/Web, installer and scripts. Exact Nix
   source-integrity remains separately unverified. No second parser, media
   capability or new scheduler. OA-1 accepted.
-- [ ] OA-2: shared typed semantic request/event boundary; model-owned
-  chat/template lowering; CLI run, Chat Completions and legacy Completions
-  consume the same semantic path. Preserve exact source/model/runtime,
-  auth, admission and cancellation; qualify before OA-3 Responses.
+- [x] OA-2: core typed text intent and engine SemanticRequest retained
+  by original queue/worker; legacy single text and SDK/CLI converge.
+  HTTP no longer frames Qwen prompts. Model-owned validation, exact
+  rendered byte and prompt/scratch bounds, shared Qwen renderer, original
+  typed ResponseEvent/receipt. Preserve configured rendered chat cap;
+  typed single-user chat also rejects role delimiters; raw unchanged.
+  Legacy-only service/tokenizer adapters refuse structured chat rather
+  than flatten. Focused engine/serving 163/0/0 and strict lint, tokenizer
+  suite 7/0/0 and actual cached approved-tokenizer test 1/0/0 passed.
+  Actual cached CLI/TUI/Web and SDK regressions passed (67.77s and
+  15.85s); full isolated assembled gate 2,553/0/109 across 318 Rust
+  suites (878.6s), release TUI/Web, installer and scripts passed.
+  No Responses, arbitrary Jinja, new modality, model owner or scheduler.
+- [ ] OA-3: Models list/retrieve and Responses text create/stream through
+  the accepted semantic request/events. Preserve original listener,
+  runtime, admission, cancellation and selected model template. Qualify
+  actual request fields, output/SSE grammar, request IDs, canonical
+  errors and smallest real cached text-model canary. Stateful response/
+  conversation resources belong to OA-4.
 
 ### Current continuation — 22 Nov 2026
 

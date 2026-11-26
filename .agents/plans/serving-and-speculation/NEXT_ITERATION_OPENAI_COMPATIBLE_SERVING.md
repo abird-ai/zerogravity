@@ -6,7 +6,7 @@ scaffolding), CLI/TUI/Web and serving, ROCm, CUDA, Vulkan, then concrete
 compiled providers. Native Hugging Face/Safetensors and GGUF are primary.
 Older ordering below is context; valid owner constraints remain authoritative.
 
-Status: **OA-1 async transport substrate accepted; OA-2 semantic request/model-template boundary next** (27 Nov). OA-3 and later remain ordered.
+Status: **OA-1 and OA-2 accepted** (27 Nov). OA-3 Models and Responses text next; later units remain ordered.
 
 26 Nov user decision: [UX-P native TUI polish](../cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md)
 was the prerequisite. The assembled P4B gate passed on ad7a4178;
@@ -1261,7 +1261,41 @@ Adapt:
 
 onto the same semantic request where practical.
 
-No Responses endpoint until this shared seam is sound.
+**OA-2 implementation (27 Nov).** Protocol-neutral ChatRole, ChatMessage
+and TextInput (raw, one user, ordered conversation) live in core/task;
+engine SemanticRequest carries the existing generation and observation
+controls. Legacy Request and borrowed TextTask are adapters; the original
+RequestLease/Scheduled/Active worker path retains typed input and existing
+ResponseEvent publication/cancellation. No extra execution owner, registry,
+scheduler or event queue. Existing text events are the semantic event
+contract for this slice; additional content/control/event kinds need
+real model capability, not placeholder wire coercion.
+
+HTTP validates only supported JSON shape and admits retained turn-vector
+and string copies. The exact selected model capability and tokenizer
+measure/validate the prompt before enqueue; PromptBounds prices rendered
+input, prompt token storage and original tokenizer scratch. Structured
+chat retains the historical 1 MiB rendered cap and configured runtime
+input limit; legacy single text retains its original content-length
+contract. The worker lowers the admitted typed input on the original
+tokenizer; Qwen owns the same qualified ChatML template, preserving role
+order, UTF-8 and assistant generation prefix. Single-user convenience
+uses that renderer; literal role delimiters in typed chat now refuse
+(including single-user CLI/SDK chat). Explicit raw text remains raw.
+No arbitrary Jinja evaluation or new model capability. Legacy-only
+TextService/Tokenizer implementations refuse structured chat unless they
+explicitly implement it; PreparedModel validation consumes SemanticRequest.
+The facade exposes request_semantic with the original typed event receipt.
+The existing direct CPU diagnostic runner also consumes the same model
+text intent/renderer; its physical runner and audit path are unchanged.
+
+Focused final engine/serving 163/0/0 and strict lint passed. Qwen tokenizer
+suite 7/0/0; explicit cached approved-tokenizer test 1/0/0 verifies exact
+single/multi-turn token IDs and measured prompt bytes against the previous
+raw spelling. Actual cached CLI/TUI/Web and SDK regressions passed
+(67.77s and 15.85s); full isolated assembled gate exited 0 (878.6s),
+2,553/0/109 across 318 Rust suites plus release TUI/Web, installer and
+scripts. OA-2 accepted; no Responses endpoint introduced in this slice.
 
 ### OA-3 — Models + Responses text
 

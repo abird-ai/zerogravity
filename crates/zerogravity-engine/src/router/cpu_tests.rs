@@ -1112,3 +1112,32 @@ fn pipeline_cancel_and_retirement_never_submit_a_future_stage() {
     drop((plan, a, first, runtime));
     assert_eq!(host.snapshot().unwrap().1, 0);
 }
+
+#[test]
+fn legacy_only_model_refuses_structured_conversation_before_enqueue_and_retires_credit() {
+    let host = HostPool::isolated(256).unwrap();
+    let model = MockModel::new(&host, None);
+    let mut router = router(&host, &model);
+    let baseline = host.snapshot().unwrap();
+    let conversation = SemanticRequest {
+        model: "model".into(),
+        input: TextInput::Conversation(vec![ChatMessage {
+            role: ChatRole::User,
+            text: "hello".into(),
+        }]),
+        max_tokens: 2,
+        stream: false,
+        token_metrics: None,
+    };
+    let error = match router.request_semantic(conversation) {
+        Ok(_) => panic!("legacy-only tokenizer accepted structured chat"),
+        Err(error) => error,
+    };
+    assert_eq!(error.code, "unsupported_chat");
+    assert_eq!(host.snapshot().unwrap(), baseline);
+    assert!(model.log.lock().unwrap().is_empty());
+    let receipt = router.request_semantic(request("hello").into()).unwrap();
+    assert_eq!(done(&receipt), "AB");
+    drop(receipt);
+    router.shutdown().unwrap();
+}

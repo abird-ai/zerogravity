@@ -775,7 +775,11 @@ bounded reader and a narrow cached Hyper server framing patch; focused
 checksum-verified Multer and original bounded ingress/staging owners;
 focused 38/0/0, real cached CLI/TUI/Web and SDK, and full isolated gate
 2,551/0/109 (318 suites) passed. OA-1 accepted. OA-2 shared semantic
-request/model-template boundary is next; OA-3 Responses follows OA-2.
+request/model-template boundary is implemented (core typed input,
+original semantic queue/events and model-owned Qwen template/pricing;
+focused and actual tokenizer checks passed). Actual cached consumers
+and assembled gate passed (2,553/0/109, 318 suites, 878.6s). OA-2
+accepted; OA-3 Models and Responses text next.
 Preserve the original runtime, admission and listener owner.
 
 - [ ] Close the [OpenAI-compatible serving iteration](serving-and-speculation/NEXT_ITERATION_OPENAI_COMPATIBLE_SERVING.md):

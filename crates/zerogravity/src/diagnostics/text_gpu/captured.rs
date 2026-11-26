@@ -16,7 +16,7 @@ pub(super) use std::{
 use zerogravity_engine::model_instance::{PreparedModel, TextTokenizer, execution::*};
 pub(super) use zerogravity_engine::router::pending::ServingHost;
 use zerogravity_engine::router::{
-    GpuRootObservation, GpuTokenObservation, Request,
+    GpuRootObservation, GpuTokenObservation,
     pending::ServingCharge,
     worker::{Active, SchedulerSnapshot},
 };
@@ -56,10 +56,13 @@ impl PreparedModel for CapturedModel {
     fn vocabulary_size(&self) -> u64 {
         self.vocabulary_size
     }
-    fn validate_request(&self, request: &Request) -> Result<(), ServiceError> {
+    fn validate_request(
+        &self,
+        request: &zerogravity_engine::router::SemanticRequest,
+    ) -> Result<(), ServiceError> {
         let ids = self
             .tokenizer
-            .prompt_tokens(&request.input, request.chat)
+            .semantic_prompt_tokens(&request.input)
             .map_err(ServiceError::inference)?;
         match &self.engine {
             ModelEngine::FixedPrompt(m) => m.validate_prompt(&ids, request.max_tokens),

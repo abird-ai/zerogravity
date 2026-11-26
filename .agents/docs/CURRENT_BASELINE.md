@@ -5,6 +5,17 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 27 Nov — OA-2 semantic text request/model template
+
+Typed raw/user/conversation intent through original queue and worker,
+model-owned Qwen template measurement/validation/tokenization; exact
+previous tokenizer output preserved in cached approved-tokenizer test.
+Focused engine/serving 163/0/0, strict lint, tokenizer suite 7/0/0
+and approved-source 1/0/0 passed. Actual cached CLI/TUI/Web and SDK
+passed (67.77s and 15.85s); full isolated gate 2,553/0/109 across 318
+Rust suites (878.6s), release TUI/Web, installer and scripts passed.
+No new physical GPU/performance evidence. OA-2 accepted; OA-3 next.
+
 ## 27 Nov — OA-1B multipart foundation
 
 Pinned checksum-verified Multer 3.1.0, strict complete form termination

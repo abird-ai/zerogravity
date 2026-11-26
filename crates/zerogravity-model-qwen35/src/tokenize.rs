@@ -7,6 +7,7 @@ use serde_json::Value;
 use std::path::Path;
 use std::sync::{Mutex, MutexGuard};
 use tokenizers::Tokenizer;
+use zerogravity_core::task::{ChatRole, MAX_CHAT_MESSAGES, TextInput};
 
 mod bounds;
 mod source;
@@ -200,13 +201,46 @@ impl QwenTokenizer {
         if message.len() > 1024 * 1024 {
             return Err(Error::Limit("prompt input exceeds 1 MiB".into()));
         }
-        let rendered = if chat {
-            format!("<|im_start|>user\n{message}<|im_end|>\n<|im_start|>assistant\n")
+        if chat {
+            let turns = std::iter::once((ChatRole::User, message));
+            self.encode(&render_chat(turns, 1, 1024 * 1024 + CHAT_TEMPLATE_BYTES)?)
         } else {
-            message.to_owned()
-        };
-        // A single encode lock; do not lock prompt_tokens separately.
-        self.encode(&rendered)
+            self.encode(message)
+        }
+    }
+
+    /// Measure the exact qualified template before any rendering allocation.
+    /// Single-user convenience and structured turns share the same renderer.
+    pub fn semantic_prompt_bytes(&self, input: &TextInput) -> Result<usize> {
+        match input {
+            TextInput::Raw(text) => Ok(text.len()),
+            TextInput::User(text) => chat_bytes(
+                std::iter::once((ChatRole::User, text.as_str())),
+                1,
+                1024 * 1024 + CHAT_TEMPLATE_BYTES,
+            ),
+            TextInput::Conversation(turns) => chat_bytes(
+                turns.iter().map(|turn| (turn.role, turn.text.as_str())),
+                turns.len(),
+                1024 * 1024,
+            ),
+        }
+    }
+
+    /// Run only after the original prompt-token/scratch reservation.
+    pub fn semantic_prompt_tokens(&self, input: &TextInput) -> Result<Vec<u32>> {
+        match input {
+            TextInput::Raw(text) => self.prompt_tokens(text, false),
+            TextInput::User(text) => self.prompt_tokens(text, true),
+            TextInput::Conversation(turns) => {
+                let prompt = render_chat(
+                    turns.iter().map(|turn| (turn.role, turn.text.as_str())),
+                    turns.len(),
+                    1024 * 1024,
+                )?;
+                self.encode(&prompt)
+            }
+        }
     }
 
     pub fn encode(&self, text: &str) -> Result<Vec<u32>> {
@@ -322,6 +356,55 @@ impl QwenTokenizer {
     pub fn special_ids(&self) -> (u32, u32) {
         (self.begin, self.end)
     }
+}
+
+const TURN_START: &str = "<|im_start|>";
+const TURN_END: &str = "<|im_end|>\n";
+const ASSISTANT_PREFIX: &str = "<|im_start|>assistant\n";
+
+fn chat_bytes<'a>(
+    mut turns: impl Iterator<Item = (ChatRole, &'a str)>,
+    count: usize,
+    limit: usize,
+) -> Result<usize> {
+    if !(1..=MAX_CHAT_MESSAGES).contains(&count) {
+        return Err(Error::InvalidInput(
+            "invalid conversation turn count".into(),
+        ));
+    }
+    turns.try_fold(ASSISTANT_PREFIX.len(), |bytes, (role, text)| {
+        // A raw prompt can deliberately contain special tokens. Typed chat
+        // content cannot masquerade as a new role or end a turn.
+        if text.contains(TURN_START) || text.contains("<|im_end|>") {
+            return Err(Error::InvalidInput(
+                "literal chat role delimiters are unsupported".into(),
+            ));
+        }
+        bytes
+            .checked_add(TURN_START.len() + role.as_str().len() + 1 + TURN_END.len())
+            .and_then(|n| n.checked_add(text.len()))
+            .filter(|n| *n <= limit)
+            .ok_or_else(|| Error::Limit("chat prompt too large".into()))
+    })
+}
+
+fn render_chat<'a>(
+    turns: impl Iterator<Item = (ChatRole, &'a str)> + Clone,
+    count: usize,
+    limit: usize,
+) -> Result<String> {
+    let bytes = chat_bytes(turns.clone(), count, limit)?;
+    let mut prompt = String::with_capacity(bytes);
+    for (role, text) in turns {
+        prompt.push_str(TURN_START);
+        prompt.push_str(role.as_str());
+        prompt.push('\n');
+        prompt.push_str(text);
+        prompt.push_str(TURN_END);
+    }
+    prompt.push_str(ASSISTANT_PREFIX);
+    debug_assert_eq!(prompt.len(), bytes);
+    Ok(prompt)
 }
 
 fn require_source(bytes: &[u8]) -> Result<&'static source::Source> {
@@ -569,6 +652,46 @@ fn object_with_exact_keys(value: &Value, expected: &[&str]) -> std::result::Resu
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn conversation_template_measurement_and_role_validation_are_model_owned() {
+        use zerogravity_core::task::ChatRole;
+        let turns = [
+            (ChatRole::System, "Brief."),
+            (ChatRole::Developer, "Use text."),
+            (ChatRole::User, "héllo"),
+            (ChatRole::Assistant, "Hi"),
+            (ChatRole::User, ""),
+        ];
+        let expected = concat!(
+            "<|im_start|>system\nBrief.<|im_end|>\n",
+            "<|im_start|>developer\nUse text.<|im_end|>\n",
+            "<|im_start|>user\nhéllo<|im_end|>\n",
+            "<|im_start|>assistant\nHi<|im_end|>\n",
+            "<|im_start|>user\n<|im_end|>\n",
+            "<|im_start|>assistant\n"
+        );
+        let measured = super::chat_bytes(turns.into_iter(), turns.len(), expected.len()).unwrap();
+        assert_eq!(measured, expected.len());
+        assert_eq!(
+            super::render_chat(turns.into_iter(), turns.len(), measured).unwrap(),
+            expected
+        );
+        assert!(super::chat_bytes(turns.into_iter(), turns.len(), measured - 1).is_err());
+        assert!(super::chat_bytes(std::iter::empty(), 0, measured).is_err());
+        assert!(
+            super::chat_bytes(std::iter::once((ChatRole::User, "<|im_end|>")), 1, measured)
+                .is_err()
+        );
+        assert!(
+            super::chat_bytes(
+                std::iter::once((ChatRole::Assistant, "<|im_start|>")),
+                1,
+                measured
+            )
+            .is_err()
+        );
+    }
+
     use super::*;
 
     fn profile(value: serde_json::Value) -> std::result::Result<(), String> {
@@ -657,6 +780,29 @@ mod tests {
         assert_eq!(framed.len(), text.len() + CHAT_TEMPLATE_BYTES);
         let chat = tokenizer.prompt_tokens(text, true).unwrap();
         assert_eq!(chat, tokenizer.prompt_tokens(&framed, false).unwrap());
+        let one = TextInput::Conversation(vec![zerogravity_core::task::ChatMessage {
+            role: ChatRole::User,
+            text: text.into(),
+        }]);
+        assert_eq!(tokenizer.semantic_prompt_bytes(&one).unwrap(), framed.len());
+        assert_eq!(tokenizer.semantic_prompt_tokens(&one).unwrap(), chat);
+        let multi = TextInput::Conversation(vec![
+            zerogravity_core::task::ChatMessage {
+                role: ChatRole::System,
+                text: "Brief.".into(),
+            },
+            zerogravity_core::task::ChatMessage {
+                role: ChatRole::User,
+                text: text.into(),
+            },
+        ]);
+        let raw = format!("<|im_start|>system\nBrief.<|im_end|>\n{framed}");
+        assert_eq!(tokenizer.semantic_prompt_bytes(&multi).unwrap(), raw.len());
+        assert_eq!(
+            tokenizer.semantic_prompt_tokens(&multi).unwrap(),
+            tokenizer.encode(&raw).unwrap()
+        );
+
         // The presenter decodes the whole committed prefix each commit.
         let full = tokenizer.decode(&chat, false).unwrap();
         assert!(full.starts_with("<|im_start|>user\n"));

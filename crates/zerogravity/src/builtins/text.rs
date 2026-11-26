@@ -4,7 +4,7 @@ use crate::tokenize::QwenTokenizer;
 use std::alloc::Layout;
 use std::path::Path;
 use std::sync::{Arc, atomic::AtomicUsize};
-use zerogravity_engine::model_instance::TextTokenizer;
+use zerogravity_engine::model_instance::{PromptBounds, TextTokenizer};
 use zerogravity_engine::router::{ServiceError, pending::ServingHost};
 
 mod source;
@@ -88,6 +88,24 @@ impl<T: Send + Sync> TextTokenizer for TokenizerOwner<T> {
     }
     fn decode_scratch_bound(&self, tokens: usize) -> usize {
         (self.tokenizer)(&self.owner).decode_scratch_bound(tokens)
+    }
+    fn semantic_prompt_bound(
+        &self,
+        input: &zerogravity_core::task::TextInput,
+    ) -> crate::Result<PromptBounds> {
+        let tokenizer = (self.tokenizer)(&self.owner);
+        let bytes = tokenizer.semantic_prompt_bytes(input)?;
+        Ok(PromptBounds {
+            input_bytes: bytes,
+            tokens: tokenizer.prompt_token_bound(bytes, false),
+            scratch_bytes: tokenizer.admitted_prompt_scratch_bound(bytes, false)?,
+        })
+    }
+    fn semantic_prompt_tokens(
+        &self,
+        input: &zerogravity_core::task::TextInput,
+    ) -> crate::Result<Vec<u32>> {
+        (self.tokenizer)(&self.owner).semantic_prompt_tokens(input)
     }
 }
 

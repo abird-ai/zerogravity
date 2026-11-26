@@ -4,6 +4,15 @@ pub mod execution;
 use std::sync::Arc;
 use zerogravity_core::identity::SourceIdentity;
 
+/// Measured selected-model input and its tokenizer allocation envelope.
+/// Legacy single-user adapters price their historical text bound; structured
+/// conversations must report the exact rendered bytes.
+pub struct PromptBounds {
+    pub input_bytes: usize,
+    pub tokens: usize,
+    pub scratch_bytes: u64,
+}
+
 /// Tokenizer handles must retain the source's original inventory admission.
 pub trait TextTokenizer: Send + Sync {
     fn eos(&self) -> u32;
@@ -12,6 +21,32 @@ pub trait TextTokenizer: Send + Sync {
     fn prompt_token_bound(&self, input_bytes: usize, chat: bool) -> usize;
     fn admitted_prompt_scratch_bound(&self, input_bytes: usize, chat: bool) -> Result<u64>;
     fn decode_scratch_bound(&self, tokens: usize) -> usize;
+
+    /// Model-owned template measurement and tokenizer scratch bounds.
+    /// Existing single-text adapters remain valid; structured conversations
+    /// require an explicit model implementation rather than HTTP framing.
+    fn semantic_prompt_bound(
+        &self,
+        input: &zerogravity_core::task::TextInput,
+    ) -> Result<PromptBounds> {
+        let (text, chat) = input.single_text().ok_or_else(|| {
+            crate::Error::Unsupported("model has no structured conversation template".into())
+        })?;
+        Ok(PromptBounds {
+            input_bytes: text.len(),
+            tokens: self.prompt_token_bound(text.len(), chat),
+            scratch_bytes: self.admitted_prompt_scratch_bound(text.len(), chat)?,
+        })
+    }
+    fn semantic_prompt_tokens(
+        &self,
+        input: &zerogravity_core::task::TextInput,
+    ) -> Result<Vec<u32>> {
+        let (text, chat) = input.single_text().ok_or_else(|| {
+            crate::Error::Unsupported("model has no structured conversation template".into())
+        })?;
+        self.prompt_tokens(text, chat)
+    }
 }
 
 /// Successful calls return only after the original session's publication.
@@ -34,14 +69,14 @@ pub trait PreparedModel: Send + Sync {
     fn describe(&self) -> Result<crate::diagnostics::ModelDetails> {
         Ok(crate::diagnostics::ModelDetails::default())
     }
-    /// Endpoint policy, independent of whether the caller already framed chat text.
+    /// Model capability, independent of protocol or response presentation.
     fn validate_chat(&self) -> std::result::Result<(), crate::router::ServiceError> {
         Ok(())
     }
     /// Source-specific validation after count and host admission, before enqueue.
     fn validate_request(
         &self,
-        _request: &crate::router::Request,
+        _request: &crate::router::SemanticRequest,
     ) -> std::result::Result<(), crate::router::ServiceError> {
         Ok(())
     }
