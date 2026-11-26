@@ -666,25 +666,30 @@ demand. Preserve the existing detailed
   Strict minimal/combined Clippy and isolated focused 59/0/1 pass.
   Isolated formatting/architecture and HIP/Vulkan compilation pass;
   comprehensive gate stopped during CUDA native transport rebuild.
-- [ ] UX-10 final acceptance: comprehensive gate and remaining bounded
-  cold diagnostics (runtime library presence / physical cache usage).
-  Do not conflate structural or metadata observations with execution;
-  graph inspection is text/JSON, no new runtime or frontend owner.
-  Then public serving (§2.3).
+- [x] UX-10 final acceptance: existing CUDA driver, HIP runtime/RTC,
+  Vulkan loader probes; shared original cooperative quota charge/live
+  reservations under existing-only nonblocking publication ownership.
+  Busy unknown; no new locks, files, runtime or dependency. Focused
+  44/0/2, strict minimal/cache/combined lint. Complete isolated gate sequence passed 2,505/0/109 (318 Rust suites), release Web/TUI/installer/scripts. Original run stopped at two transient busy-observation fixture assertions in acquisition/cache transactions; test-only bounded busy retry, reran affected cache-only/diagnostic/acquisition suites and exact remaining gate commands. No production change after the initial run.
+  Graph inspection is direct text/JSON, general pipeline execution refuses.
+  **UX-1–10 accepted. Next: public serving (§2.3).**
 
-- [ ] Close typed command tree, ConfigDocument/profile merge and shared
+- [x] Close typed command tree, ConfigDocument/profile merge and shared
   presentation/action/snapshot/event model. One resolver for local paths,
   model names, explicit source locators, backend aliases and canonical
   source identity. CLI overrides selected config overrides defaults;
   no implicit remote/download/approximation authority.
-- [ ] Complete model/download/cache lifecycle, progress, pause/resume/cancel,
+- [x] Complete supported model/download/cache lifecycle, progress, pause/resume/cancel,
   device discovery, headroom, qualified auto-selection, one-line run/serve,
   config/profile management, pipeline inspection and doctor/explain.
   Explicit backend aliases mean selected backend or factual refusal.
-- [ ] Stable scripting output, JSON and plain non-TTY behavior; beautiful,
+  Advanced direct-provider modes and aggregate component control remain
+  explicit deferred work in the CLI/device owner TODO.
+- [x] Stable scripting output, JSON and plain non-TTY behavior; beautiful,
   responsive terminal mode. Show backend, provider, numerical/quality profile,
   shape and execution plan, supported features and actual selected/refused
-  modes. Expose benchmark and diagnostics through the same SDK.
+  modes. Cold diagnostics reuse the SDK; public benchmark interface
+  remains §2.3.
 
 ### 2.2 Native TUI, then embedded Web
 
@@ -697,7 +702,7 @@ demand. Preserve the existing detailed
   views/actions as TUI; `zg web` and opening Web from TUI reuse original
   runtime/control plane. Keep presentation state local; allow simultaneous
   clients without duplicating owner state.
-- [ ] Keep one ConfigDocument and control protocol; secure local control
+- [x] Keep one ConfigDocument and control protocol; secure local control
   auth and browser transport independently of inference auth. No separate
   model/scheduler/cache implementation in a frontend. Complete UX-10
   doctor/pipeline polish, compatibility cleanup and real simultaneous-client

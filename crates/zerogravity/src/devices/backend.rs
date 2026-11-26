@@ -33,6 +33,23 @@ impl GpuBackend {
         }
     }
 
+    /// Can the original backend loader open its runtime libraries?
+    /// No explicit device initialization, client, context or model. None
+    /// means no compiled probe; success is not a physical binding or ABI,
+    /// compiler/provider or execution qualification.
+    pub fn runtime_libraries(self) -> Option<bool> {
+        match self {
+            #[cfg(feature = "cuda")]
+            Self::Cuda => Some(crate::gpu::cuda_driver_available()),
+            #[cfg(feature = "hip")]
+            Self::Hip => Some(crate::gpu::hip_runtime_libraries_available()),
+            #[cfg(all(feature = "vulkan", not(target_arch = "wasm32")))]
+            Self::VulkanAmd | Self::VulkanNvidia => Some(crate::gpu::vulkan_loader_available()),
+            #[allow(unreachable_patterns)]
+            _ => None,
+        }
+    }
+
     #[cfg(all(
         feature = "model-qwen35",
         feature = "text",

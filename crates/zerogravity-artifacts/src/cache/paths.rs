@@ -423,6 +423,18 @@ impl RootDir {
             timeout,
             cancel,
             FlockOperation::NonBlockingLockExclusive,
+            true,
+        )
+    }
+
+    /// Observation only. Never bootstrap directories or lock inodes.
+    pub(crate) fn lock_existing(&self, name: &str, cancel: &AtomicBool) -> Result<CacheLock> {
+        self.lock_mode(
+            name,
+            Duration::ZERO,
+            cancel,
+            FlockOperation::NonBlockingLockExclusive,
+            false,
         )
     }
 
@@ -432,7 +444,13 @@ impl RootDir {
         timeout: Duration,
         cancel: &AtomicBool,
     ) -> Result<CacheLock> {
-        self.lock_mode(name, timeout, cancel, FlockOperation::NonBlockingLockShared)
+        self.lock_mode(
+            name,
+            timeout,
+            cancel,
+            FlockOperation::NonBlockingLockShared,
+            true,
+        )
     }
 
     fn lock_mode(
@@ -441,6 +459,7 @@ impl RootDir {
         timeout: Duration,
         cancel: &AtomicBool,
         operation: FlockOperation,
+        create: bool,
     ) -> Result<CacheLock> {
         if name.is_empty()
             || name.len() > 128
@@ -454,11 +473,16 @@ impl RootDir {
         if cancel.load(Ordering::Acquire) {
             return Err(Error::State("cache lock wait canceled".into()));
         }
-        let parent = self.open_dir("locks", true)?;
+        let parent = self.open_dir("locks", create)?;
+        let access = if create {
+            OFlags::RDWR | OFlags::CREATE
+        } else {
+            OFlags::RDONLY
+        };
         let file = File::from(os(fs::openat(
             &parent,
             name,
-            OFlags::RDWR | OFlags::CREATE | OFlags::NOFOLLOW | OFlags::CLOEXEC | OFlags::NONBLOCK,
+            access | OFlags::NOFOLLOW | OFlags::CLOEXEC | OFlags::NONBLOCK,
             Mode::RUSR | Mode::WUSR,
         ))?);
         let lock = CacheLock {

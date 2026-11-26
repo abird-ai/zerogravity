@@ -343,12 +343,50 @@ impl CacheMetadata {
         }
         Ok(crate::artifact::Artifact::from_file(file, Path::new(path))?.info)
     }
-    pub fn disk_limit_bytes(&self) -> Result<u64> {
+    /// Current cooperative quota charge and live reservations, using the
+    /// original accounting under the existing publication lock. None means
+    /// publication is busy; no files, lock inodes or directories are created.
+    /// This is an observation, not a reservation or filesystem-free guarantee.
+    pub fn observe_usage(&self) -> Result<Option<DiskUsage>> {
+        let cancel = AtomicBool::new(false);
+        let publication = match self.root.lock_existing("publication", &cancel) {
+            Ok(lock) => lock,
+            Err(Error::Limit(_)) => return Ok(None),
+            Err(error) => return Err(error),
+        };
+        let policy = self.policy()?;
+        let stat = rustix::fs::fstatvfs(self.root.as_fd()).map_err(io)?;
+        let filesystem = checked_filesystem(stat.f_bsize, stat.f_frsize)?;
+        if policy != Policy::expected(policy.disk_limit_bytes, filesystem) {
+            return Err(Error::State(
+                "cache policy differs from persistent root policy".into(),
+            ));
+        }
+        for name in ROOT_DIRECTORIES {
+            self.root.open_dir(name, false)?;
+        }
+        self.root.open_dir("retirement", false)?;
+        let usage = account_usage(
+            &self.root,
+            &self.limits,
+            policy.disk_limit_bytes,
+            |name| self.root.lock_existing(name, &cancel),
+            |path, limit| self.read(path, limit),
+        )?;
+        publication.ensure_bound()?;
+        Ok(Some(usage))
+    }
+
+    fn policy(&self) -> Result<Policy> {
         let policy: Policy = serde_json::from_slice(&self.read("policy.json", CONTROL_LIMIT)?)
             .map_err(|_| Error::Malformed("cache selection policy".into()))?;
         if policy.schema != "zerogravity.cache.policy.v2" || policy.disk_limit_bytes == 0 {
             return Err(Error::Malformed("cache selection policy identity".into()));
         }
-        Ok(policy.disk_limit_bytes)
+        Ok(policy)
+    }
+
+    pub fn disk_limit_bytes(&self) -> Result<u64> {
+        Ok(self.policy()?.disk_limit_bytes)
     }
 }

@@ -14,7 +14,9 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use zerogravity_artifacts::Error;
 #[cfg(feature = "diagnostic-cache")]
 use zerogravity_artifacts::Result;
-use zerogravity_artifacts::cache::{ByNameKind, CacheStore, CommitOutcome, FileRole};
+use zerogravity_artifacts::cache::{
+    ByNameKind, CacheMetadata, CacheStore, CommitOutcome, FileRole,
+};
 use zerogravity_core::resource_arbiter::{AllocationClass, AllocationRequest, ResourceOwner};
 
 #[test]
@@ -609,6 +611,20 @@ fn admission_precedes_body_read_and_cancel_releases_synchronous_resources() {
     assert_not_found(store.resolve_ref("fixture"));
 }
 
+// These fixtures run alongside child-spawning tests. An inherited CLOEXEC
+// lock description can survive briefly across fork/exec, and an interrupted
+// nonblocking probe is also inconclusive. Wait only for the test observation;
+// the production API must continue to report busy without waiting or writing.
+fn observed_quota(metadata: &CacheMetadata) -> zerogravity_artifacts::cache::DiskUsage {
+    for _ in 0..200 {
+        if let Some(usage) = metadata.observe_usage().unwrap() {
+            return usage;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    panic!("quota observation remained busy in private fixture")
+}
+
 #[test]
 fn host_and_cooperative_disk_reservations_are_shared_before_source_reads() {
     let fixture = Fixture::new();
@@ -654,8 +670,10 @@ fn host_and_cooperative_disk_reservations_are_shared_before_source_reads() {
             Arc::new(AtomicBool::new(false)),
         )
         .unwrap();
-    let reserved = store.usage().unwrap().reserved_bytes;
-    assert!(reserved >= 6 * 1024 * 1024);
+    let usage = store.usage().unwrap();
+    let metadata = CacheMetadata::open(&fixture.root).unwrap();
+    assert_eq!(observed_quota(&metadata), usage);
+    assert!(usage.reserved_bytes >= 6 * 1024 * 1024);
     assert!(matches!(
         store.begin(
             quota_manifest(),
@@ -665,7 +683,9 @@ fn host_and_cooperative_disk_reservations_are_shared_before_source_reads() {
         Err(Error::Limit(_))
     ));
     drop(first);
-    assert_eq!(store.usage().unwrap().reserved_bytes, 0);
+    let usage = store.usage().unwrap();
+    assert_eq!(usage.reserved_bytes, 0);
+    assert_eq!(observed_quota(&metadata), usage);
     let second = store
         .begin(
             quota_manifest(),
@@ -675,6 +695,24 @@ fn host_and_cooperative_disk_reservations_are_shared_before_source_reads() {
         .unwrap();
     drop(second);
     assert_no_host_reservation(&admission);
+}
+
+#[test]
+fn cold_quota_observation_does_not_create_missing_lock_or_cache() {
+    let fixture = Fixture::new();
+    assert!(CacheMetadata::open(&fixture.root).is_err());
+    assert!(!fixture.root.exists());
+    let store = fixture.open();
+    let usage = store.usage().unwrap();
+    let metadata = CacheMetadata::open(&fixture.root).unwrap();
+    assert_eq!(observed_quota(&metadata), usage);
+    // Only this disposable fixture: simulate a malformed existing lock
+    // namespace after the store is retired, not an actual cache repair.
+    drop(store);
+    let publication = fixture.root.join("locks/publication");
+    fs::remove_file(&publication).unwrap();
+    assert!(metadata.observe_usage().is_err());
+    assert!(!publication.exists());
 }
 
 #[cfg(feature = "diagnostic-cache")]
@@ -1121,6 +1159,9 @@ mod diagnostics {
         let mut owner = RunningChild::spawn(&fixture.root, "hold", 0, "fixture");
         owner.event("CACHE_HELPER_LOCK_HELD");
         let lock_ids = lock_inodes(&fixture.root);
+        let metadata = CacheMetadata::open(&fixture.root).unwrap();
+        assert_eq!(metadata.observe_usage().unwrap(), None);
+        assert_lock_inodes_preserved(&fixture.root, &lock_ids);
         let waiter = RunningChild::spawn(&fixture.root, "timeout", 0, "fixture");
         assert_success(waiter.finish());
         assert_payload(&store.resolve_ref("fixture").unwrap(), OLD);

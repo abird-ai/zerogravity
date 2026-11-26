@@ -1,5 +1,5 @@
 //! Cold local diagnostics. Configuration, inventory and cache owners remain
-//! authoritative; no runtime loading, provider lookup, allocation or writes.
+//! authoritative; loader presence only, no device client, model or writes.
 use crate::args::Format;
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -216,12 +216,30 @@ fn hardware(report: &mut Report, request: Option<&Request>) {
             .iter()
             .map(crate::run_cli::devices::display),
     );
-    for (name, compiled, vendor) in [
-        ("cpu", cfg!(feature = "cpu"), Some("cpu")),
-        ("cuda", cfg!(feature = "cuda"), Some("nvidia")),
-        ("rocm", cfg!(feature = "hip"), Some("amd")),
-        ("vulkan", cfg!(feature = "vulkan"), None),
+    use devices::GpuBackend;
+    for (name, gpu, vendor, library_names) in [
+        ("cpu", None, Some("cpu"), &[][..]),
+        (
+            "cuda",
+            Some(GpuBackend::Cuda),
+            Some("nvidia"),
+            &["CUDA driver"][..],
+        ),
+        (
+            "rocm",
+            Some(GpuBackend::Hip),
+            Some("amd"),
+            &["HIP runtime", "HIP RTC"][..],
+        ),
+        (
+            "vulkan",
+            Some(GpuBackend::VulkanAmd),
+            None,
+            &["Vulkan loader"][..],
+        ),
     ] {
+        let compiled = gpu.map_or(cfg!(feature = "cpu"), GpuBackend::compiled);
+        let libraries = gpu.and_then(GpuBackend::runtime_libraries);
         let candidates = inventory
             .devices
             .iter()
@@ -234,6 +252,11 @@ fn hardware(report: &mut Report, request: Option<&Request>) {
         });
         let (status, message) = if !compiled {
             ("unavailable", "Backend not compiled")
+        } else if libraries == Some(false) {
+            (
+                "unavailable",
+                "Original backend loader cannot open required runtime libraries",
+            )
         } else if candidates.is_empty() {
             ("unavailable", "No matching physical observation")
         } else if observed {
@@ -247,7 +270,20 @@ fn hardware(report: &mut Report, request: Option<&Request>) {
         report.add(name, status, message, json!({
             "compiled": compiled, "physical_candidates": candidates.iter().map(|row| &row.id).collect::<Vec<_>>(),
             "runtime_binding_observed": observed,
+            "runtime_libraries": library_names,
+            "runtime_libraries_available": libraries,
         }));
+        if gpu.is_some() {
+            report.lines([format!(
+                "{}: {}",
+                library_names.join(" + "),
+                match libraries {
+                    Some(true) => "loadable (not execution-qualified)",
+                    Some(false) => "not loadable by backend loader",
+                    None => "unprobed",
+                }
+            )]);
+        }
         if !candidates.is_empty() {
             report.lines([candidates
                 .iter()
@@ -266,7 +302,7 @@ fn hardware(report: &mut Report, request: Option<&Request>) {
             report.add(
                 "backend policy",
                 "warning",
-                "Configured backend is not compiled or lacks matching hardware",
+                "Configured backend is not compiled, lacks runtime libraries or matching hardware",
                 Value::Null,
             );
         }
@@ -329,11 +365,12 @@ fn cache(report: &mut Report) {
                 sum.checked_add(snapshot.manifest.total_bytes())
             })
             .ok_or_else(|| Error::Limit("logical cache bytes".into()))?;
-        Ok(Some(json!({
-            "snapshots": snapshots.len(), "logical_snapshot_bytes": bytes,
-            "configured_disk_limit_bytes": metadata.disk_limit_bytes()?,
-            "physical_charge_observed": false, "payload_verified": false,
-        })))
+        let usage = metadata.observe_usage()?;
+        let limit = match usage {
+            Some(usage) => usage.limit_bytes,
+            None => metadata.disk_limit_bytes()?,
+        };
+        Ok(Some((snapshots.len(), bytes, limit, usage)))
     })();
     match result {
         Ok(None) => report.add(
@@ -342,24 +379,49 @@ fn cache(report: &mut Report) {
             "Cache not created; no changes made",
             Value::Null,
         ),
-        Ok(Some(detail)) => {
-            let summary = format!(
-                "{} snapshots · {} logical bytes · {} byte configured limit",
-                detail["snapshots"],
-                detail["logical_snapshot_bytes"],
-                detail["configured_disk_limit_bytes"]
-            );
+        Ok(Some((snapshots, logical, limit, usage))) => {
+            let (status, message) = match usage {
+                None => ("warning", "Publication busy; quota charge not observed"),
+                Some(usage)
+                    if usage
+                        .used_bytes
+                        .checked_add(usage.reserved_bytes)
+                        .is_none_or(|total| total > usage.limit_bytes) =>
+                {
+                    (
+                        "warning",
+                        "Observed cooperative charge and reservations exceed quota",
+                    )
+                }
+                Some(_) => (
+                    "ok",
+                    "Readable cache metadata and cooperative quota accounting",
+                ),
+            };
             report.add(
                 "cache",
-                "ok",
-                "Readable cache metadata; logical bytes may share blobs, not physical quota usage",
-                detail,
+                status,
+                message,
+                json!({
+                    "snapshots": snapshots, "logical_snapshot_bytes": logical,
+                    "configured_disk_limit_bytes": limit,
+                    "physical_charge_observed": usage.is_some(),
+                    "used_bytes": usage.map(|usage| usage.used_bytes),
+                    "reserved_bytes": usage.map(|usage| usage.reserved_bytes),
+                    "payload_verified": false,
+                }),
             );
-            report.lines([summary]);
+            report.lines([format!("{snapshots} snapshots · {logical} logical bytes")]);
+            if let Some(usage) = usage {
+                report.lines([format!(
+                    "{} charged + {} reserved / {} byte quota (not filesystem free space)",
+                    usage.used_bytes, usage.reserved_bytes, usage.limit_bytes
+                )]);
+            }
         }
         Err(_) => report.error(
             "cache",
-            "Cache root or metadata unavailable; use model list for detail",
+            "Cache root, metadata or quota observation unavailable; use model list for detail",
         ),
     }
 }

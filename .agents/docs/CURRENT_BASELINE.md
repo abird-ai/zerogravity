@@ -5,6 +5,15 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 26 Nov — CLI/TUI/Web acceptance (UX-10)
+
+Original CUDA/HIP/RTC/Vulkan loader observations and existing-only
+nonblocking cooperative quota charge/reservations; no client, model,
+cache bootstrap or second accounting owner. Focused 44/0/2 and strict
+minimal/cache/combined lint pass. Complete isolated gate sequence passed 2,505/0/109 (318 Rust suites), release Web/TUI/installer/scripts. Original run stopped at two transient busy-observation fixture assertions in acquisition/cache transactions; test-only bounded busy retry, reran affected cache-only/diagnostic/acquisition suites and exact remaining gate commands. No production change after the initial run.
+UX-1–10 accepted; public serving next. No physical GPU execution,
+live model acquisition or performance qualification inferred.
+
 ## 26 Nov — direct CLI polish (UX-10 core)
 
 Cold doctor, original planner device/model dry-run, typed pipeline
@@ -14,8 +23,8 @@ minimal CLI/pipeline 27/0/0, optimized combined CLI/pipeline/run 32/0/1.
 Existing populated cache unchanged by doctor. General pipeline execution
 refuses; unobserved runtime bindings and physical quota usage are not
 claimed. Isolated formatting/architecture and HIP/Vulkan compile checks
-pass; full gate stopped during CUDA native transport rebuild. Full UX-10
-acceptance remains pending. No model download, new
+pass; initial full gate stopped during CUDA native transport rebuild.
+Full UX-10 acceptance completed above. No model download, new
 dependency, physical GPU or performance claim.
 
 ## 26 Nov — simultaneous native/Web acceptance (UX-9E)

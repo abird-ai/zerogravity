@@ -6,7 +6,7 @@ pub mod compiler;
 mod compute;
 mod device;
 mod observation;
-pub use observation::{CudaDeviceMetadata, observe_cuda_devices};
+pub use observation::{CudaDeviceMetadata, is_driver_available, observe_cuda_devices};
 #[cfg(all(
     feature = "owned-cublas-allocator",
     target_os = "linux",

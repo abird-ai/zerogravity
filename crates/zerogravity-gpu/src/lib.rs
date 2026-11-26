@@ -154,7 +154,13 @@ pub mod qualification;
 
 pub use attention_provider::{AttentionProvider, AttentionProviderPlan};
 #[cfg(feature = "cuda")]
-pub use cubecl::cuda::{CudaDeviceMetadata, observe_cuda_devices};
+pub use cubecl::cuda::{
+    CudaDeviceMetadata, is_driver_available as cuda_driver_available, observe_cuda_devices,
+};
+#[cfg(feature = "hip")]
+pub use cubecl::hip::is_runtime_available as hip_runtime_libraries_available;
+#[cfg(all(feature = "vulkan", not(target_arch = "wasm32")))]
+pub use cubecl::wgpu::is_vulkan_loader_available as vulkan_loader_available;
 pub use cubecl::{Device, device::WgpuDeviceKind};
 #[cfg(all(
     feature = "cuda",

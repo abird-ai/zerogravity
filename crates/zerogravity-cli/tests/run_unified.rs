@@ -545,7 +545,10 @@ fn cached(root: &Path, common: &[&str], baseline: &[u8]) {
                 observed["details"]["configured_disk_limit_bytes"],
                 16 * 1024u64.pow(3)
             );
-            assert_eq!(observed["details"]["physical_charge_observed"], false);
+            let quota = store.usage().unwrap();
+            assert_eq!(observed["details"]["physical_charge_observed"], true);
+            assert_eq!(observed["details"]["used_bytes"], quota.used_bytes);
+            assert_eq!(observed["details"]["reserved_bytes"], quota.reserved_bytes);
             assert_eq!(observed["details"]["payload_verified"], false);
             assert_eq!(cache_tree(&cache), tree);
             let refused = run(root, &["model", "remove", &explicit_digest]);

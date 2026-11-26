@@ -30,6 +30,15 @@ mod by_name;
 const UNIT: u64 = 4096;
 const MAX_NODES: usize = 131_072;
 const CONTROL_LIMIT: usize = 4096;
+const ROOT_DIRECTORIES: &[&str] = &[
+    "locks",
+    "blobs/sha256",
+    "manifests",
+    "snapshots",
+    "refs",
+    "reference-records",
+    "staging",
+];
 
 #[path = "partials.rs"]
 mod partials;
@@ -47,6 +56,20 @@ struct Policy {
     max_nodes: usize,
     filesystem_block_bytes: u64,
     filesystem_fragment_bytes: u64,
+}
+
+impl Policy {
+    fn expected(disk_limit_bytes: u64, filesystem: FilesystemProfile) -> Self {
+        Self {
+            schema: "zerogravity.cache.policy.v2".into(),
+            disk_limit_bytes,
+            block_allowance: UNIT,
+            inode_allowance: UNIT,
+            max_nodes: MAX_NODES,
+            filesystem_block_bytes: filesystem.block_bytes,
+            filesystem_fragment_bytes: filesystem.fragment_bytes,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -198,6 +221,78 @@ fn inode_charge<'a>(nodes: impl Iterator<Item = &'a CacheNode>) -> Result<u64> {
         largest = largest.max(charge(node.bytes)?.max(add(node.allocated_bytes, UNIT)?));
     }
     add(total, largest)
+}
+
+/// Conservative cooperative quota accounting, not filesystem free bytes.
+/// Caller owns publication; both observation and admission use the same
+/// physical inode charge and live attempt-reservation calculation.
+fn account_usage(
+    root: &RootDir,
+    limits: &super::CacheLimits,
+    disk_limit_bytes: u64,
+    attempt_lock_owner: impl Fn(&str) -> Result<CacheLock>,
+    read: impl Fn(&str, usize) -> Result<Vec<u8>>,
+) -> Result<DiskUsage> {
+    let nodes = root.walk_canonical_tree(MAX_NODES)?;
+    let used = inode_charge(nodes.iter())?;
+    let mut reserved = 0;
+    for node in &nodes {
+        if !node.is_directory
+            && node.path.starts_with("staging/")
+            && node.path.ends_with("/reservation.json")
+        {
+            let parts: Vec<_> = node.path.split('/').collect();
+            if parts.len() != 3 {
+                return Err(Error::Malformed("foreign cache reservation path".into()));
+            }
+            let attempt_lock = format!("attempt-{}", parts[1]);
+            match attempt_lock_owner(&attempt_lock) {
+                Ok(guard) => {
+                    guard.ensure_bound()?;
+                } // dead owner's future reservation ends; actual bytes stay charged
+                Err(Error::Limit(_)) => {
+                    let record: Reservation = serde_json::from_slice(&read(
+                        &node.path,
+                        limits.max_manifest_bytes + CONTROL_LIMIT,
+                    )?)
+                    .map_err(|e| Error::Malformed(e.to_string()))?;
+                    if record.schema != "zerogravity.cache.reservation.v1"
+                        || record.objects.len() > limits.max_files
+                    {
+                        return Err(Error::Malformed("unknown cache reservation".into()));
+                    }
+                    validate_digest(&record.snapshot)?;
+                    let mut paths = BTreeSet::from([format!("locks/{attempt_lock}")]);
+                    for object in &record.objects {
+                        validate_digest(object)?;
+                        paths.insert(format!("blobs/sha256/{object}"));
+                        paths.insert(format!("locks/object-{object}"));
+                    }
+                    let staging = format!("staging/{}", parts[1]);
+                    let staging_prefix = staging.clone() + "/";
+                    let consumed = inode_charge(nodes.iter().filter(|allocated| {
+                        allocated.path == staging
+                            || allocated.path.starts_with(&staging_prefix)
+                            || paths.contains(&allocated.path)
+                    }))?;
+                    // Inventory and reservation use the same observed inode
+                    // cohort. Existing/shared blobs consume no future space;
+                    // partially written files retain their remaining peak.
+                    // Final snapshot/manifest metadata NEVER credits a new
+                    // attempt: it still builds its own private directory and
+                    // manifest copy, even on an identical-snapshot cache hit.
+                    // Post-install double charging until Drop is conservative.
+                    reserved = add(reserved, record.remaining.saturating_sub(consumed))?;
+                }
+                Err(e) => return Err(e),
+            }
+        }
+    }
+    Ok(DiskUsage {
+        used_bytes: used,
+        reserved_bytes: reserved,
+        limit_bytes: disk_limit_bytes,
+    })
 }
 
 fn io(error: rustix::io::Errno) -> Error {
@@ -388,15 +483,7 @@ impl CacheStore {
         Self::validate_options(&options)?;
         let stat = rustix::fs::fstatvfs(root.as_fd()).map_err(io)?;
         let filesystem = checked_filesystem(stat.f_bsize, stat.f_frsize)?;
-        for name in [
-            "locks",
-            "blobs/sha256",
-            "manifests",
-            "snapshots",
-            "refs",
-            "reference-records",
-            "staging",
-        ] {
+        for name in ROOT_DIRECTORIES {
             root.open_dir(name, create)?;
         }
         let mut result = Self {
@@ -411,15 +498,7 @@ impl CacheStore {
         };
         let cancel = AtomicBool::new(false);
         let lock = result.lock("publication", &cancel)?;
-        let mut expected = Policy {
-            schema: "zerogravity.cache.policy.v2".into(),
-            disk_limit_bytes: result.inner.options.disk_limit_bytes,
-            block_allowance: UNIT,
-            inode_allowance: UNIT,
-            max_nodes: MAX_NODES,
-            filesystem_block_bytes: filesystem.block_bytes,
-            filesystem_fragment_bytes: filesystem.fragment_bytes,
-        };
+        let mut expected = Policy::expected(result.inner.options.disk_limit_bytes, filesystem);
         let protected = match result.read("policy.json", CONTROL_LIMIT) {
             Ok(bytes) => {
                 let actual: Policy =
@@ -666,74 +745,18 @@ impl CacheStore {
         ))
     }
 
-    /// Conservative cooperative allocation accounting: count each physical
-    /// inode once, at least rounded logical bytes, observed allocated blocks,
-    /// plus fixed metadata allowance. It does not reserve filesystem free space.
     fn usage_locked(&self) -> Result<DiskUsage> {
-        let nodes = self.inner.root.walk_canonical_tree(MAX_NODES)?;
-        let used = inode_charge(nodes.iter())?;
-        let mut reserved = 0;
-        for node in &nodes {
-            if !node.is_directory
-                && node.path.starts_with("staging/")
-                && node.path.ends_with("/reservation.json")
-            {
-                let parts: Vec<_> = node.path.split('/').collect();
-                if parts.len() != 3 {
-                    return Err(Error::Malformed("foreign cache reservation path".into()));
-                }
-                let attempt_lock = format!("attempt-{}", parts[1]);
-                match self
-                    .inner
+        account_usage(
+            &self.inner.root,
+            &self.inner.options.limits,
+            self.inner.options.disk_limit_bytes,
+            |name| {
+                self.inner
                     .root
-                    .lock(&attempt_lock, Duration::ZERO, &AtomicBool::new(false))
-                {
-                    Ok(guard) => {
-                        guard.ensure_bound()?;
-                    } // dead owner's future reservation ends; actual bytes stay charged
-                    Err(Error::Limit(_)) => {
-                        let record: Reservation = serde_json::from_slice(&self.read(
-                            &node.path,
-                            self.inner.options.limits.max_manifest_bytes + CONTROL_LIMIT,
-                        )?)
-                        .map_err(|e| Error::Malformed(e.to_string()))?;
-                        if record.schema != "zerogravity.cache.reservation.v1"
-                            || record.objects.len() > self.inner.options.limits.max_files
-                        {
-                            return Err(Error::Malformed("unknown cache reservation".into()));
-                        }
-                        validate_digest(&record.snapshot)?;
-                        let mut paths = BTreeSet::from([format!("locks/{attempt_lock}")]);
-                        for object in &record.objects {
-                            validate_digest(object)?;
-                            paths.insert(format!("blobs/sha256/{object}"));
-                            paths.insert(format!("locks/object-{object}"));
-                        }
-                        let staging = format!("staging/{}", parts[1]);
-                        let staging_prefix = staging.clone() + "/";
-                        let consumed = inode_charge(nodes.iter().filter(|allocated| {
-                            allocated.path == staging
-                                || allocated.path.starts_with(&staging_prefix)
-                                || paths.contains(&allocated.path)
-                        }))?;
-                        // Inventory and reservation use the same observed inode
-                        // cohort. Existing/shared blobs consume no future space;
-                        // partially written files retain their remaining peak.
-                        // Final snapshot/manifest metadata NEVER credits a new
-                        // attempt: it still builds its own private directory and
-                        // manifest copy, even on an identical-snapshot cache hit.
-                        // Post-install double charging until Drop is conservative.
-                        reserved = add(reserved, record.remaining.saturating_sub(consumed))?;
-                    }
-                    Err(e) => return Err(e),
-                }
-            }
-        }
-        Ok(DiskUsage {
-            used_bytes: used,
-            reserved_bytes: reserved,
-            limit_bytes: self.inner.options.disk_limit_bytes,
-        })
+                    .lock(name, Duration::ZERO, &AtomicBool::new(false))
+            },
+            |path, limit| self.read(path, limit),
+        )
     }
 
     /// Identity of the pinned root capability, independent of later pathname

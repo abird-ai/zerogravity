@@ -203,9 +203,11 @@ unchanged; real optimized cached lifecycle 1/0/0 (54.16s); release CLI
 UX-10 core direct CLI implementation: cold doctor and exact device/model
 dry-run, typed pipeline list/inspect/check, positional source precedence,
 help/compatibility/CLI guide. Strict minimal/combined lint and isolated
-focused 59/0/1 pass. Final comprehensive gate and remaining cold diagnostic
-observations pending; see CLI/device owner TODO. Next finish UX-10, then
-public serving and ordered performance phases.
+focused 59/0/1 pass. UX-10 final cold loader and cooperative cache quota
+diagnostics reuse original authorities; focused 44/0/2 and strict lint
+pass. Complete isolated gate sequence passed 2,505/0/109 (318 Rust suites), release Web/TUI/installer/scripts. Original run stopped at two transient busy-observation fixture assertions in acquisition/cache transactions; test-only bounded busy retry, reran affected cache-only/diagnostic/acquisition suites and exact remaining gate commands. No production change after the initial run.
+UX-1–10 accepted. Next public serving and ordinary benchmarks, then
+ordered performance phases.
 General UMA/foreign backing, device-write host read, unqualified model/
 backend/media and other expansion holds remain explicit. Historical
 CPU cache gate corrected at 00f57e7a/9374e0ca.

@@ -21,6 +21,20 @@ pub use wgpu;
 #[cfg(feature = "spirv")]
 pub use backend::vulkan;
 
+/// Same loader entry point as wgpu-hal; no VkInstance or device is created.
+#[cfg(all(feature = "spirv", not(target_arch = "wasm32")))]
+pub fn is_vulkan_loader_available() -> bool {
+    // SAFETY: loads the system/SDK Vulkan library and entry points only.
+    unsafe {
+        #[cfg(target_env = "ohos")]
+        let loaded = ash::Entry::load_from("libvulkan.so");
+        #[cfg(not(target_env = "ohos"))]
+        let loaded = ash::Entry::load();
+        loaded.is_ok()
+    }
+}
+
+
 #[cfg(all(feature = "msl", target_os = "macos"))]
 pub use backend::metal;
 

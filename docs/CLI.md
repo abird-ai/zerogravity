@@ -92,13 +92,18 @@ zerogravity --config examples/pipelines/text-model.yaml pipeline inspect chat --
 ```
 
 Doctor inspects selected configuration policy, declared local path metadata,
-cache metadata and existing physical inventory. It does not create a cache,
-load models, authenticate payloads, probe unobserved runtime bindings or make
-provider requests. Optional uncompiled backends and unprobed bindings are
-reported separately from warnings and errors. Errors return exit status 2
-with the report; warnings alone do not fail. Cache logical snapshot bytes
-may include shared blobs and are not physical quota charge. Neither an
-`ok` diagnostic nor structural pipeline validation grants execution.
+cache metadata and existing physical inventory. Compiled GPU backends use
+their original loader probes (CUDA driver, HIP runtime/RTC, Vulkan entry
+loader). Library loadability is not device binding, compiler or execution
+qualification. Uncompiled probes report unknown, not missing libraries.
+No device client, model, payload verification or provider request is started.
+Cache observations reuse the original cooperative inode charge and live
+reservation calculation, under the existing nonblocking publication lock.
+Busy publication reports unknown charge; no cache, lock inode or directory
+is created. Logical snapshot bytes may include shared blobs; charged and
+reserved bytes are quota accounting, not filesystem free space. Errors
+return exit status 2 with the report; warnings alone do not fail. Neither
+an `ok` diagnostic nor structural pipeline validation grants execution.
 Pipeline list, inspect and check use the same typed structural checker,
 including declared stages, links, context policy and routes. General
 pipeline execution remains explicitly refused; declared routes are not

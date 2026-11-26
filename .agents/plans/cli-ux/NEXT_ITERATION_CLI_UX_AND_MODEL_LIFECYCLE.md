@@ -6,7 +6,7 @@ scaffolding), CLI/TUI/Web and serving, ROCm, CUDA, Vulkan, then concrete
 compiled providers. Native Hugging Face/Safetensors and GGUF are primary.
 Older ordering below is context; valid owner constraints remain authoritative.
 
-Status (26 Nov): **Phase 2.1 UX-1 through UX-9E accepted; UX-10 core implemented and focused-tested, final acceptance pending (§46A.28).**
+Status (26 Nov): **Phase 2.1 UX-1 through UX-10 accepted (§46A.28). Next: public OpenAI-compatible serving and ordinary benchmarks.**
 The bounded Phase 1 minimum exit is accepted at `d5030ad4`.
 See the [Phase 1 exit takeover](../../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-25_PHASE1_EXIT.md)
 and [live full plan](../FULL_IMPLEMENTATION_PLAN.md). The original design below
@@ -3690,10 +3690,16 @@ refusal. Canonical help/completions and docs/CLI.md; legacy aliases retained.
 Strict minimal/combined lint and isolated focused 59/0/1 pass; existing
 cache tree unchanged. Isolated formatting/architecture and HIP/Vulkan
 compilation pass; stopped comprehensive gate during CUDA native transport
-rebuild. Comprehensive acceptance and remaining cold observations
-pending: library availability beyond observed runtime binding, physical
-quota usage (logical manifest totals are not physical usage). Pipeline
-inspection remains direct text/JSON rather than a new interactive view.
+rebuild. UX-10 final implementation and acceptance (26 Nov): original
+CUDA driver, HIP runtime/RTC and Vulkan loader checks; no new device
+client/context or dependency. CacheMetadata existing-only nonblocking
+publication/attempt locks share original inode charge/live reservations
+and policy; busy unknown, no file creation, logical totals distinct from
+quota charge. Strict minimal/cache/combined lint; focused 44/0/2.
+Complete isolated gate sequence passed 2,505/0/109 (318 Rust suites), release Web/TUI/installer/scripts. Original run stopped at two transient busy-observation fixture assertions in acquisition/cache transactions; test-only bounded busy retry, reran affected cache-only/diagnostic/acquisition suites and exact remaining gate commands. No production change after the initial run.
+UX-1–10 accepted; public serving next. Pipeline inspection remains direct
+text/JSON rather than a dedicated frontend graph destination. General
+pipeline execution and advanced transfer modes remain explicit.
 
 Build TUI before Web so the shared control surface proves it is not browser-shaped.
 

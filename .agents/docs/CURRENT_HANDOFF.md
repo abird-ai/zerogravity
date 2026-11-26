@@ -27,7 +27,44 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — Phase 2.1 UX-10 core (26 Nov)
+### Current checkpoint — Phase 2.1 UX-10 acceptance (26 Nov)
+
+UX-10 and the bounded CLI/TUI/Web iteration are accepted. Cold diagnostics
+now include original backend loader probes and original cache accounting.
+
+- CUDA driver presence uses the existing cudarc loader check; HIP
+  runtime/RTC uses existing CubeCL HIP loader; Vulkan uses the same ash
+  entry loading as wgpu-hal. Optional uncompiled probes are unknown.
+  Library loadability, observed physical binding, source/ABI/compiler
+  qualification and execution admission are distinct. No explicit new
+  client/context/model creation; no new dependency.
+- CacheMetadata::observe_usage obtains only existing publication/attempt
+  locks with zero wait and read-only descriptors, reuses original
+  cooperative inode-charge/live reservation arithmetic and persistent
+  policy, and never creates lock files, directories or reservations.
+  Busy publication is unknown, not zero usage. Charged + reserved vs
+  configured quota are not filesystem free bytes; logical manifest totals
+  can share blobs. Existing cache tree remains unchanged.
+- Strict minimal, cache, combined lint and focused 44/0/2 (25 cache
+  transaction, 14 CLI and five optimized real synthetic GGUF/source-form
+  tests). Equality with original live/dead reservation accounting,
+  contended publication and missing-lock refusal pass.
+- Complete isolated gate sequence passed 2,505/0/109 (318 Rust suites), release Web/TUI/installer/scripts. Original run stopped at two transient busy-observation fixture assertions in acquisition/cache transactions; test-only bounded busy retry, reran affected cache-only/diagnostic/acquisition suites and exact remaining gate commands. No production change after the initial run.
+  The parallel fixture can observe a transient nonblocking refusal
+  (e.g. inherited lock description or interrupted probe); precise cause
+  not established. Test waits only for observation; explicit held-owner
+  refusal stays unchanged. No live acquisition, new dependency, physical
+  GPU execution qualification or performance claim.
+
+**Next:** public OpenAI-compatible serving, starting with
+[the serving iteration](../plans/serving-and-speculation/NEXT_ITERATION_OPENAI_COMPATIBLE_SERVING.md)
+and its live owner TODO, then ordinary public benchmarks, ROCm vs
+optimized vLLM, CUDA, Vulkan, optional compiled providers per full plan.
+Keep the accepted CLI/config/runtime/control owners. Graph inspection
+remains direct text/JSON; general graph/media execution and advanced
+provider transfer modes remain explicitly unsupported or deferred.
+
+### Previous checkpoint — Phase 2.1 UX-10 core (26 Nov; 22c6c0a7)
 
 Core direct CLI implementation and focused verification complete.
 - Doctor uses existing cold selected-document resolution/validation
@@ -56,12 +93,8 @@ HIP-only (1m53s) and Vulkan-only (2m08s) compilation. Intentionally
 stopped during production CUDA native transport rebuild to close this
 checkpoint; no full gate acceptance or physical qualification claimed.
 
-**Next:** finish UX-10 comprehensive gate and remaining bounded cold
-diagnostic observations (runtime-library presence and physical cache
-quota usage without introducing a second owner). Direct graph inspection
-is text/JSON; no dedicated frontend graph destination yet. Then public
-serving and ordinary benchmarks, then ordered ROCm/CUDA/Vulkan/compiled
-provider phases. Do not reopen accepted foundation or frontend ownership.
+The remaining cold diagnostics and comprehensive gate are accepted in the
+current checkpoint above. Public serving follows.
 
 ### Previous checkpoint — Phase 2.1 UX-9E acceptance (26 Nov; 1a878990)
 

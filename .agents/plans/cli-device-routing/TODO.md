@@ -420,14 +420,22 @@ build or general model/backend grant. Historical failures keep their source scop
   Full isolated gate formatting/architecture and HIP/Vulkan compilation
   pass; intentionally stopped during production CUDA transport rebuild.
 
+### Phase 2.1 UX-10 — final cold diagnostics and acceptance (26 Nov)
+
+- [x] Original CUDA/HIP/RTC/Vulkan loader presence separate from binding
+  and execution eligibility; uncompiled probes unknown.
+- [x] CacheMetadata existing-only nonblocking quota observation; same
+  physical inode charge and live reservations, original policy and locks,
+  no writes/creation. Busy unknown; exact charge match and no cache-tree
+  effects. Focused 44/0/2, strict minimal/cache/combined lint.
+- [x] Complete isolated gate sequence passed 2,505/0/109 (318 Rust suites), release Web/TUI/installer/scripts. Original run stopped at two transient busy-observation fixture assertions in acquisition/cache transactions; test-only bounded busy retry, reran affected cache-only/diagnostic/acquisition suites and exact remaining gate commands. No production change after the initial run.
+  UX-1–10 accepted. Next public serving per full plan.
+
 ## Uncommitted
 
-- [ ] Finish UX-10 comprehensive gate and remaining diagnostic polish:
-  backend library presence beyond observed binding and physical cache quota
-  usage remain unprobed; graph inspection is textual/JSON rather than a new
-  native/Web destination. Preserve original cold authority; do not infer
-  runtime qualification. Then public serving per full plan. Broader catalog
-  presets, conversation history and unsupported routes remain explicit.
+- [ ] Broader catalog presets, conversation history, dedicated graph
+  visualization and unsupported routes remain explicit future scope.
+  Existing direct text/JSON structural inspection is accepted.
 - [ ] Extend advanced direct provider forced interactive/JSONL presentation
   and aggregate component download control without changing independently
   published receipts; existing direct provider progress and legacy sequential

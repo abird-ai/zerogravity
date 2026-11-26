@@ -8,10 +8,15 @@ pub struct CudaDeviceMetadata {
     pub compute_capability: (i32, i32),
     pub uuid: [u8; 16],
 }
+/// Loader presence only; no CUDA initialization, context or execution.
+pub fn is_driver_available() -> bool {
+    // SAFETY: same loader probe used by CUDA metadata discovery.
+    unsafe { cudarc::driver::sys::is_culib_present() }
+}
+
 pub fn observe_cuda_devices() -> Result<Vec<CudaDeviceMetadata>, String> {
     use cudarc::driver::{result, sys};
-    // SAFETY: existing loader presence check; no context is created.
-    if !unsafe { sys::is_culib_present() } {
+    if !is_driver_available() {
         return Ok(Vec::new());
     }
     result::init().map_err(|e| format!("CUDA inventory init: {e}"))?;

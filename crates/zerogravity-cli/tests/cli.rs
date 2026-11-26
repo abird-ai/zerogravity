@@ -475,6 +475,21 @@ fn doctor_observes_local_policy_without_creating_or_loading_anything() {
     assert_eq!(report["execution_qualified"], false);
     assert_eq!(report["status"], "ok");
     let checks = report["checks"].as_array().unwrap();
+    for (name, compiled) in [
+        ("cuda", cfg!(feature = "cuda")),
+        ("rocm", cfg!(feature = "hip")),
+        ("vulkan", cfg!(feature = "vulkan")),
+    ] {
+        let row = checks.iter().find(|row| row["component"] == name).unwrap();
+        assert_eq!(row["details"]["compiled"], compiled);
+        if !compiled {
+            assert_eq!(
+                row["details"]["runtime_libraries_available"],
+                serde_json::Value::Null
+            );
+            assert_eq!(row["status"], "unavailable");
+        }
+    }
     assert!(checks.iter().any(|c| {
         c["component"] == "devices"
             && c["details"]["devices"]
