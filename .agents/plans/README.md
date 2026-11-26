@@ -13,9 +13,13 @@ Repository naming follows the short canonical vocabulary in
 concept rather than historical qualification shorthand.
 
 Cross-window continuation starts at [the canonical current handoff](../docs/CURRENT_HANDOFF.md).
-For the complete original architecture, Phase 1 exit, Phase 2 takeover,
-historical chain and open-work/commit inventories, read the
-[25 Nov Phase 1 exit takeover](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-25_PHASE1_EXIT.md).
+For the complete current takeover through accepted UX-9B, read the
+[26 Nov comprehensive handoff](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-26_UX9B_EXIT.md) §§0–13;
+the next coherent unit is UX-9C.
+The [standalone next-agent prompt](../docs/NEXT_AGENT_2026-11-26_UX9C.md) is ready to copy.
+Appendix D preserves every Phase 2 landing. Appendix E and the
+[25 Nov Phase 1 exit takeover](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-25_PHASE1_EXIT.md)
+retain the complete original design, foundation history and prior evidence.
 The [25 Nov foundations pack](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-25_FOUNDATIONS.md)
 and [24 Nov foundations pack](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-24_FOUNDATIONS.md)
 remain historical authority for their accepted scope.

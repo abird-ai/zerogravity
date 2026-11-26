@@ -1,12 +1,17 @@
-# ZeroGravity current comprehensive handoff — 25 Nov 2026
+# ZeroGravity current comprehensive handoff — 26 Nov 2026
 
 Canonical cross-window entry point for `/home/pvl/spaces/abird/src/zerogravity`.
 
-**Full takeover (25 Nov, Phase 1 exit):** [FULL_COMPREHENSIVE_HANDOFF_2026-11-25_PHASE1_EXIT.md](FULL_COMPREHENSIVE_HANDOFF_2026-11-25_PHASE1_EXIT.md).
-Read §§0–13 first for the complete foundation context; §13 is the historical Phase 2.1 UX-1 entry prompt. Resume at the live UX checkpoint below.
-The [previous foundations pack](FULL_COMPREHENSIVE_HANDOFF_2026-11-25_FOUNDATIONS.md)
-retains the earlier dated matrix checkpoint and all historical detail.
-Resume from the latest live checkpoint below and the ordered full plan.
+**Full takeover (26 Nov, through accepted UX-9B):**
+[FULL_COMPREHENSIVE_HANDOFF_2026-11-26_UX9B_EXIT.md](FULL_COMPREHENSIVE_HANDOFF_2026-11-26_UX9B_EXIT.md).
+Read §§0–13 first; §11 is the next coherent unit (UX-9C), §13 the starting
+prompt, and Appendix D the exact Phase 2 landing narratives.
+[Standalone next-agent prompt](NEXT_AGENT_2026-11-26_UX9C.md).
+The [25 Nov Phase 1 exit pack](FULL_COMPREHENSIVE_HANDOFF_2026-11-25_PHASE1_EXIT.md)
+and earlier foundation packs retain the complete original architecture,
+foundation chronology, exact evidence and rejected experiments. Their
+older continuation prompts are historical. Resume from the latest live
+checkpoint below and ordered full plan.
 
 **24 Nov priority decision:** start with the
 [full implementation plan](../plans/FULL_IMPLEMENTATION_PLAN.md). Complete
