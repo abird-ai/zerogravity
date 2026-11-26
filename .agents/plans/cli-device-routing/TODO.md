@@ -429,9 +429,31 @@ build or general model/backend grant. Historical failures keep their source scop
   no writes/creation. Busy unknown; exact charge match and no cache-tree
   effects. Focused 44/0/2, strict minimal/cache/combined lint.
 - [x] Complete isolated gate sequence passed 2,505/0/109 (318 Rust suites), release Web/TUI/installer/scripts. Original run stopped at two transient busy-observation fixture assertions in acquisition/cache transactions; test-only bounded busy retry, reran affected cache-only/diagnostic/acquisition suites and exact remaining gate commands. No production change after the initial run.
-  UX-1–10 accepted. Next public serving per full plan.
+  UX-1–10 accepted. Additional UX-P user priority below precedes serving.
 
 ## Uncommitted
+
+### UX-P — native TUI interaction and visual polish (26 Nov decision)
+
+Design: [TUI polish and mouse interaction](../cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md).
+Retain accepted UX-1–10 ownership and keyboard behavior. No implementation
+claimed at plan checkpoint.
+
+- [ ] UX-P1: semantic palette, restrained chrome, Dark/Light/Auto,
+  typed appearance preference/edit, safe terminal depth/Auto, Web parity.
+- [ ] UX-P2: scoped mouse capture/restore, render-derived visible hit
+  targets, focus, rail/inner split drag, maximize/restore, separate scroll.
+- [ ] UX-P3: mouse-accessible controls in all nine views, actions,
+  modal/editor/picker interaction, exact owner/document and confirmations.
+- [ ] UX-P4: complete ergonomics, actual PTY and accepted real cached
+  resident/transfer/config regression, isolated workspace gate.
+
+Deferred public serving until UX-P exit. Optional terminal background
+helper requires dependency/offline approval; conservative Auto fallback
+must remain truthful. No additional theme catalog or persistent layout
+store now.
+
+### Other deferred work
 
 - [ ] Broader catalog presets, conversation history, dedicated graph
   visualization and unsupported routes remain explicit future scope.

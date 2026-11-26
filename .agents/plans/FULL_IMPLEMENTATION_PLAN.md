@@ -34,7 +34,9 @@ availability claims belong to measured status.
 | 6. Compiled providers | Optional MIGraphX, TensorRT, IREE and ONNX Runtime | Real supported models or closed regions, measured benefit, original ownership |
 
 The order is deliberate. Finish the common foundations before frontend work;
-finish CLI/TUI/Web before the performance campaigns. Finish the ROCm campaign
+finish CLI/TUI/Web before the performance campaigns. The 26 Nov user decision
+adds native TUI interaction/visual polish (§2.2A) before public serving (§2.3).
+Accepted UX-1–10 remains the baseline, not reopened foundations. Finish the ROCm campaign
 before the CUDA campaign, and then Vulkan. Graph/compiler scaffolding belongs
 in Phase 1; concrete third-party graph compiler integrations belong in Phase 6.
 Native command capture, native operator libraries and native optimization
@@ -707,6 +709,26 @@ demand. Preserve the existing detailed
   model/scheduler/cache implementation in a frontend. Complete UX-10
   doctor/pipeline polish, compatibility cleanup and real simultaneous-client
   lifecycle acceptance.
+
+### 2.2A Native TUI interaction and visual polish (UX-P)
+
+**Current next priority (26 Nov):** user requests full mouse interaction,
+resizable/focusable panes, independent scrolling and a polished, elegant
+visual system before public serving. See the owning
+[TUI polish specification](cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md).
+UX-1–10 remains accepted; this is additional presentation work.
+
+- [ ] UX-P1: coordinated semantic palette, Dark/Light/Auto and shared
+  typed appearance configuration; minimal Web theme/token parity.
+- [ ] UX-P2: scoped mouse capture, render-derived hit targets, focus,
+  drag/resize/maximize/restore, responsive layout and independent scrolling.
+- [ ] UX-P3: complete mouse and keyboard affordances across nine views,
+  actions, pickers, forms, settings and exact-owner confirmations.
+- [ ] UX-P4: visual/terminal-depth/accessibility polish, actual PTY and
+  simultaneous-client lifecycle acceptance; full isolated gate.
+
+No new runtime, cache, configuration or execution owner. No inference
+protocol or backend performance work until this bounded polish exit.
 
 ### 2.3 Public serving and performance interface
 

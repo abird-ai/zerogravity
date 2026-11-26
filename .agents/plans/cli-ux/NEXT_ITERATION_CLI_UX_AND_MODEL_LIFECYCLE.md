@@ -6,7 +6,10 @@ scaffolding), CLI/TUI/Web and serving, ROCm, CUDA, Vulkan, then concrete
 compiled providers. Native Hugging Face/Safetensors and GGUF are primary.
 Older ordering below is context; valid owner constraints remain authoritative.
 
-Status (26 Nov): **Phase 2.1 UX-1 through UX-10 accepted (§46A.28). Next: public OpenAI-compatible serving and ordinary benchmarks.**
+Status (26 Nov): **Phase 2.1 UX-1 through UX-10 accepted (§46A.28).**
+User-directed follow-on [UX-P native TUI polish](TUI_POLISH_AND_MOUSE_INTERACTION.md)
+now precedes public OpenAI-compatible serving and ordinary benchmarks.
+Its interaction/appearance contracts extend §46A without changing owners.
 The bounded Phase 1 minimum exit is accepted at `d5030ad4`.
 See the [Phase 1 exit takeover](../../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-25_PHASE1_EXIT.md)
 and [live full plan](../FULL_IMPLEMENTATION_PLAN.md). The original design below

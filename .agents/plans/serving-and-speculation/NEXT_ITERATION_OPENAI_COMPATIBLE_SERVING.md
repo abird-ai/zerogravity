@@ -8,6 +8,9 @@ Older ordering below is context; valid owner constraints remain authoritative.
 
 Status: **design only / dormant**.
 
+26 Nov user decision: [UX-P native TUI polish](../cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md)
+must be accepted before this iteration begins.
+
 This iteration runs **after**
 `../cli-ux/NEXT_ITERATION_CLI_UX_AND_MODEL_LIFECYCLE.md`
 and **before**

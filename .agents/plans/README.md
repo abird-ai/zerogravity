@@ -16,8 +16,9 @@ Cross-window continuation starts at [the canonical current handoff](../docs/CURR
 For the complete current takeover through accepted UX-9B, read the
 [26 Nov comprehensive handoff](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-26_UX9B_EXIT.md) §§0–13;
 the historical continuation was UX-9C (now accepted). The live handoff
-records accepted UX-1–10. Next: public OpenAI-compatible serving and
-ordinary benchmarks, then ordered backend performance work.
+records accepted UX-1–10. Next: [UX-P native TUI polish](cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md)
+(mouse, panes, scrolling, themes), added by user decision 26 Nov before
+public serving and ordinary benchmarks; then ordered backend performance.
 The [standalone UX-9C prompt](../docs/NEXT_AGENT_2026-11-26_UX9C.md) is historical.
 Appendix D preserves every Phase 2 landing. Appendix E and the
 [25 Nov Phase 1 exit takeover](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-25_PHASE1_EXIT.md)

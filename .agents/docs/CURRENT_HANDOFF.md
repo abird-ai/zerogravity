@@ -27,7 +27,28 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — Phase 2.1 UX-10 acceptance (26 Nov)
+### Current next priority — UX-P native TUI polish (26 Nov)
+
+User decision: before public serving, complete mouse support throughout
+the TUI (click pane/row/tab/action/setting, drag splitters, independent
+scroll), elegant clean colors and Dark/Light/Auto theme selection.
+[Full UX-P specification](../plans/cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md)
+defines current-source audit, inspected Whisrs v0.2.1 design, semantic
+palette, appearance/Auto and terminal depth policy, responsive geometry,
+render-derived hit targets, stable typed identities, all nine views and
+ordered UX-P1–4 checkpoints. Design-only checkpoint; no implementation or
+UX-P acceptance claimed. Existing UX-1–10 remains accepted.
+
+**Next:** read the UX-P specification and live CLI/device TODO, implement
+UX-P1 then UX-P2–4 with one coherent validated checkpoint per turn.
+No new runtime, cache, configuration or execution authority; mouse
+selection is inert, explicit actions use original owners. Keep both
+keyboard and mouse pathways. Optional local Auto background probe
+dependency requires separate approval/offline review; no new dependency
+or download at design checkpoint. Resume public serving only after UX-P
+acceptance.
+
+### Previous checkpoint — Phase 2.1 UX-10 acceptance (26 Nov; 1b8de1cb)
 
 UX-10 and the bounded CLI/TUI/Web iteration are accepted. Cold diagnostics
 now include original backend loader probes and original cache accounting.
@@ -56,7 +77,8 @@ now include original backend loader probes and original cache accounting.
   refusal stays unchanged. No live acquisition, new dependency, physical
   GPU execution qualification or performance claim.
 
-**Next:** public OpenAI-compatible serving, starting with
+**Historical next after UX-10:** public OpenAI-compatible serving (now
+preceded by UX-P above), starting with
 [the serving iteration](../plans/serving-and-speculation/NEXT_ITERATION_OPENAI_COMPATIBLE_SERVING.md)
 and its live owner TODO, then ordinary public benchmarks, ROCm vs
 optimized vLLM, CUDA, Vulkan, optional compiled providers per full plan.

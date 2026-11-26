@@ -206,7 +206,10 @@ help/compatibility/CLI guide. Strict minimal/combined lint and isolated
 focused 59/0/1 pass. UX-10 final cold loader and cooperative cache quota
 diagnostics reuse original authorities; focused 44/0/2 and strict lint
 pass. Complete isolated gate sequence passed 2,505/0/109 (318 Rust suites), release Web/TUI/installer/scripts. Original run stopped at two transient busy-observation fixture assertions in acquisition/cache transactions; test-only bounded busy retry, reran affected cache-only/diagnostic/acquisition suites and exact remaining gate commands. No production change after the initial run.
-UX-1–10 accepted. Next public serving and ordinary benchmarks, then
+UX-1–10 accepted. User-directed follow-on [UX-P TUI polish](cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md)
+is now next: full mouse/keyboard controls, resizable panes and independent
+scroll, coordinated semantic Dark/Light/Auto appearance. No implementation
+claimed. Complete UX-P before public serving/ordinary benchmarks, then
 ordered performance phases.
 General UMA/foreign backing, device-write host read, unqualified model/
 backend/media and other expansion holds remain explicit. Historical
