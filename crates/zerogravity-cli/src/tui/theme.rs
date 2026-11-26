@@ -225,6 +225,16 @@ impl Theme {
             self.fg(Role::Rule)
         }
     }
+    pub fn primary(self) -> Style {
+        if self.color {
+            Style::new()
+                .fg(self.colors[Role::Canvas as usize])
+                .bg(self.colors[Role::Accent as usize])
+                .add_modifier(Modifier::BOLD)
+        } else {
+            self.selected()
+        }
+    }
     pub fn selected(self) -> Style {
         if self.color {
             self.on(Role::Selection).add_modifier(Modifier::BOLD)

@@ -5,13 +5,24 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 26 Nov — native UX-P polish (P1/P2/P3A)
+
+Presentation-only theme, scoped mouse, resizable panes/scroll and bound
+action buttons/More/explicit modal controls. UX-P1 and P2 focused
+acceptance, P3A optimized Rust 82/0/3, strict lint and actual native
+PTY shell/config/theme/mouse regressions; controlled transfer mouse
+pause/resume/durable/cancel and approved cached CPU/browser/native/HTTP
+1/0/0 (52.81s, five filtered) pass on original owners. No measured
+performance comparison or new GPU qualification. UX-P3B next; overall
+UX-P exit requires full isolated gate at P4 before public serving.
+
 ## 26 Nov — CLI/TUI/Web acceptance (UX-10)
 
 Original CUDA/HIP/RTC/Vulkan loader observations and existing-only
 nonblocking cooperative quota charge/reservations; no client, model,
 cache bootstrap or second accounting owner. Focused 44/0/2 and strict
 minimal/cache/combined lint pass. Complete isolated gate sequence passed 2,505/0/109 (318 Rust suites), release Web/TUI/installer/scripts. Original run stopped at two transient busy-observation fixture assertions in acquisition/cache transactions; test-only bounded busy retry, reran affected cache-only/diagnostic/acquisition suites and exact remaining gate commands. No production change after the initial run.
-UX-1–10 accepted; public serving next. No physical GPU execution,
+UX-1–10 accepted; additional UX-P polish precedes public serving. No physical GPU execution,
 live model acquisition or performance qualification inferred.
 
 ## 26 Nov — direct CLI polish (UX-10 core)

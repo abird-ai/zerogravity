@@ -1,6 +1,7 @@
 //! Cell-native navigation and rendering. No execution or filesystem effects.
 use super::{
     App,
+    controls::{Bound, Menu, Scope},
     input::{Hits, Intent, Pointer, Target},
     layout::{Motion, Pane, Scrollbar, SplitKind, Splitter, Workspace},
     library::{Key, Kind, Shelf},
@@ -12,6 +13,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent};
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
+    style::Style,
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph, Wrap},
 };
@@ -205,6 +207,7 @@ enum Modal {
     None,
     Palette(Palette),
     Help,
+    Menu(Menu),
     Theme {
         file: Snapshot,
         choice: ThemeMode,
@@ -231,7 +234,7 @@ pub(super) struct Navigation {
     too_small: bool,
     modal: Modal,
 }
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum LibraryAction {
     Cycle,
     SelectShelf(Shelf),
@@ -278,6 +281,10 @@ pub(super) enum LogAction {
 pub(super) enum Action {
     Redraw,
     Open,
+    Navigate(View),
+    OpenActions,
+    Bound(Bound),
+    FollowOutput,
     Refresh,
     Quit,
     Load,
@@ -304,6 +311,40 @@ impl Navigation {
     pub fn view(&self) -> View {
         self.view
     }
+    pub fn menu(&mut self, menu: Menu) {
+        self.pointer.cancel();
+        self.modal = Modal::Menu(menu);
+    }
+    pub fn following_output(&self) -> bool {
+        self.workspace.follow_output(self.view.index())
+    }
+    pub fn toggle_output_follow(&mut self) {
+        self.workspace
+            .set_follow_output(self.view.index(), !self.following_output());
+    }
+    fn accept_modal(&mut self) -> Option<Action> {
+        self.pointer.cancel();
+        match std::mem::take(&mut self.modal) {
+            Modal::Form { form, .. } => Some(Action::Submit(form)),
+            Modal::Theme { file, choice } => Some(Action::Submit(Form {
+                kind: FormKind::ConfigValue {
+                    file,
+                    key: "ui.theme".into(),
+                },
+                value: choice.label().into(),
+            })),
+            Modal::Confirm { action, .. } => Some(Action::Confirmed(action)),
+            modal => {
+                self.modal = modal;
+                None
+            }
+        }
+    }
+    fn dismiss_modal(&mut self) -> Action {
+        self.pointer.cancel();
+        self.modal = Modal::None;
+        Action::Redraw
+    }
     pub fn form(&mut self, kind: FormKind) {
         self.form_value(kind, String::new());
     }
@@ -313,14 +354,22 @@ impl Navigation {
         } else {
             value.len()
         };
+        self.pointer.cancel();
         self.modal = Modal::Form {
             form: Form { kind, value },
             cursor,
         };
     }
+    pub fn restore_form(&mut self, form: Form) {
+        match form.kind {
+            FormKind::ConfigValue { file, key } => self.edit_setting(file, key, form.value),
+            kind => self.form_value(kind, form.value),
+        }
+    }
     pub fn edit_setting(&mut self, file: Snapshot, key: String, value: String) {
         if key == "ui.theme" {
             let choice = serde_yaml::from_str(&value).unwrap_or_default();
+            self.pointer.cancel();
             self.modal = Modal::Theme { file, choice };
         } else {
             self.form_value(FormKind::ConfigValue { file, key }, value);
@@ -338,9 +387,11 @@ impl Navigation {
     }
     #[cfg(feature = "web")]
     pub fn web_url(&mut self, url: String) {
+        self.pointer.cancel();
         self.modal = Modal::WebUrl(url);
     }
     pub fn confirm(&mut self, question: String, action: Confirmation) {
+        self.pointer.cancel();
         self.modal = Modal::Confirm {
             question,
             action,
@@ -402,6 +453,13 @@ impl Navigation {
                 if let Modal::Confirm { scroll, .. } = &mut self.modal {
                     *scroll = scroll.saturating_add_signed(delta).min(max);
                     Some(Action::Redraw)
+                } else if let Modal::Menu(menu) = &mut self.modal {
+                    menu.scroll = menu.scroll.saturating_add_signed(delta).min(max);
+                    menu.cursor = menu
+                        .cursor
+                        .saturating_add_signed(delta as isize)
+                        .min(menu.buttons.len().saturating_sub(1));
+                    Some(Action::Redraw)
                 } else {
                     None
                 }
@@ -415,10 +473,36 @@ impl Navigation {
                 // A modal registers only its own visible targets. No backdrop
                 // click can select an underlying model or approve a mutation.
                 if !self.idle() {
+                    if target == Target::AcceptModal {
+                        return self.accept_modal();
+                    }
+                    if target == Target::DismissModal {
+                        return Some(self.dismiss_modal());
+                    }
+                    if let Target::Command(ref bound) = target
+                        && matches!(self.modal, Modal::Menu(_))
+                    {
+                        self.dismiss_modal();
+                        return Some(Action::Bound(bound.clone()));
+                    }
                     return match (&mut self.modal, target) {
                         (Modal::Palette(_), Target::Navigate(view)) => Some(self.open(view)),
                         (Modal::Theme { choice, .. }, Target::Theme(mode)) => {
                             *choice = mode;
+                            Some(Action::Redraw)
+                        }
+                        (
+                            Modal::Form {
+                                form:
+                                    Form {
+                                        kind: FormKind::Prompt { chat, .. },
+                                        ..
+                                    },
+                                ..
+                            },
+                            Target::PromptMode,
+                        ) => {
+                            *chat = !*chat;
                             Some(Action::Redraw)
                         }
                         _ => None,
@@ -426,6 +510,8 @@ impl Navigation {
                 }
                 Some(match target {
                     Target::Navigate(view) => self.open(view),
+                    Target::More => Action::OpenActions,
+                    Target::Command(bound) => Action::Bound(bound),
                     Target::Navigation => {
                         self.focus(if self.rail() {
                             self.workspace.preferred_focus(self.view.index())
@@ -579,6 +665,31 @@ impl Navigation {
                 }
                 return Action::Redraw;
             }
+            Modal::Menu(menu) => {
+                match key.code {
+                    Esc | F(4) => {
+                        return self.dismiss_modal();
+                    }
+                    Enter if key.kind == crossterm::event::KeyEventKind::Press => {
+                        if let Some(bound) = menu.selected() {
+                            self.dismiss_modal();
+                            return Action::Bound(bound);
+                        }
+                    }
+                    Up | Char('k') => menu.cursor = menu.cursor.saturating_sub(1),
+                    Down | Char('j') => {
+                        menu.cursor = (menu.cursor + 1).min(menu.buttons.len().saturating_sub(1))
+                    }
+                    Home => menu.cursor = 0,
+                    End => menu.cursor = menu.buttons.len().saturating_sub(1),
+                    PageUp => menu.cursor = menu.cursor.saturating_sub(8),
+                    PageDown => {
+                        menu.cursor = (menu.cursor + 8).min(menu.buttons.len().saturating_sub(1))
+                    }
+                    _ => {}
+                }
+                return Action::Redraw;
+            }
             Modal::Theme { choice, .. } => {
                 const MODES: [ThemeMode; 3] = [ThemeMode::Auto, ThemeMode::Dark, ThemeMode::Light];
                 let index = MODES
@@ -588,16 +699,7 @@ impl Navigation {
                 match key.code {
                     Esc => self.modal = Modal::None,
                     Enter if key.kind == crossterm::event::KeyEventKind::Press => {
-                        let Modal::Theme { file, choice } = std::mem::take(&mut self.modal) else {
-                            unreachable!()
-                        };
-                        return Action::Submit(Form {
-                            kind: FormKind::ConfigValue {
-                                file,
-                                key: "ui.theme".into(),
-                            },
-                            value: choice.label().into(),
-                        });
+                        return self.accept_modal().expect("theme submit");
                     }
                     Up | Left | Char('k') => *choice = MODES[index.saturating_sub(1)],
                     Down | Right | Char('j') => *choice = MODES[(index + 1).min(2)],
@@ -609,10 +711,7 @@ impl Navigation {
                 let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
                 let raw = matches!(form.kind, FormKind::RawYaml { .. });
                 if (key.code == Enter && !raw) || (ctrl && key.code == Char('s') && raw) {
-                    let Modal::Form { form, .. } = std::mem::take(&mut self.modal) else {
-                        unreachable!()
-                    };
-                    return Action::Submit(form);
+                    return self.accept_modal().expect("form submit");
                 }
                 match key.code {
                     Esc => self.modal = Modal::None,
@@ -669,10 +768,7 @@ impl Navigation {
                         *scroll = scroll.saturating_add(if key.code == PageDown { 8 } else { 1 })
                     }
                     Char('y' | 'Y') => {
-                        let Modal::Confirm { action, .. } = std::mem::take(&mut self.modal) else {
-                            unreachable!()
-                        };
-                        return Action::Confirmed(action);
+                        return self.accept_modal().expect("confirmation submit");
                     }
                     Esc | Char('n' | 'N') => self.modal = Modal::None,
                     _ => {}
@@ -701,6 +797,8 @@ impl Navigation {
             return Action::Redraw;
         }
         match key.code {
+            F(4) => Action::OpenActions,
+            F(9) => Action::FollowOutput,
             F(6) if self.workspace.has_detail => {
                 self.focus(if pane == Pane::Detail {
                     Pane::Main
@@ -1207,7 +1305,7 @@ fn content(app: &App, theme: Theme) -> Content {
             rows.push(
                 text(serve(app.snapshot.serving)).style(serve_style(app.snapshot.serving, theme)),
             );
-            rows.push(text("This process only · s start · t stop · l load"));
+            rows.push(text("Listener owned by this process"));
             #[cfg(feature = "web")]
             rows.push(text("b open private Web control URL"));
             if let Some(scheduler) = &runtime.scheduler {
@@ -1235,7 +1333,9 @@ fn content(app: &App, theme: Theme) -> Content {
         View::Downloads => {
             rows.push(label("Download operation", theme));
             rows.push(text(downloads(app)));
-            rows.push(text("d new pull · p pause · s resume · c cancel"));
+            rows.push(text(
+                "Explicit transfer controls · original operation owner",
+            ));
             if app.document.snapshot().offline {
                 rows.push(text("Offline · new acquisition disabled"));
             }
@@ -1308,6 +1408,22 @@ fn divider(
     }
     nav.hits.add(rect, Target::Split(splitter));
 }
+fn button(
+    frame: &mut Frame<'_>,
+    hits: &mut Hits,
+    rect: Rect,
+    title: &str,
+    style: Style,
+    target: Option<Target>,
+) {
+    if rect.is_empty() {
+        return;
+    }
+    frame.render_widget(Paragraph::new(text(title)).style(style), rect);
+    if let Some(target) = target {
+        hits.add(rect, target);
+    }
+}
 fn control(
     frame: &mut Frame<'_>,
     nav: &mut Navigation,
@@ -1316,11 +1432,136 @@ fn control(
     title: &str,
     target: Target,
 ) {
-    if rect.is_empty() {
+    button(
+        frame,
+        &mut nav.hits,
+        rect,
+        title,
+        theme.raised(),
+        Some(target),
+    );
+}
+fn action_bar(frame: &mut Frame<'_>, area: Rect, app: &mut App, theme: Theme) {
+    let scope = std::rc::Rc::new(Scope::capture(app));
+    let buttons = scope.buttons();
+    frame.render_widget(Block::default().style(theme.surface()), area);
+    let more = " More… ";
+    let more_width = more.chars().count() as u16;
+    if area.width < more_width {
         return;
     }
-    frame.render_widget(Paragraph::new(text(title)).style(theme.raised()), rect);
-    nav.hits.add(rect, target);
+    let more_rect = Rect::new(area.right() - more_width, area.y, more_width, area.height);
+    let mut x = area.x;
+    let mut primary = true;
+    for item in buttons {
+        // Availability never changes a button's geometry.
+        let title = format!(
+            "{}{} ",
+            if item.disabled.is_some() { "×" } else { " " },
+            item.label
+        );
+        let width = title.chars().count() as u16;
+        if x.saturating_add(width) >= more_rect.x {
+            break;
+        }
+        let enabled = item.disabled.is_none();
+        let style = if !enabled {
+            theme.raised().patch(theme.muted())
+        } else if primary {
+            primary = false;
+            theme.primary()
+        } else {
+            theme.raised()
+        };
+        button(
+            frame,
+            &mut app.navigation.hits,
+            Rect::new(x, area.y, width, 1),
+            &title,
+            style,
+            enabled.then(|| Target::Command(Bound::new(item.command, &scope))),
+        );
+        x += width + 1;
+    }
+    control(
+        frame,
+        &mut app.navigation,
+        theme,
+        more_rect,
+        more,
+        Target::More,
+    );
+}
+/// Render only buttons which actually fit. The explicit confirm is never
+/// the default key action of a destructive confirmation.
+fn modal_buttons(
+    frame: &mut Frame<'_>,
+    hits: &mut Hits,
+    theme: Theme,
+    area: Rect,
+    labels: (&str, &str),
+    enabled: bool,
+    destructive: bool,
+) -> Rect {
+    if area.is_empty() {
+        return area;
+    }
+    let (accept, cancel) = labels;
+    let (accept, cancel) = if accept.chars().count() + cancel.chars().count() > area.width as usize
+    {
+        (
+            if destructive { " confirm " } else { " Apply " },
+            " Cancel ",
+        )
+    } else {
+        (accept, cancel)
+    };
+    let aw = accept.chars().count() as u16;
+    let cw = cancel.chars().count() as u16;
+    if aw + cw > area.width {
+        return area;
+    }
+    let accept_rect = Rect::new(area.right() - aw, area.y, aw, 1);
+    let cancel_rect = Rect::new(accept_rect.x - cw, area.y, cw, 1);
+    button(
+        frame,
+        hits,
+        cancel_rect,
+        cancel,
+        if destructive {
+            theme.selected()
+        } else {
+            theme.raised()
+        },
+        Some(Target::DismissModal),
+    );
+    button(
+        frame,
+        hits,
+        accept_rect,
+        accept,
+        if !enabled {
+            theme.raised().patch(theme.muted())
+        } else if destructive {
+            theme.raised().patch(theme.danger())
+        } else {
+            theme.primary()
+        },
+        enabled.then_some(Target::AcceptModal),
+    );
+    Rect::new(area.x, area.y, cancel_rect.x - area.x, area.height)
+}
+fn close_button(frame: &mut Frame<'_>, hits: &mut Hits, theme: Theme, area: Rect) {
+    let title = " Esc close ";
+    let width = (title.len() as u16).min(area.width);
+    button(
+        frame,
+        hits,
+        Rect::new(area.right() - width, area.y, width, area.height),
+        title,
+        theme.raised(),
+        Some(Target::DismissModal),
+    );
 }
 fn pane_body(
     frame: &mut Frame<'_>,
@@ -1517,7 +1758,12 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
         render_rail(frame, rail, app, theme);
     }
     if !workspace.is_empty() {
-        render_workspace(frame, workspace, app, theme);
+        let [actions, content] =
+            Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).areas(workspace);
+        action_bar(frame, actions, app, theme);
+        if !content.is_empty() {
+            render_workspace(frame, content, app, theme);
+        }
     }
     divider(frame, &mut app.navigation, theme, track);
     let status = if let Some(job) = &app.active {
@@ -1543,7 +1789,8 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
             } else {
                 theme.muted()
             }),
-            text("1–9 views  Tab focus  F6 panes  F7 size  F8 mouse  q quit").style(theme.muted()),
+            text("1–9 views  Tab focus  F4 actions  F6 panes  F7 size  F8 mouse")
+                .style(theme.muted()),
         ])
         .style(theme.surface()),
         footer,
@@ -1570,12 +1817,22 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
     if !app.navigation.idle() {
         app.navigation.hits.clear();
     }
+    let menu_current = match &app.navigation.modal {
+        Modal::Menu(menu) => menu.scope.as_ref() == &Scope::capture(app),
+        _ => true,
+    };
+    let busy = app.active.is_some() || app.job.is_some();
     match &mut app.navigation.modal {
         Modal::None => {}
         #[cfg(feature = "web")]
         Modal::WebUrl(url) => {
             let popup = center(body, 110, 11);
             frame.render_widget(Clear, popup);
+            let block = dialog(" Embedded Web ", theme);
+            let inner = block.inner(popup);
+            frame.render_widget(block, popup);
+            let [content, controls] =
+                Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(inner);
             frame.render_widget(
                 Paragraph::new(vec![
                     label("Open this private URL in a browser", theme),
@@ -1586,14 +1843,19 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
                         "Esc / Enter closes this view; the listener remains owned by this process.",
                     ),
                 ])
-                .wrap(Wrap { trim: false })
-                .block(dialog(" Embedded Web ", theme)),
-                popup,
+                .wrap(Wrap { trim: false }),
+                content,
             );
+            close_button(frame, &mut app.navigation.hits, theme, controls);
         }
         Modal::Help => {
-            let popup = center(body, 68, 20);
+            let popup = center(body, 68, 21);
             frame.render_widget(Clear, popup);
+            let block = dialog(" Help ", theme);
+            let inner = block.inner(popup);
+            frame.render_widget(block, popup);
+            let [content, controls] =
+                Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(inner);
             frame.render_widget(
                 Paragraph::new(vec![
                     label("Navigation", theme),
@@ -1609,19 +1871,105 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
                     text(":       Destination palette"),
                     text("r       Refresh observations"),
                     text("T       Appearance setting (Auto / Dark / Light)"),
-                    text("F6 panes · F7 maximize · F8 mouse capture"),
+                    text("F4 actions · F6 panes · F7 maximize · F8 mouse"),
                     text("Alt+←/→ rail · Ctrl+arrows split size"),
                     text("Esc     Back / close overlay"),
                     text("q       Quit · Ctrl-C cancel/quit"),
                 ])
-                .block(dialog(" Help ", theme))
                 .wrap(Wrap { trim: false }),
-                popup,
+                content,
             );
+            close_button(frame, &mut app.navigation.hits, theme, controls);
+        }
+        Modal::Menu(menu) => {
+            let popup = center(
+                body,
+                72,
+                (menu.buttons.len().saturating_add(4)).min(26) as u16,
+            );
+            frame.render_widget(Clear, popup);
+            let block = dialog(" Actions ", theme);
+            let inner = block.inner(popup);
+            frame.render_widget(block, popup);
+            let [list, reason, footer] = Layout::vertical([
+                Constraint::Min(0),
+                Constraint::Length(1),
+                Constraint::Length(1),
+            ])
+            .areas(inner);
+            let current = menu_current;
+            let max = menu
+                .buttons
+                .len()
+                .saturating_sub(list.height as usize)
+                .min(u16::MAX as usize) as u16;
+            menu.scroll = menu.scroll.min(max);
+            if menu.cursor < menu.scroll as usize {
+                menu.scroll = menu.cursor.min(u16::MAX as usize) as u16;
+            } else if menu.cursor >= menu.scroll as usize + list.height as usize && list.height > 0
+            {
+                menu.scroll = (menu.cursor + 1 - list.height as usize).min(max as usize) as u16;
+            }
+            // Wheel scroll is local to the menu. Move cursor with a wheel
+            // event when required to keep keyboard focus in the viewport.
+            app.navigation.hits.add(list, Target::ModalScroll(max));
+            for (index, item) in menu.buttons.iter().enumerate() {
+                let Some(rect) = row_rect(list, index, menu.scroll) else {
+                    continue;
+                };
+                let available = current && item.disabled.is_none();
+                let selected = menu.cursor == index;
+                let mut title = format!(
+                    "{} {}  ({})",
+                    if !available {
+                        "-"
+                    } else if selected {
+                        ">"
+                    } else {
+                        " "
+                    },
+                    item.label,
+                    item.key
+                );
+                if let Some(reason) = item.disabled {
+                    title.push_str(" · ");
+                    title.push_str(reason);
+                }
+                let style = if !available {
+                    theme.muted()
+                } else if selected {
+                    theme.selected()
+                } else {
+                    theme.surface()
+                };
+                button(
+                    frame,
+                    &mut app.navigation.hits,
+                    rect,
+                    &title,
+                    style,
+                    available.then(|| Target::Command(Bound::new(item.command, &menu.scope))),
+                );
+            }
+            let message = if !current {
+                "Observations changed; reopen actions"
+            } else {
+                menu.buttons
+                    .get(menu.cursor)
+                    .and_then(|b| b.disabled)
+                    .unwrap_or("↑↓ choose · Enter open")
+            };
+            frame.render_widget(Paragraph::new(text(message)).style(theme.muted()), reason);
+            close_button(frame, &mut app.navigation.hits, theme, footer);
         }
         Modal::Theme { file, choice } => {
             let popup = center(body, 54, 11);
             frame.render_widget(Clear, popup);
+            let block = dialog(" Appearance ", theme);
+            let inner = block.inner(popup);
+            frame.render_widget(block, popup);
+            let [content, controls] =
+                Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(inner);
             let mut rows = Vec::new();
             if popup.height >= 11 {
                 rows.push(text(format!("Editing: {}", file.target.label())).style(theme.muted()));
@@ -1633,7 +1981,7 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
                     (ThemeMode::Dark, "Dark"),
                     (ThemeMode::Light, "Light"),
                 ] {
-                    let hit_area = dialog(" Appearance ", theme).inner(popup);
+                    let hit_area = content;
                     if let Some(rect) = row_rect(hit_area, rows.len(), 0) {
                         app.navigation.hits.add(rect, Target::Theme(mode));
                     }
@@ -1652,17 +2000,15 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
                 rows.push(Line::default());
                 rows.push(text("Auto: terminal hint; unknown uses dark.").style(theme.muted()));
             }
-            rows.push(
-                text(if popup.width >= 41 {
-                    "↑ ↓ preview · Enter apply · Esc cancel"
-                } else {
-                    "↑↓ Enter Esc"
-                })
-                .style(theme.accent()),
-            );
-            frame.render_widget(
-                Paragraph::new(rows).block(dialog(" Appearance ", theme)),
-                popup,
+            frame.render_widget(Paragraph::new(rows), content);
+            modal_buttons(
+                frame,
+                &mut app.navigation.hits,
+                theme,
+                controls,
+                (" Enter apply ", " Esc cancel "),
+                !busy,
+                false,
             );
         }
         Modal::Form { form, cursor } => {
@@ -1782,17 +2128,42 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
             rows.push(label(format!("{left}▏{right}"), theme));
             rows.extend(suffix.take(input.height as usize).map(text));
             frame.render_widget(Paragraph::new(rows).wrap(Wrap { trim: false }), input);
-            frame.render_widget(
-                Paragraph::new(text(if raw {
-                    "Ctrl-S save · Esc discard"
-                } else {
-                    "Enter accept · Esc cancel"
-                })),
+            let accept = match form.kind {
+                FormKind::RawYaml { .. } => " Ctrl-S save ",
+                FormKind::Prompt { .. } => " Enter send ",
+                FormKind::Search { .. } => " Enter search ",
+                FormKind::ConfigValue { .. } => " Enter save ",
+                _ => " Enter accept ",
+            };
+            let available = modal_buttons(
+                frame,
+                &mut app.navigation.hits,
+                theme,
                 controls,
+                (accept, " Esc cancel "),
+                !busy || matches!(form.kind, FormKind::Search { .. }),
+                false,
             );
+            if !mode.is_empty() {
+                let title = format!(" {mode} ↔ ");
+                let width = title.chars().count() as u16;
+                if available.width >= width {
+                    button(
+                        frame,
+                        &mut app.navigation.hits,
+                        Rect::new(available.x, available.y, width, 1),
+                        &title,
+                        theme.selected(),
+                        Some(Target::PromptMode),
+                    );
+                }
+            }
         }
         Modal::Confirm {
-            question, scroll, ..
+            question,
+            scroll,
+            action,
+            ..
         } => {
             let popup = center(body, 86, 15);
             frame.render_widget(Clear, popup);
@@ -1812,14 +2183,24 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
             app.navigation
                 .hits
                 .add(question_area, Target::ModalScroll(max));
-            frame.render_widget(
-                Paragraph::new(label("y confirm · n/Esc cancel · arrows scroll", theme)),
+            modal_buttons(
+                frame,
+                &mut app.navigation.hits,
+                theme,
                 controls,
+                (" y confirm ", " n/Esc cancel "),
+                !busy || matches!(action, Confirmation::Quit),
+                true,
             );
         }
         Modal::Palette(palette) => {
             let popup = center(body, 56, 14);
             frame.render_widget(Clear, popup);
+            let block = dialog(" Go to · Enter / Esc ", theme);
+            let inner = block.inner(popup);
+            frame.render_widget(block, popup);
+            let [content, controls] =
+                Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(inner);
             let mut rows = vec![
                 label(format!("› {}", palette.query), theme),
                 Line::default(),
@@ -1829,11 +2210,7 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
                 rows.push(text("No matching view"));
             }
             for (i, view) in matches.into_iter().enumerate() {
-                if let Some(rect) = row_rect(
-                    dialog(" Go to · Enter / Esc ", theme).inner(popup),
-                    rows.len(),
-                    0,
-                ) {
+                if let Some(rect) = row_rect(content, rows.len(), 0) {
                     app.navigation.hits.add(rect, Target::Navigate(view));
                 }
                 let line = text(format!(
@@ -1847,10 +2224,8 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
                     line
                 });
             }
-            frame.render_widget(
-                Paragraph::new(rows).block(dialog(" Go to · Enter / Esc ", theme)),
-                popup,
-            );
+            frame.render_widget(Paragraph::new(rows), content);
+            close_button(frame, &mut app.navigation.hits, theme, controls);
         }
     }
 }
@@ -1922,8 +2297,8 @@ fn render_library(frame: &mut Frame<'_>, area: Rect, app: &mut App, kind: Kind, 
             } else {
                 "m shelf · j/k select"
             }),
-            text("l load · p run · s load for Serve · d pull · v verify"),
-            text("a alias · X preview · x remove"),
+            text("Select a cached source or catalog target"),
+            text("Acquisition and execution are explicit"),
         ],
         Kind::Devices => vec![
             text("j/k select · Enter refresh · e check model policy"),
@@ -1943,8 +2318,8 @@ fn render_library(frame: &mut Frame<'_>, area: Rect, app: &mut App, kind: Kind, 
                 app.document.snapshot().target.label(),
                 app.library.editor.path.display()
             )),
-            text("j/k select · / search · Enter edit · z unset · t validate"),
-            text("a activate · y copy · x remove · v raw view · w raw edit"),
+            text("Select a setting to edit its value"),
+            text("Changes apply to the selected document"),
             text(format!(
                 "Search: {} · {}",
                 if app.library.query.is_empty() {
@@ -2378,6 +2753,11 @@ mod tests {
                 super::super::work::Document::test_default().target,
             ),
         };
+        let scope = std::rc::Rc::new(Scope::capture(&app));
+        let bound = Bound::new(super::super::controls::Command::Load, &scope);
+        assert!(bound.valid(&app));
+        app.document.configuration_changed();
+        assert!(!bound.valid(&app));
         for width in [60, 90, 150] {
             let mut terminal = Terminal::new(TestBackend::new(width, 24)).unwrap();
             terminal.draw(|frame| render(frame, &mut app)).unwrap();

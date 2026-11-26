@@ -1,5 +1,6 @@
 //! Native client shell. Runtime lifetime belongs to the outer host; view
 //! selection owns no model, task, listener or download.
+mod controls;
 mod input;
 mod layout;
 pub(crate) mod library;
@@ -443,6 +444,20 @@ impl App {
 
     fn handle(&mut self, runtime: &Runtime, control: ControlPlane<'_>, action: Action) -> bool {
         match action {
+            Action::Bound(bound) => {
+                if !self.refresh(control) { return false; }
+                self.active = self.actions.active();
+                if bound.valid(self) {
+                    return self.handle(runtime, control, bound.command.action());
+                }
+                self.notice = Some("Action target or availability changed; choose again".into());
+            }
+            Action::OpenActions => self.navigation.menu(controls::Menu::new(self)),
+            Action::Navigate(view) => {
+                self.navigation.open(view);
+                self.refresh_cold(runtime, control);
+            }
+            Action::FollowOutput => self.navigation.toggle_output_follow(),
             Action::Quit if self.live() || self.active.is_some() || self.web_owned() => self.navigation.confirm(
                 "Quit this process? Its Web/inference listeners and loaded models will be retired after owned work joins.".into(),
                 view::Confirmation::Quit,
@@ -506,6 +521,10 @@ impl App {
                 if self.navigation.view() == View::Logs && pane == layout::Pane::Main && !at_end && self.logs.following() {
                     self.logs.toggle_follow();
                 }
+            }
+            Action::Submit(form) if self.active.is_some() || self.job.is_some() => {
+                self.navigation.restore_form(form);
+                self.notice = Some("An action is already in progress; draft retained".into());
             }
             // A modal or repeated key cannot queue another effectful operation.
             _ if self.active.is_some() || self.job.is_some() => {
@@ -817,7 +836,7 @@ impl App {
         false
     }
 
-    fn refresh(&mut self, control: ControlPlane<'_>) {
+    fn refresh(&mut self, control: ControlPlane<'_>) -> bool {
         match control.snapshot() {
             Ok(snapshot) => {
                 self.snapshot = snapshot;
@@ -825,8 +844,12 @@ impl App {
                 self.actions
                     .with_logs_mut(|ring| ring.observe_download(self.snapshot.download.as_ref()));
                 self.reconcile_owner();
+                true
             }
-            Err(error) => self.notice = Some(format!("Observation failed: {error}")),
+            Err(error) => {
+                self.notice = Some(format!("Observation failed: {error}"));
+                false
+            }
         }
     }
 

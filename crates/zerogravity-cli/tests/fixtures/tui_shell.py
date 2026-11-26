@@ -165,28 +165,29 @@ def shell(root):
     print("TUI shell PTY: navigation, palette, resize, quit/SIGTERM restoration, plain fallback; no cache/config effects")
 
 
-def mouse_interaction(root):
-    # SGR mouse reports as emitted by a real terminal, using zero-based
-    # coordinates here and converting to the protocol's one-based cells.
-    def sgr(code, x, y, release=False):
-        return f"\x1b[<{code};{x+1};{y+1}{'m' if release else 'M'}".encode()
-    def click(x,y):
-        return sgr(0,x,y) + sgr(0,x,y,True)
-    def drag(x,y,end_x,end_y):
-        return sgr(0,x,y) + sgr(32,end_x,end_y) + sgr(0,end_x,end_y,True)
-    def wheel(x,y,down=True):
-        return sgr(65 if down else 64,x,y)
+# SGR mouse reports as emitted by a real terminal, using zero-based
+# coordinates here and converting to the protocol's one-based cells.
+def sgr(code, x, y, release=False):
+    return f"\x1b[<{code};{x+1};{y+1}{'m' if release else 'M'}".encode()
+def click(x,y):
+    return sgr(0,x,y) + sgr(0,x,y,True)
+def drag(x,y,end_x,end_y):
+    return sgr(0,x,y) + sgr(32,end_x,end_y) + sgr(0,end_x,end_y,True)
+def wheel(x,y,down=True):
+    return sgr(65 if down else 64,x,y)
 
+
+def mouse_interaction(root):
     with Terminal(root, ["--offline"], width=150, height=24) as terminal:
         terminal.check_started()
         assert b"\x1b[?1006h" in terminal.transcript
         terminal.send(click(4,5), b"Cached")
-        terminal.send(click(35,2), b"qwen3.5-plus")
+        terminal.send(click(35,3), b"qwen3.5-plus")
         # The first visible row after a 3-line wheel movement is the fourth
         # catalog entry. Wheel doesn't alter selection; click must use the
         # actual scrolled row, not its index in the unscrolled catalog.
         terminal.send(wheel(30,10), b"gemma4")
-        terminal.send(click(30,8), b"Qwen/Qwen3.8-27B")
+        terminal.send(click(30,9), b"Qwen/Qwen3.8-27B")
         # Drag the rail from its default 22 cells to 29; clicking the newly
         # exposed rail area (previously workspace) must navigate.
         terminal.send(drag(22,18,29,18), b"Models")
@@ -195,12 +196,12 @@ def mouse_interaction(root):
         # Resize the actual inner divider, then select through the newly
         # enlarged list region (which was formerly the detail pane).
         terminal.send(drag(95,15,105,15), b"Selected")
-        terminal.send(click(101,9), b"> qwen3.8-flash-next")
+        terminal.send(click(101,10), b"> qwen3.8-flash-next")
         terminal.until(b"Source-specific")
         # Maximize the list; select a row in the former details area, then
         # restore its old split and observe the selected exact source.
-        terminal.send(click(102,7) + click(140,8), b"> qwen3.8-27b")
-        terminal.send(click(147,7), b"Qwen/Qwen3.8-27B")
+        terminal.send(click(102,8) + click(140,9), b"> qwen3.8-27b")
+        terminal.send(click(147,8), b"Qwen/Qwen3.8-27B")
         # Focus details and return with keyboard equivalence. Opening a
         # modal masks every hit target behind it.
         terminal.send(b"\x1b[17~?", b"Help")
@@ -218,12 +219,12 @@ def mouse_interaction(root):
 
     # Compact vertical split: move the horizontal divider down to expose
     # an additional visible row and click the newly exposed row.
-    with Terminal(root, ["--offline"], width=60, height=24) as terminal:
+    with Terminal(root, ["--offline"], width=60, height=25) as terminal:
         terminal.check_started()
         terminal.send(click(2,0),b"Navigation")
         terminal.send(click(4,5),b"Cached")
-        terminal.send(click(12,2),b"qwen3.5-plus")
-        terminal.send(drag(25,14,25,15) + click(4,14),b"> qwen-gguf-quant")
+        terminal.send(click(12,3),b"qwen3.5-plus")
+        terminal.send(drag(25,15,25,16) + click(4,15),b"> qwen-gguf-quant")
         # Narrow view collapses to one pane; Nav remains available.
         terminal.resize(30)
         os.kill(terminal.proc.pid,signal.SIGWINCH)
@@ -271,6 +272,92 @@ def mouse_interaction(root):
         assert b"\x1b[?1006l" in terminal.transcript
     assert document.read_text() == original
     print("TUI mouse PTY: actual SGR click/wheel/drag, rail/inner split, maximize/restore, narrow nav, modal isolation, session toggle and persistent opt-out")
+
+
+def mouse_controls(root):
+    # A real foreground host, not simulated Action dispatch. The action
+    # strip, choice rows, modal buttons and overflow are all SGR clicks.
+    profiles = root / "config/abird/zerogravity/profiles"
+    desk = profiles / "desk.yaml"
+    other = profiles / "other.yaml"
+    with Terminal(root, [], width=150, height=40) as terminal:
+        terminal.repaint_on_wait = True
+        terminal.check_started()
+        terminal.send(click(4,8), b"Open editor")
+        terminal.until(b"> default")
+        terminal.send(click(40,1), b"lowercase")
+        terminal.send(b"desk" + click(105,24), b"Created", 10)
+        assert desk.is_file()
+        terminal.until(b"ui.theme", 10)
+        terminal.send(click(33,1), b"Enter search")
+        terminal.send(b"ui.theme" + click(105,24), b"ui.theme = auto")
+        terminal.send(click(26,1), b"Enter apply")
+        original = desk.read_bytes()
+        terminal.send(click(55,19), b"> Light")
+        assert desk.read_bytes() == original
+        os.write(terminal.master, click(81,23))
+        time.sleep(0.2)
+        terminal.send(click(26,1), b"Enter apply")
+        terminal.send(click(55,18), b"> Dark")
+        terminal.send(click(95,23), b"Saved", 10)
+        assert "theme: dark" in desk.read_text()
+        # The overflow menu includes the existing exact document action.
+        terminal.until(b"ui.theme", 10)
+        terminal.send(click(146,1), b"Actions")
+        terminal.send(click(45,17), b"Activated", 10)
+        assert desk.is_file()
+        # Create a second profile, then exercise the explicit remove
+        # confirmation (cancel first, confirm only on second invocation).
+        terminal.send(click(4,8), b"desk")
+        terminal.send(click(40,1), b"lowercase")
+        terminal.send(b"other" + click(105,24), b"Created", 10)
+        assert other.is_file()
+        terminal.until(b"ui.theme",10)
+        terminal.send(click(146,1), b"Actions")
+        terminal.send(click(45,20), b"y confirm")
+        os.write(terminal.master, click(100,25))
+        time.sleep(0.2)
+        assert other.is_file()
+        terminal.send(click(146,1), b"Actions")
+        terminal.send(click(45,20), b"y confirm")
+        terminal.send(click(112,25), b"Removed",10)
+        assert not other.exists() and desk.is_file()
+        # A down on a valid button followed by release elsewhere must
+        # not activate it. Existing keyboard navigation remains usable.
+        os.write(terminal.master, sgr(0,26,1) + sgr(0,60,4,True))
+        terminal.send(b"9", b"Operational logs")
+        terminal.send(b"1", b"Quick")
+        from web_shell import Client
+        client = Client(terminal.private_web_url())
+        os.write(terminal.master,b"\r")
+        terminal.send(b"8",b"ui.theme")
+        observation = client.config("@active")
+        os.write(terminal.master,sgr(0,26,1))
+        time.sleep(0.25)
+        client.action({"kind":"settings","action":{"command":"set",
+            "snapshot":observation["snapshot"],"key":"ui.theme","value":"light"}})
+        assert "theme: light" in desk.read_text()
+        time.sleep(0.25)
+        os.write(terminal.master,sgr(0,26,1,True))
+        terminal.send(b"9",b"Operational logs")
+        terminal.send(b"q",b"y confirm")
+        os.write(terminal.master,click(112,25))
+        terminal.finish()
+        client.closed()
+    with Terminal(root,[],width=50,height=18) as terminal:
+        terminal.check_started()
+        terminal.send(b"\x1bOS",b"Actions")
+        terminal.send(b"\r",b"Quick run source")
+        os.write(terminal.master,b"\x1b")
+        time.sleep(0.2)
+        terminal.send(click(46,1),b"Actions")
+        os.write(terminal.master,b"\x1b")
+        time.sleep(0.2)
+        os.write(terminal.master,b"q")
+        terminal.finish()
+    assert not (root/"cache").exists()
+    assert not (profiles.parent/"config.yaml").exists()
+    print("TUI action PTY: mouse create/edit/theme preview/cancel/save, overflow activate, remove cancel/confirm, release mismatch, stale Web edit, narrow overflow; no cache effects")
 
 
 def appearance(root):
@@ -495,25 +582,25 @@ def lifecycle(root, expected):
         cpu_index = next(i for i, device in enumerate(devices) if device["id"] == "cpu:0")
         if cpu_index:
             os.write(terminal.master, b"j" * cpu_index)
-        terminal.send(b"e", b"MODEL")
-        terminal.send(b"\r", b"accepted", 60)
+        terminal.send(click(28,1), b"MODEL")
+        terminal.send(click(105,24), b"accepted", 60)
         terminal.send(b"4", b"fixture/serve")
-        terminal.send(b"\r", b"checked;")
-        terminal.send(b"v", b"verified", 60)
-        terminal.send(b"a", b"replacement.")
-        terminal.send(b"tui-fixture\r", b"created", 30)
-        terminal.send(b"x", b"confirm")
+        terminal.send(click(47,1), b"checked;")
+        terminal.send(click(73,1), b"verified", 60)
+        terminal.send(click(82,1), b"replacement.")
+        terminal.send(b"tui-fixture" + click(105,24), b"created", 30)
+        terminal.send(click(108,1), b"confirm")
         os.write(terminal.master, b"n")
-        terminal.send(b"p", b"Prompt")
+        terminal.send(click(32,1), b"Prompt")
         # Original profile raw=true. TUI completion must be actual output.
-        terminal.send(b"\x1b[200~" + prompt.encode() + b"\x1b[201~\r", b"length", 90)
+        terminal.send(b"\x1b[200~" + prompt.encode() + b"\x1b[201~" + click(105,24), b"length", 90)
         assert b"Response" in terminal.transcript
         terminal.send(b"2", b"registration")
         terminal.send(b"\r", b"Prompt")
         terminal.send(b"\x1b[200~" + prompt.encode() + b"\x1b[201~\r", b"length", 30)
         terminal.send(b"3", b"OpenAI-compatible")
-        terminal.send(b"s", b"IP:PORT")
-        terminal.send(address.encode() + b"\r", b"Listening:", 30)
+        terminal.send(click(25,1), b"IP:PORT")
+        terminal.send(address.encode() + click(105,24), b"Listening:", 30)
         models = http("/models")
         assert len(models["data"]) == 1, models
         loaded_alias = models["data"][0]["id"]
@@ -626,16 +713,16 @@ def lifecycle(root, expected):
         os.write(terminal.master, b"n")
         assert http("/models") == models
         terminal.send(b"3", b"OpenAI-compatible")
-        terminal.send(b"t", b"confirm")
+        terminal.send(click(35,1), b"confirm")
         if client:
             with client.events() as events:
-                terminal.send(b"y", b"Listener stopped", 30)
+                terminal.send(click(112,25), b"Listener stopped", 30)
                 assert events.readline() == b"event: refresh\n"
                 observed = client.snapshot()
                 assert observed["serving"]["state"] == "idle"
                 assert observed["runtime"]["models"][0]["registration_id"] == registration
         else:
-            terminal.send(b"y", b"Listener stopped", 30)
+            terminal.send(click(112,25), b"Listener stopped", 30)
         closed()
         terminal.send(b"2", b"registered")
         if client:
@@ -674,7 +761,7 @@ def lifecycle(root, expected):
             terminal.send(b"\x1b[200~" + prompt.encode() + b"\x1b[201~\r", b"length", 30)
             terminal.send(b"3", address.encode(), 30)
         else:
-            terminal.send(b"u", b"confirm")
+            terminal.send(click(41,1), b"confirm")
             terminal.send(b"y", b"retired", 60)
             # The last retirement makes the same runtime available for a new load.
             terminal.send(b"l", b"MODEL")
@@ -819,6 +906,9 @@ elif sys.argv[2] == "--settings-fixture":
 elif sys.argv[2] == "--mouse-fixture":
     with tempfile.TemporaryDirectory(prefix="zg-tui-mouse-") as tmp:
         mouse_interaction(Path(tmp))
+elif sys.argv[2] == "--controls-fixture":
+    with tempfile.TemporaryDirectory(prefix="zg-tui-controls-") as tmp:
+        mouse_controls(Path(tmp))
 elif sys.argv[2] == "--appearance-fixture":
     with tempfile.TemporaryDirectory(prefix="zg-tui-appearance-") as tmp:
         appearance(Path(tmp))
@@ -833,12 +923,12 @@ elif sys.argv[2] == "--download-fixture":
             with Terminal(root, ["--ignored", "--exact", "pull::monitor::tests::monitor_child", "--nocapture"], width=150, height=40) as terminal:
                 terminal.check_started()
                 terminal.send(b"5", b"Paused", 15)
-                terminal.send(b"s", b"Running", 15)
+                terminal.send(click(36,1), b"Running", 15)
                 # The existing fixture body accepts 128 bytes per 40 ms.
                 # Allow a prefix before asking for the safe range checkpoint;
                 # the child asserts that an actual second request was made.
                 time.sleep(0.35)
-                terminal.send(b"p", b"Pause", 15)
+                terminal.send(click(26,1), b"Pause", 15)
                 # Ratatui may emit only the final changed cell of "Paused".
                 # Change views after the safe body boundary to read a newly
                 # painted status, not the raw differential transition bytes.
@@ -846,9 +936,9 @@ elif sys.argv[2] == "--download-fixture":
                 terminal.send(b"1", b"Quick", 15)
                 terminal.send(b"5", b"Paused", 15)
                 if mode == "tui":
-                    terminal.send(b"s", b"Snapshot:", 20)
+                    terminal.send(click(36,1), b"Snapshot:", 20)
                 else:
-                    terminal.send(b"c", b"Cancel", 20)
+                    terminal.send(click(49,1), b"Cancel", 20)
                     time.sleep(0.5)
                     terminal.send(b"1", b"Quick", 15)
                     terminal.send(b"5", b"Cancelled", 15)

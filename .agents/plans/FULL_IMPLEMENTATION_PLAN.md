@@ -728,6 +728,9 @@ UX-1–10 remains accepted; this is additional presentation work.
   focused Rust 84/0/3, real SGR PTY and original native/Firefox smoke pass.
 - [ ] UX-P3: complete mouse and keyboard affordances across nine views,
   actions, pickers, forms, settings and exact-owner confirmations.
+  UX-P3A action bars/overflow, bound commands and modal buttons landed
+  and focused-qualified (82/0/3 + real cached lifecycle 1/0/0; controlled
+  transfer and config PTY). UX-P3B typed pickers/editor interaction next.
 - [ ] UX-P4: visual/terminal-depth/accessibility polish, actual PTY and
   simultaneous-client lifecycle acceptance; full isolated gate.
 

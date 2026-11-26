@@ -212,8 +212,11 @@ scroll, coordinated semantic Dark/Light/Auto appearance. UX-P1 landed with
 focused 81/0/3 Rust, JS 3/0, real native/Web appearance and settings
 regression. UX-P2 scoped mouse capture, exact inert hit targets, responsive
 splits, focus/maximize and independent scrolling landed; focused Rust 84/0/3,
-strict lint, actual SGR/native/Firefox tests passed. UX-P3 complete controls
-next. Complete UX-P before public serving/ordinary benchmarks, then
+strict lint, actual SGR/native/Firefox tests passed. UX-P3A action strips,
+More/F4, original identity-bound commands and modal buttons landed;
+focused Rust 82/0/3 plus actual local cached lifecycle 1/0/0, controlled
+transfer and configuration mouse PTY passed. UX-P3B typed pickers,
+filtering/editor interaction next. Complete UX-P before public serving/ordinary benchmarks, then
 ordered performance phases.
 General UMA/foreign backing, device-write host read, unqualified model/
 backend/media and other expansion holds remain explicit. Historical

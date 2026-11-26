@@ -4,7 +4,7 @@ Author: Project owner
 Co-authors: GPT-6.2
 Owner: @pvl
 Decision: 26 Nov 2026 — polish before public serving
-Status: UX-P1/P2 implemented and focused-qualified (26 Nov); UX-P3 next.
+Status: UX-P1/P2 and UX-P3A implemented and focused-qualified (26 Nov); UX-P3B next.
 
 This is the follow-on to the accepted UX-1–10 iteration at `1b8de1cb`.
 It supersedes only the relevant interaction/presentation details of
@@ -476,6 +476,36 @@ not mark an untested or interrupted phase accepted.
   settings/editor mouse interaction. Shared original actions and guards,
   no keyboard-only remaining visible operation. Verify controlled actual
   cache/download and configuration mutation plus explicit confirmations.
+
+  - [x] UX-P3A: width-stable semantic action strips and one F4/More
+    menu across nine views, visible unavailable reasons, direct typed
+    Command -> original Action mapping. One shared Rc binding per
+    surface, exact observed selected row/file/owner, configuration
+    revision, listener/transfer/action identity and availability.
+    Release must match the visible binding; fresh live snapshot and
+    slot revalidation precede dispatch. Conservative refusal on
+    observation changes rather than retargeting. No motion effects.
+    Explicit modal apply/submit/confirm/cancel and prompt chat/raw mode,
+    same keyboard submission path; busy keyboard submit retains draft.
+    Menu-local wheel/keyboard scrolling, disabled rows no click hit.
+    Real isolated optimized Rust 82/0/3, strict minimal/Web-only/
+    TUI-Web/combined lint. Native controls, P2 mouse, shell, settings,
+    appearance PTY pass. Actual controlled transfer mouse pause/
+    resume/durable/cancel passed. Actual approved local Qwen 0.8B
+    combined browser/native/HTTP lifecycle 1/0/0 (52.81s, five filtered)
+    passed with native mouse device check, cache inspect/verify/alias,
+    declined removal, exact digest run/submit, listener start/stop and
+    retirement; original Web stale owner and shared policy checks pass.
+    Width instability on disabled labels fixed; initial PTY assertion
+    failures corrected to use actual modal labels/selected rows, original
+    file and transfer effects unchanged. No new dependency, remote
+    download, GPU or performance claim.
+  - [ ] UX-P3B: typed enum/boolean setting and log filter pickers,
+    model shelf search, mouse caret/text selection/editor scroll and
+    accessible keyboard focus/compact modal handling; finish any
+    missing view affordances. Keep raw repair and exact draft/owner
+    guard. Stable reorder anchors and final ergonomics remain P4.
+
 - [ ] **UX-P4 — finish ergonomics and acceptance:** Unicode wrapping/caret,
   scrollbar/follow/selection edge cases, small viewports, accessibility,
   focus order, no-color/ANSI, busy/disabled/stale/error/empty states,

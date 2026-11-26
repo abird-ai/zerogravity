@@ -451,6 +451,14 @@ Retain accepted UX-1–10 ownership and keyboard behavior.
   full editor/action interaction remain P3/P4.
 - [ ] UX-P3: mouse-accessible controls in all nine views, actions,
   modal/editor/picker interaction, exact owner/document and confirmations.
+  - [x] UX-P3A: width-stable action bars/More/F4, exact observed identity
+    binding and fresh dispatch revalidation, modal buttons and prompt
+    mode, busy draft retained. Focused Rust 82/0/3, strict lint, real
+    native control/settings/appearance/mouse PTY, actual controlled
+    download mouse and approved cached Qwen browser/native/HTTP 1/0/0
+    (52.81s) pass.
+  - [ ] UX-P3B: typed setting/log pickers, model search, mouse caret/
+    selection and editor viewport; complete compact/focus affordances.
 - [ ] UX-P4: complete ergonomics, actual PTY and accepted real cached
   resident/transfer/config regression, isolated workspace gate.
 

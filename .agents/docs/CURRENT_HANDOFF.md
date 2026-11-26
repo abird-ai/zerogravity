@@ -27,7 +27,47 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — UX-P2 mouse and pane foundation (26 Nov)
+### Current checkpoint — UX-P3A native action controls (26 Nov)
+
+- New presentation-only controls.rs: all nine views have width-stable
+  action strips, F4/More overflow with disabled reasons. One Rc scope
+  per rendered surface captures exact row/ready owner/observed file,
+  config revision/active document, listener generation, transfer and
+  active action identities plus availability. Press/release matching,
+  fresh live snapshot and shared slot revalidation before original
+  Action dispatch; conservative refusal on observation change. No
+  new runtime/controller/authority or dependency.
+- Modal Apply/Send/Save/Confirm/Cancel/Close and prompt chat/raw buttons
+  converge on existing keyboard submit. Confirm preserves exact Request,
+  disabled buttons have no hit, stale press refuses, busy submit retains
+  form. Menu scroll is local. Keyboard shortcuts unchanged, F4 opens
+  menu, F9 output follow. No auto execution on selecting any row.
+- Strict minimal/Web-only/TUI-Web/combined lint and optimized Rust
+  82/0/3. Real PTY controls (create, theme preview/cancel/save, overflow
+  activate, remove cancel/confirm, release mismatch, concurrent Web edit,
+  narrow keyboard/mouse menu), original P2 mouse/shell/settings/appearance
+  pass. New tests integrated in final default-release gate; exact
+  default CPU/model/text/TUI/Web build and all four native PTY
+  invocations passed without serve/acquisition.
+- Actual controlled download safe pause/resume/durable/cancel via native
+  mouse; actual approved cached Qwen 0.8B CPU/browser/native/HTTP fixture
+  1/0/0 (52.81s, five filtered), original 8 GiB admission, mouse device
+  policy/cache inspect/verify/alias/removal decline/run/prompt submit/
+  listener start/stop and retire. Exact stale Web identities and shared
+  active policy checks remain intact. Logs target/ux-p3a-final.log,
+  target/ux-p3a-pty-rerun2.log, target/ux-p3a-owners.log.
+- Initial PTY caught variable disabled width; fixed slots. Remaining
+  initial assertion failures were ANSI differential output; waited on
+  actual selected/control labels with exact file/outcome assertions.
+  Final focused tests pass; full workspace acceptance at P4.
+
+**Next:** UX-P3B typed settings and log filter pickers, model shelf search,
+mouse caret/text selection and editor scrolling, remaining compact/modal
+and keyboard focus affordances. P4 stable scroll anchors, final visual/
+ergonomic review, original real owner regressions and full gate before
+public serving. Native Auto active probe still deferred.
+
+### Previous checkpoint — UX-P2 mouse and pane foundation (26 Nov; ab3cf974)
 
 - Scoped Crossterm capture (including quit/error/signal restore), typed
   ui.mouse auto/always/never; F8 session-only override.
@@ -51,11 +91,8 @@ reusable work and measured history, not precedence over this order.
   caret/selection and full mouse action buttons/confirmations remain
   P3/P4. Native Auto theme probe remains deferred as before.
 
-**Next:** UX-P3 complete visible mouse-accessible action controls, typed
-pickers/modal buttons and editor interaction across nine views. Reuse
-the original App::handle/request/confirmation and exact-owner guards;
-no alternate runtime or configuration authority. UX-P4 final ergonomics
-and acceptance before public serving.
+UX-P3A action controls landed above; remaining UX-P3B editor/pickers,
+then UX-P4 acceptance.
 
 ### Previous checkpoint — UX-P1 visual foundation (26 Nov; b1073e7c)
 

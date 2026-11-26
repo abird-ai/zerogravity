@@ -1,5 +1,6 @@
 //! Visible hit targets only. Pointer translation does not own runtime actions.
 use super::{
+    controls::Bound,
     layout::{Motion, Pane, Scrollbar, Splitter},
     library::{Key, Kind, Shelf},
     view::View,
@@ -25,6 +26,11 @@ pub(super) enum Target {
     Theme(ThemeMode),
     Help,
     Palette,
+    More,
+    Command(Bound),
+    AcceptModal,
+    DismissModal,
+    PromptMode,
     ModalScroll(u16),
 }
 #[derive(Debug, Default)]
@@ -78,7 +84,9 @@ impl Pointer {
     pub fn invalidate_selection(&mut self) {
         if matches!(
             self.0,
-            Some(Capture::Press(Target::Row(..) | Target::Owner(_)))
+            Some(Capture::Press(
+                Target::Row(..) | Target::Owner(_) | Target::Command(_)
+            ))
         ) {
             self.cancel();
         }
@@ -132,8 +140,16 @@ impl Pointer {
                 } else {
                     3
                 };
-                if let Some(Target::ModalScroll(max)) = hits.at(pos) {
-                    Some(Intent::ScrollModal(delta, *max))
+                if let Some(max) = hits.0.iter().rev().find_map(|(rect, target)| {
+                    if let Target::ModalScroll(max) = target
+                        && rect.contains(pos)
+                    {
+                        Some(*max)
+                    } else {
+                        None
+                    }
+                }) {
+                    Some(Intent::ScrollModal(delta, max))
                 } else {
                     hits.pane(pos)
                         .map(|pane| Intent::Scroll(pane, Motion::Step(delta)))

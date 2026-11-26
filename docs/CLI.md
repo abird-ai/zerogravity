@@ -135,8 +135,12 @@ Alt+Left/Right resizes the rail, Ctrl+arrows resize inner splits. F8
 toggles mouse capture for this session; set `ui.mouse: never` (or
 `zg config set ui.mouse never`) to opt out persistently. Terminal text
 selection is emulator-owned (often Shift+drag, or disable capture first).
-Selection alone does not execute. Effectful action and editor mouse
-controls are the next polish slice; existing keyboard actions remain.
+Selection alone does not execute. The action strip and More… (F4) menu
+expose the original operations; disabled buttons cannot activate,
+and changed observations require choosing again. Form and confirmation
+buttons use the same typed actions as Enter/Ctrl-S and y/n/Esc.
+F9 toggles response following. Existing keyboard shortcuts remain.
+Typed choice/filter and mouse text editing polish is the next slice.
 
 ```sh
 zerogravity web
