@@ -15,6 +15,16 @@ and accepted SDK/control/runtime/config contracts. This is a bounded
 product polish phase (UX-P), not a redesign of the execution fabric.
 Complete it before §2.3 public serving/ordinary benchmarks.
 
+**26 Nov Models execution follow-up (accepted).** One object-local Execution
+row in native details (also context action/Alt+e), and one inline Web select.
+Default inherits the profile, otherwise explicit backend and automatic or
+exact observed physical device; Run/Load/Load for Serve consume the same
+model-bound temporary draft. No additional mandatory step, persistent profile
+mutation, active registration change or advanced policy duplication. The
+existing resolver validates all fit and compatibility; cold inventory is not
+an execution guarantee. Real CPU lifecycle and complete assembled gate passed;
+see the owner TODO and current handoff for evidence.
+
 ## 1. Intent
 
 **26 Nov user-directed minimalism — toolbar-free, object-first.**

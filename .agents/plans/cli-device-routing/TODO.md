@@ -525,6 +525,15 @@ Retain accepted UX-1–10 ownership and keyboard behavior.
     [takeover context](../../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-26_UX_PM1.md).
 
 
+- [x] User follow-up: model-local Execution selector in native and Web cached
+  Models. Default inherits the active profile; explicit backend can select an
+  automatic or exact observed device. Run/Load/Load for Serve share the draft;
+  no profile writes, cross-model override, or new routing owner. Original
+  fit/refusal remains authoritative; stale explicit device does not fall back.
+  Focused 67/0/3, JS 5/0, real cached CPU lifecycle 1/0/0 (57.08s), full
+  assembled private-network gate 2,543/0/109 (318 suites, 301.6s), release
+  native/Web/installer/scripts passed. No new GPU execution claim.
+
 UX-P accepted; public serving is the next ordered phase. No physical
 performance comparison or new HIP/Vulkan placement qualification.
 

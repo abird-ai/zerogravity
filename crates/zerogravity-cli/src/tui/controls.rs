@@ -265,6 +265,7 @@ impl Scope {
                         self.busy(),
                     );
                     add(C::Library(L::Reclaim(true)), "Remove", "x", self.busy());
+                    add(C::Library(L::Execution), "Execution…", "e", self.busy());
                 }
                 Some(Key::Target(_)) | Some(Key::Partial(_)) => {
                     add(

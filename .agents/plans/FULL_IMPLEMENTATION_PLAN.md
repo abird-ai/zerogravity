@@ -754,6 +754,11 @@ UX-1–10 remains accepted; this is additional presentation work.
   Release Web/TUI/installer/scripts passed. UX-P accepted; proceed to §2.3.
   Optional deeper profiling follows actual provider capabilities.
 
+  User follow-up: model-local native/Web Execution selector accepted; Run,
+  Load and Load for Serve inherit profile by default, with optional explicit
+  backend/device draft over the original resolver. Actual cached CPU lifecycle
+  and assembled gate 2,543/0/109 (318 suites) pass; OA-1 remains next.
+
 No new runtime, cache, configuration or execution owner. No inference
 protocol or backend performance work was admitted before this bounded exit.
 

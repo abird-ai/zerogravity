@@ -5,6 +5,16 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 26 Nov — model-local execution selector accepted
+
+Native/Web cached Models share a typed backend/device override, inheriting the
+profile by default and preserving original fit/refusal authority. Explicit
+backend without device selects automatic devices; exact physical choice pins
+one device. Real cached CPU native/Firefox/HTTP lifecycle 1/0/0 (57.08s), focused
+Rust 67/0/3, JS 5/0, strict lint; assembled offline private-network gate exited
+0 (301.6s), 2,543/0/109 across 318 Rust suites plus release TUI/Web/installer and
+scripts. No new GPU execution or performance qualification. OA-1 next.
+
 ## 26 Nov — UX-P4B accepted
 
 Final offline private-network workspace gate on `ad7a4178e3b85ea9e8a0ddcf9f2be798b0416ca8`

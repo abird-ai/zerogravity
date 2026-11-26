@@ -1,7 +1,7 @@
 //! Shared action execution. Original resident planner, ControlPlane and
 //! OutputStream remain the only execution owners.
-use super::Document;
 use super::settings;
+use super::{Document, execution::Execution};
 use crate::resident;
 use std::{
     num::NonZeroUsize,
@@ -16,10 +16,7 @@ use zerogravity::{
     control::RegisteredModel,
     diagnostics::RuntimePhase,
     models::ModelLifecycle,
-    run::{
-        OutputPoll, ResponseEvent, TextControls,
-        config::{RunOverrides, resolve_serving},
-    },
+    run::{OutputPoll, ResponseEvent, TextControls, config::resolve_serving},
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -47,7 +44,7 @@ pub(crate) enum Request {
     Load {
         source: String,
         prompt: Option<Prompt>,
-        device: Option<String>,
+        execution: Execution,
     },
     Invoke {
         owner: Owner,
@@ -177,7 +174,7 @@ pub(crate) enum Completed {
 fn resolve_request(
     document: &Document,
     source: &str,
-    device: Option<&str>,
+    execution: Execution,
 ) -> Result<(
     zerogravity::run_policy::Request,
     zerogravity::pipelines::ServeDoc,
@@ -200,10 +197,7 @@ fn resolve_request(
     };
     resolve_serving(
         document.read()?,
-        RunOverrides {
-            devices: device.map(|id| vec![id.to_owned()]),
-            ..Default::default()
-        },
+        execution.overrides(),
         models,
         &std::env::current_dir()?,
     )
@@ -297,7 +291,8 @@ fn execute(
         | Request::Reclaim { .. }
         | Request::Alias { .. } => unreachable!("cache worker dispatch"),
         Request::CheckFit { source, device } => {
-            let (request, settings) = resolve_request(document, &source, Some(&device))?;
+            let (request, settings) =
+                resolve_request(document, &source, Execution::on_device(device.clone()))?;
             let plan = resident::prepare(
                 request,
                 settings,
@@ -324,14 +319,14 @@ fn execute(
         Request::Load {
             source,
             prompt,
-            device,
+            execution,
         } => {
             if runtime.status().phase != RuntimePhase::Empty {
                 return Err(Error::State(
                     "Retire the current route set before loading another".into(),
                 ));
             }
-            let (request, settings) = resolve_request(document, &source, device.as_deref())?;
+            let (request, settings) = resolve_request(document, &source, execution)?;
             if prompt.is_some() && request.graph.models.len() != 1 {
                 return Err(Error::InvalidInput("Quick run requires one source; load the configured route set and select an owner".into()));
             }

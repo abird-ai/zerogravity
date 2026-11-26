@@ -160,7 +160,6 @@ function App() {
   const navigate = name => { setView(name); setNav(false); };
   const openConfig = name => { setAppearanceRequest(false); configTarget[1](name); navigate("Config"); };
   const openAppearance = () => { openConfig("@active"); setAppearanceRequest(true); };
-  const chooseDevice = digest => { deviceSource[1](digest); navigate("Devices"); };
   const openPalette = () => { previousFocus = document.activeElement; setPalette(true); };
   const closePalette = () => { setPalette(false); queueMicrotask(() => previousFocus?.focus()); };
   const keyboard = event => {
@@ -222,7 +221,7 @@ function App() {
             <Match when={view() === "Downloads"}><Download value={row()} work={work}/><Show when={row().capabilities.acquisition}><button class="quiet" onClick={() => navigate("Models")}>Acquire or resume from Models</button></Show></Match>
             <Match when={view() === "Profiles"}><Profiles inventory={inventory} work={work} open={openConfig}/></Match>
             <Match when={view() === "Config"}><Config inventory={inventory} work={work} target={configTarget[0]} open={openConfig} appearanceRequest={appearanceRequest} clearAppearance={()=>setAppearanceRequest(false)} previewTheme={setPreviewTheme}/></Match>
-            <Match when={view() === "Models"}><Models value={row()} inventory={inventory} work={work} navigate={navigate} chooseDevice={chooseDevice}/></Match>
+            <Match when={view() === "Models"}><Models value={row()} inventory={inventory} work={work} navigate={navigate}/></Match>
             <Match when={view() === "Devices"}><Devices value={row()} inventory={inventory} work={work} source={deviceSource}/></Match>
             <Match when={view() === "Logs"}><Logs inventory={inventory}/></Match>
           </Switch>

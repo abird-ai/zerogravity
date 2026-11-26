@@ -35,7 +35,38 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — UX-P4B accepted; public serving next (26 Nov)
+### Current checkpoint — model-local execution selector accepted (26 Nov)
+
+User-directed follow-up to the accepted UX-P4B checkpoint: one quiet
+Execution row/selector on the selected cached model in native TUI and Web.
+Run, Load and Load for Serve use the same typed execution intent. The default
+inherits the active profile, including its device policy; absent explicit
+profile settings, routing remains automatic. An explicit backend without a
+device resets the inherited device allowlist to automatic; an exact physical
+device is a single-device override. Choices are temporary, model-bound UI
+drafts, not profile edits or changes to a running registration. Native keeps
+one exact-digest draft; Web selection is keyed by digest. The existing Devices
+workflow and advanced profile policy are preserved.
+
+Shared cold discovery projects compiled backend intents and observed compatible
+physical device identities. These are choices, not source fit guarantees.
+No new runtime/admission authority, device initialization on discovery, silent
+fallback, or GPU execution claim. The original resolver and fit planner
+validate every actual request; explicit unsupported combinations still refuse.
+
+Focused Web-only and combined CPU/TUI/Web/serve/acquisition strict lint passed;
+Rust 67/0/3, JS 5/0 and offline local asset build passed. Real cached Qwen3.5-0.8B
+native/Firefox/HTTP lifecycle 1/0/0 (57.08s), including explicit CPU selection
+from both interfaces, exact output and existing admission, listener and
+retirement contracts. Final complete offline private-network gate exited 0
+(301.6s): 2,543 passed, zero failures, 109 explicit skips across 318 Rust suites;
+release TUI/Web, installer and scripts passed. Logs:
+`target/ux-execution-final-retry.log`, `target/ux-model-execution-assembled.log`.
+No new physical GPU placement or performance qualification. Public serving
+OA-1 under §2.3 remains the next coherent unit; optional deeper profiling
+remains separate.
+
+### Prior checkpoint — UX-P4B accepted; public serving next (26 Nov)
 
 Accepted implementation: `ad7a4178e3b85ea9e8a0ddcf9f2be798b0416ca8`. L5 main sole worktree,
 clean at gate completion; no source changes needed in this acceptance run.

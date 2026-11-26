@@ -16,7 +16,7 @@ mod view;
 mod work;
 
 use crate::{
-    control_host::{self, ActionSummary, Actions, Origin, Selection},
+    control_host::{self, ActionSummary, Actions, Origin, Selection, execution::Execution},
     output,
 };
 use crossterm::event::{self, Event, KeyEventKind};
@@ -677,9 +677,17 @@ impl App {
                     _ => self.notice = Some("No owned listener to stop".into()),
                 }
             }
+            Action::SetExecution { digest, revision, execution } => {
+                if self.navigation.view() == View::Models
+                    && self.library.rows(Kind::Models).selected().is_some_and(|row| row.key == Key::Snapshot(digest.clone()))
+                    && self.document.configuration_revision() == revision
+                {
+                    self.library.set_execution(digest, execution);
+                } else { self.notice = Some("Model or profile changed; choose execution again".into()); }
+            }
             Action::Submit(Form { kind, value }) => match kind {
-                FormKind::Source { run: false } => self.start(runtime, Request::Load { source: value, prompt: None, device: None }),
-                FormKind::Source { run: true } => self.navigation.form(FormKind::Prompt { target: RunTarget::Source(value), chat: self.document.snapshot().chat }),
+                FormKind::Source { run: false } => self.start(runtime, Request::Load { source: value, prompt: None, execution: Execution::default() }),
+                FormKind::Source { run: true } => self.navigation.form(FormKind::Prompt { target: RunTarget::Source { source: value, execution: Execution::default() }, chat: self.document.snapshot().chat }),
                 FormKind::Prompt { target, chat } => {
                     if self.navigation.view() == View::Models {
                         self.navigation.open(View::Home);
@@ -687,7 +695,7 @@ impl App {
                     let prompt = Prompt { text: value, chat };
                     let request = match target {
                         RunTarget::Owner(owner) => Request::Invoke { owner, prompt },
-                        RunTarget::Source(source) => Request::Load { source, prompt: Some(prompt), device: None },
+                        RunTarget::Source { source, execution } => Request::Load { source, prompt: Some(prompt), execution },
                     };
                     self.start(runtime, request);
                 }
@@ -702,7 +710,7 @@ impl App {
                 FormKind::Alias { digest } => self.start(runtime, Request::Alias { digest, name: value }),
                 FormKind::DeviceSource { device, load } => {
                     if load {
-                        self.start(runtime, Request::Load { source: value, prompt: None, device: Some(device) });
+                        self.start(runtime, Request::Load { source: value, prompt: None, execution: Execution::on_device(device) });
                     } else {
                         self.start(runtime, Request::CheckFit { source: value, device });
                     }
@@ -795,11 +803,18 @@ impl App {
                 format!("Remove exact cached snapshot sha256:{digest}? Active readers or references refuse removal. No references are deleted; original owner revalidates."),
                 view::Confirmation::Request(Request::Reclaim { digest, apply: true }),
             ),
+            (Key::Snapshot(digest), LibraryAction::Execution) => {
+                let profile = self.document.snapshot().execution_default;
+                let current = self.library.execution_for(&digest);
+                self.navigation.pick_execution(choice::Picker::execution(
+                    digest, self.document.configuration_revision(), self.library.execution_choices(), current, &profile,
+                ));
+            }
             (Key::Snapshot(digest), LibraryAction::Run) => {
                 if self.snapshot.runtime.status.phase != RuntimePhase::Empty {
                     self.notice = Some("Retire the current route set before loading another, or invoke its owner from Running".into());
                 } else {
-                    self.navigation.form(FormKind::Prompt { target: RunTarget::Source(format!("sha256:{digest}")), chat: self.document.snapshot().chat });
+                    self.navigation.form(FormKind::Prompt { target: RunTarget::Source { source: format!("sha256:{digest}"), execution: self.library.execution_for(&digest) }, chat: self.document.snapshot().chat });
                 }
             }
             (Key::Snapshot(digest), LibraryAction::Load(serve)) => {
@@ -807,7 +822,7 @@ impl App {
                     self.notice = Some("Retire the current route set before loading another".into());
                 } else {
                     if serve { self.navigation.open(View::Serve); }
-                    self.start(runtime, Request::Load { source: format!("sha256:{digest}"), prompt: None, device: None });
+                    self.start(runtime, Request::Load { source: format!("sha256:{digest}"), prompt: None, execution: self.library.execution_for(&digest) });
                 }
             }
             (Key::Device(device), LibraryAction::Fit) => self.navigation.form(FormKind::DeviceSource { device, load: false }),

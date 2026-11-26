@@ -241,19 +241,17 @@ try {
     await click("Remove snapshot");
     await click("Cancel");
     assert.equal(await contains("fixture/serve"), true);
-    await click("Choose device");
-    await waitFor(() => contains("cpu:0"), "cached source device selection");
-    await waitFor(() => evaluate("document.querySelector('#device-source')?.value.length===64"), "exact source carried from Models");
-    await evaluate("Array.from(document.querySelectorAll('.entries .row')).find(b=>b.textContent.includes('cpu:0')).click()");
-    await click("Check source / device");
-    await waitFor(() => contains("Cold source/device policy accepted"), "original resident device check", 90000);
-    await click("Load on device");
-    await waitFor(() => contains("Model route set loaded"), "exact device load", 90000);
+    await waitFor(() => evaluate("!!document.querySelector('#model-execution') && document.querySelector('#model-execution').options.length>1"), "model execution choices");
+    assert.equal(await evaluate("document.querySelector('#model-execution').value"), "null");
+    await evaluate(`(() => { const select=document.querySelector("#model-execution"); const cpu=Array.from(select.options).find(o=>o.textContent==="CPU · host"); if(!cpu) throw Error("missing CPU choice"); select.value=cpu.value; select.dispatchEvent(new Event("change",{bubbles:true})); })()`);
+    assert.equal(await evaluate("JSON.parse(document.querySelector('#model-execution').value).backend"), "cpu");
+    await click("Load");
+    await waitFor(() => contains("Model route set loaded"), "explicit CPU load from Models", 90000);
     await go("Running");
     await click("Unload owner");
     await click("Confirm");
     await waitFor(() => contains("No model owners"), "device-selected owner retired", 90000);
-    console.log("Browser library: cached/catalog/partial shelves, exact inspect/verify/alias/removal preview, offline consent, physical device check and load");
+    console.log("Browser library: cached/catalog/partial shelves, exact inspect/verify/alias/removal preview, offline consent, model-local execution choice and load");
   }
   if (!residentRoot && !downloadFixture) {
     await go("Profiles");

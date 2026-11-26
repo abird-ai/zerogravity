@@ -19,6 +19,16 @@ function InventoryNotice(props) {
 function CachedActions(props) {
   const [alias, setAlias] = createSignal("");
   const [previewId, setPreviewId] = createSignal("");
+  const [execution, setExecution] = createSignal(null);
+  const choiceKey = choice => JSON.stringify(choice.execution);
+  const choices = createMemo(() => {
+    const rows = props.executionChoices ?? [{label:"Use profile default",execution:null}];
+    const selected = execution();
+    return selected && !rows.some(row => choiceKey(row) === choiceKey(selected))
+      ? [...rows, {...selected,label:selected.label+" · not currently observed"}] : rows;
+  });
+  const current = () => execution() ? choiceKey(execution()) : "null";
+  const placement = () => execution()?.execution ? {execution:execution().execution} : {};
   const ready = () => props.ready && props.work.ready();
   const empty = () => props.value.runtime.status.phase === "empty";
   const digest = () => props.digest;
@@ -26,18 +36,26 @@ function CachedActions(props) {
   const request = kind => ({kind, digest:digest()});
   const preview = () => props.work.result()?.id === previewId() && props.work.result()?.state === "completed" && !props.work.result()?.cancel_requested;
   return <>
+    <div class="execution-field">
+      <label for="model-execution">Execution</label>
+      <select id="model-execution" disabled={!ready() || !empty()} value={current()} onChange={event => {
+        const choice = choices().find(row => choiceKey(row) === event.currentTarget.value);
+        if (choice) setExecution(choice.execution === null ? null : choice);
+      }}>
+        <For each={choices()}>{choice => <option value={choiceKey(choice)}>{choice.execution === null ? props.value.execution_default ?? "Use profile" : choice.label}</option>}</For>
+      </select>
+    </div>
     <div class="form-actions">
       <button disabled={!ready()} onClick={() => props.work.dispatch(request("inspect"))}>Inspect</button>
       <button disabled={!ready()} onClick={() => props.work.dispatch(request("verify"))}>Verify payloads</button>
-      <button disabled={!ready() || !empty()} onClick={() => props.work.dispatch({kind:"load",source:source()})}>Load</button>
+      <button disabled={!ready() || !empty()} onClick={() => props.work.dispatch({kind:"load",source:source(),...placement()})}>Load</button>
       <button disabled={!ready() || !empty() || !props.value.capabilities.serve} onClick={async () => {
-        const receipt = await props.work.dispatch({kind:"load",source:source()});
+        const receipt = await props.work.dispatch({kind:"load",source:source(),...placement()});
         if (receipt) props.navigate("Serve");
       }}>Load for serving</button>
-      <button onClick={() => props.chooseDevice(digest())}>Choose device</button>
     </div>
     <Show when={!empty()}><p class="field-hint">Retire the current route set or invoke its exact owner from Running.</p></Show>
-    <PromptField id="cached-prompt" work={props.work} defaultChat={props.value.configuration.chat} label="Load and run" disabled={!props.ready || !empty()} submit={(prompt,chat) => props.work.dispatch({kind:"run_source",source:source(),prompt,chat})}/>
+    <PromptField id="cached-prompt" work={props.work} defaultChat={props.value.configuration.chat} label="Load and run" disabled={!props.ready || !empty()} submit={(prompt,chat) => props.work.dispatch({kind:"run_source",source:source(),prompt,chat,...placement()})}/>
     <label class="field-label" for="cache-alias">Add a by-name alias</label>
     <input id="cache-alias" placeholder="my-model" value={alias()} onInput={event => setAlias(event.currentTarget.value)}/>
     <div class="form-actions">
@@ -148,7 +166,7 @@ export function Models(props) {
           <Switch>
             <Match when={shelf() === "cached"}>
               <Facts items={[["Snapshot", "sha256:"+identity],["Provider", chosen().provider],["Repository",chosen().repository],["Revision",chosen().revision],["Files",chosen().files],["Bytes",amount(chosen().bytes)],["Verification","Metadata only; payloads not verified by listing"]]}/>
-              <CachedActions digest={identity} ready={observed()} value={props.value} work={props.work} navigate={props.navigate} chooseDevice={props.chooseDevice}/>
+              <CachedActions digest={identity} ready={observed()} value={props.value} work={props.work} navigate={props.navigate} executionChoices={inventory()?.execution_choices}/>
             </Match>
             <Match when={shelf() === "catalog"}>
               <Facts items={[["Target",identity],["Task",chosen().task],["Repository",chosen().repository ?? "Unverified"],["Source layout",chosen().source_layout],["Source status",chosen().source_status],["Execution",chosen().execution_status]]}/>

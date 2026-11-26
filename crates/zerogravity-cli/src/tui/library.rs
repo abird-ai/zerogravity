@@ -4,6 +4,7 @@ use super::{
     format,
     settings::{self, Observed, Snapshot, Target},
 };
+use crate::control_host::execution::{self, Choice, Execution};
 use std::thread::{self, JoinHandle};
 use zerogravity::{Error, Result, Runtime, control::ControlPlane};
 
@@ -130,6 +131,7 @@ impl Rows {
 }
 #[derive(Default)]
 struct Models {
+    execution_choices: Vec<Choice>,
     cached: Vec<Row>,
     partial: Vec<Row>,
     warning: Option<String>,
@@ -190,6 +192,8 @@ impl Drop for Reader {
 
 pub(super) struct Library {
     pub shelf: Shelf,
+    execution_choices: Vec<Choice>,
+    execution: Option<(String, Execution)>,
     cached: Rows,
     catalog: Rows,
     partial: Rows,
@@ -237,6 +241,8 @@ impl Library {
         );
         Self {
             shelf: Shelf::Cached,
+            execution_choices: execution::choices(&[]),
+            execution: None,
             cached: Rows::default(),
             catalog,
             partial: Rows::default(),
@@ -257,6 +263,19 @@ impl Library {
     }
 }
 impl Library {
+    pub fn execution_for(&self, digest: &str) -> Execution {
+        self.execution
+            .as_ref()
+            .filter(|(source, _)| source == digest)
+            .map(|(_, choice)| choice.clone())
+            .unwrap_or_default()
+    }
+    pub fn set_execution(&mut self, digest: String, execution: Execution) {
+        self.execution = (execution != Execution::default()).then_some((digest, execution));
+    }
+    pub fn execution_choices(&self) -> Vec<Choice> {
+        self.execution_choices.clone()
+    }
     pub fn set_editor(&mut self, target: Target) {
         self.editor = target;
         self.observed = None;
@@ -360,6 +379,11 @@ impl Library {
         let mut reader = self.reader.take().expect("finished observation");
         match reader.join() {
             Ok(Observation::Models(models)) => {
+                self.execution_choices = if models.execution_choices.is_empty() {
+                    execution::choices(&[])
+                } else {
+                    models.execution_choices
+                };
                 self.cached.replace(models.cached);
                 self.partial.replace(models.partial);
                 self.model_notice = models.warning;
@@ -404,6 +428,13 @@ fn models(control: ControlPlane<'_>) -> Models {
     {
         let result = (|| {
             let observation = crate::control_host::inventory::cache(control)?;
+            let inventory = if observation.cached.is_empty() {
+                None
+            } else {
+                control.devices().ok()
+            };
+            let execution_choices =
+                execution::choices(inventory.as_ref().map_or(&[], |row| row.devices.as_slice()));
             let cached = observation
                 .cached
                 .into_iter()
@@ -470,6 +501,7 @@ fn models(control: ControlPlane<'_>) -> Models {
                 ),
             };
             Ok(Models {
+                execution_choices,
                 cached,
                 partial,
                 warning,

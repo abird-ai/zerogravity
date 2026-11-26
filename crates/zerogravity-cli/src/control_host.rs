@@ -1,5 +1,6 @@
 //! Foreground interactive host policy, shared by native and browser clients.
 mod actions;
+pub(crate) mod execution;
 pub(crate) mod inventory;
 pub(crate) mod logs;
 pub(crate) mod settings;
@@ -73,6 +74,7 @@ pub(crate) struct Document {
     )]
     pub chat: bool,
     pub offline: bool,
+    pub execution_default: String,
 }
 impl Document {
     #[cfg(all(test, feature = "tui"))]
@@ -85,6 +87,7 @@ impl Document {
             },
             chat: true,
             offline: false,
+            execution_default: "Auto".into(),
             ui: Default::default(),
         }
     }
@@ -99,11 +102,13 @@ impl Document {
         doc: zerogravity::configuration::ConfigDocument,
         offline: bool,
     ) -> Self {
+        let execution_default = execution::profile_summary(doc.run.as_ref());
         let chat = doc.run.and_then(|run| run.task).and_then(|task| task.raw) != Some(true);
         Self {
             target,
             chat,
             offline,
+            execution_default,
             ui: doc.ui.unwrap_or_default(),
         }
     }

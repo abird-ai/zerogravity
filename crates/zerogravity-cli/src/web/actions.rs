@@ -3,6 +3,7 @@
 use super::Shared;
 use crate::control_host::{
     Origin,
+    execution::Execution,
     work::{Owner, Prompt, Request},
 };
 use serde::Deserialize;
@@ -17,11 +18,13 @@ const MAX_PROMPT: usize = 32 * 1024;
 enum Input {
     Load {
         source: String,
+        execution: Option<ExecutionInput>,
     },
     RunSource {
         source: String,
         prompt: String,
         chat: bool,
+        execution: Option<ExecutionInput>,
     },
     Invoke {
         alias: String,
@@ -109,6 +112,26 @@ impl From<DownloadCommand> for zerogravity::control::DownloadCommand {
     }
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ExecutionInput {
+    backend: String,
+    device: Option<String>,
+}
+
+fn execution(value: Option<ExecutionInput>) -> Option<Execution> {
+    let Some(value) = value else {
+        return Some(Execution::default());
+    };
+    Some(Execution {
+        backend: Some(zerogravity::run_policy::Backend::parse(&value.backend).ok()?),
+        device: match value.device {
+            Some(id) => Some(device(id)?),
+            None => None,
+        },
+    })
+}
+
 fn digest(value: String) -> Option<String> {
     (cfg!(all(feature = "cache", target_os = "linux"))
         && SourceSelector::is_snapshot_digest(&value))
@@ -116,7 +139,7 @@ fn digest(value: String) -> Option<String> {
 }
 fn device(value: String) -> Option<String> {
     // Only an exact physical inventory identity. No ordinal remapping, node
-    // path, remote host, or selection of a different backend by browser input.
+    // path or remote host. Explicit backend choices are a separate finite field.
     let valid = value == "cpu:0"
         || value.strip_prefix("pci:").is_some_and(|pci| {
             zerogravity::devices::normalize_pci(pci).is_ok_and(|canonical| canonical == pci)
@@ -218,19 +241,23 @@ enum Intent {
 impl Input {
     fn validate(self) -> Option<Intent> {
         let request = match self {
-            Self::Load { source: value } => Request::Load {
+            Self::Load {
+                source: value,
+                execution: selected,
+            } => Request::Load {
                 source: source(value)?,
                 prompt: None,
-                device: None,
+                execution: execution(selected)?,
             },
             Self::RunSource {
                 source: value,
                 prompt: text,
                 chat,
+                execution: selected,
             } => Request::Load {
                 source: source(value)?,
                 prompt: Some(prompt(text, chat)?),
-                device: None,
+                execution: execution(selected)?,
             },
             Self::Invoke {
                 alias,
@@ -299,7 +326,7 @@ impl Input {
                 device: selected,
             } => Request::Load {
                 source: format!("sha256:{}", digest(value)?),
-                device: Some(device(selected)?),
+                execution: Execution::on_device(device(selected)?),
                 prompt: None,
             },
             #[cfg(all(feature = "acquisition", target_os = "linux"))]
@@ -403,6 +430,31 @@ pub(super) fn result(shared: &Shared, identity: &str) -> Result<Value, &'static 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn execution_intent_is_bounded_and_preserves_exact_pair() {
+        use zerogravity::run_policy::Backend;
+        let decode = |value: &str| {
+            serde_json::from_str::<Input>(value)
+                .ok()
+                .and_then(Input::validate)
+        };
+        assert!(matches!(decode(r#"{"kind":"load","source":"model"}"#),
+            Some(Intent::Start(Request::Load { execution, .. })) if execution == Execution::default()));
+        assert!(
+            matches!(decode(r#"{"kind":"run_source","source":"model","prompt":"hi","chat":false,"execution":{"backend":"rocm","device":"pci:0000:01:00.0"}}"#),
+            Some(Intent::Start(Request::Load { execution, prompt: Some(_), .. }))
+            if execution.backend == Some(Backend::Rocm) && execution.device.as_deref() == Some("pci:0000:01:00.0"))
+        );
+        for value in [
+            r#"{"kind":"load","source":"model","execution":{"backend":"unknown"}}"#,
+            r#"{"kind":"load","source":"model","execution":{"backend":"cuda","device":"gpu:0"}}"#,
+            r#"{"kind":"load","source":"model","execution":{"backend":"auto","device":"/dev/dri/card0"}}"#,
+            r#"{"kind":"load","source":"model","execution":{"backend":"cpu","headroom":"0"}}"#,
+        ] {
+            assert!(decode(value).is_none(), "{value}");
+        }
+    }
+
     #[test]
     fn typed_web_intent_refuses_paths_credentials_stale_id_coercions_and_missing_consent() {
         for value in [

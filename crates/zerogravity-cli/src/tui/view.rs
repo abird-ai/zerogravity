@@ -100,7 +100,10 @@ impl Palette {
 }
 #[derive(Debug, PartialEq, Eq)]
 pub(super) enum RunTarget {
-    Source(String),
+    Source {
+        source: String,
+        execution: crate::control_host::execution::Execution,
+    },
     Owner(Owner),
 }
 
@@ -253,6 +256,7 @@ pub(super) enum LibraryAction {
     Run,
     Pull,
     Fit,
+    Execution,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum DownloadAction {
@@ -320,6 +324,11 @@ pub(super) enum Action {
     OpenWeb,
     Appearance,
     Submit(Form),
+    SetExecution {
+        digest: String,
+        revision: u64,
+        execution: crate::control_host::execution::Execution,
+    },
     Confirmed(Confirmation),
 }
 
@@ -504,6 +513,11 @@ impl Navigation {
             // finite choice; preserve the existing lossless YAML route.
             self.edit_setting(file, key, raw);
         }
+    }
+    pub fn pick_execution(&mut self, picker: Picker) {
+        self.pointer.cancel();
+        self.search = None;
+        self.modal = Modal::Choice(picker);
     }
     pub fn pick_level(&mut self, level: Option<crate::control_host::logs::Level>) {
         self.pointer.cancel();
@@ -2693,6 +2707,13 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
             frame.render_widget(block, popup);
             let header = match &form.kind {
                 FormKind::ConfigValue { key, .. } => format!("{key} · {hint}"),
+                FormKind::Prompt {
+                    target: RunTarget::Source { execution, .. },
+                    ..
+                } => format!(
+                    "Execution: {} · {mode}\n{hint}",
+                    execution.summary(&app.document.snapshot().execution_default)
+                ),
                 _ if !mode.is_empty() => format!("{hint} · {mode}"),
                 _ => hint.to_owned(),
             };
@@ -3145,6 +3166,7 @@ fn render_library(frame: &mut Frame<'_>, area: Rect, app: &mut App, kind: Kind, 
         }
     }
     let mut details = Vec::new();
+    let mut execution_link = None;
     if kind == Kind::Config && app.library.raw {
         if let Some(observed) = app.library.observed() {
             match observed.snapshot.raw() {
@@ -3154,6 +3176,19 @@ fn render_library(frame: &mut Frame<'_>, area: Rect, app: &mut App, kind: Kind, 
         }
     } else if let Some(row) = collection.selected() {
         details.push(label(&row.title, theme));
+        if kind == Kind::Models
+            && let Key::Snapshot(digest) = &row.key
+        {
+            execution_link = Some(details.clone());
+            let current = app
+                .library
+                .execution_for(digest)
+                .summary(&app.document.snapshot().execution_default);
+            details.push(Line::from(vec![
+                Span::styled("Execution · ", theme.muted()),
+                Span::styled(clean(&format!("{current} ›")), theme.accent()),
+            ]));
+        }
         details.extend(row.details.iter().map(text));
         if let Some((key, result)) = &app.library.detail
             && key == &row.key
@@ -3183,7 +3218,12 @@ fn render_library(frame: &mut Frame<'_>, area: Rect, app: &mut App, kind: Kind, 
             pane_actions(frame, &mut app.navigation, theme, detail);
             menu_visible = true;
         }
-        scroll_rows(
+        let link = execution_link.map(|prefix| {
+            Paragraph::new(prefix)
+                .wrap(Wrap { trim: false })
+                .line_count(inner.width.saturating_sub(2))
+        });
+        let (visible, offset) = scroll_rows(
             frame,
             &mut app.navigation,
             theme,
@@ -3192,6 +3232,18 @@ fn render_library(frame: &mut Frame<'_>, area: Rect, app: &mut App, kind: Kind, 
             Paragraph::new(details).wrap(Wrap { trim: false }),
             ScrollMode::Manual,
         );
+        if let Some(line) = link
+            && let Some(rect) = row_rect(visible, line, offset)
+        {
+            let scope = std::rc::Rc::new(Scope::capture(app));
+            app.navigation.hits.add(
+                rect,
+                Target::Command(Bound::new(
+                    super::controls::Command::Library(LibraryAction::Execution),
+                    &scope,
+                )),
+            );
+        }
     }
     if !menu_visible && !list.is_empty() {
         pane_actions(frame, &mut app.navigation, theme, list);

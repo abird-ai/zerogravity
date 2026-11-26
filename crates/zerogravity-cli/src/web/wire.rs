@@ -133,6 +133,7 @@ pub(super) fn snapshot(
         },
         // Named selection only, never a portable path or document bytes.
         "configuration": { "profile": selected.target.profile, "offline": selected.offline, "chat": selected.chat, "theme": selected.ui.theme.unwrap_or_default() },
+        "execution_default": selected.execution_default,
         "runtime": { "status": owner.runtime.status, "models": models, "scheduler": scheduler },
         "serving": serving,
         "download": download,
@@ -194,6 +195,30 @@ pub(super) fn models(runtime: &Runtime) -> Value {
         let _ = runtime;
         result["warning"] = json!("Cache inspection is unavailable in this build.");
     }
+    // This is the same cold observation used by Devices. No polling, load or
+    // admission; a failed observation leaves the backend-only choices usable.
+    let inventory = if result["cached"]
+        .as_array()
+        .is_some_and(|rows| !rows.is_empty())
+    {
+        runtime.control().devices().ok()
+    } else {
+        None
+    };
+    result["execution_choices"] = json!(
+        crate::control_host::execution::choices(
+            inventory.as_ref().map_or(&[], |row| row.devices.as_slice())
+        )
+        .into_iter()
+        .map(|choice| json!({
+            "label": choice.label,
+            "execution": choice.execution.backend.as_ref().map(|backend| json!({
+                "backend": backend.label(),
+                "device": choice.execution.device,
+            })),
+        }))
+        .collect::<Vec<_>>()
+    );
     result
 }
 

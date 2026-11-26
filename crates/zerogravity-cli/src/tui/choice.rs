@@ -4,7 +4,10 @@ use super::{
     settings::Snapshot,
     view::{Action, Form, FormKind, LogAction},
 };
-use crate::control_host::logs::{Component, Level};
+use crate::control_host::{
+    execution::{Choice, Execution},
+    logs::{Component, Level},
+};
 
 const LEVELS: [Option<Level>; 4] = [
     None,
@@ -21,6 +24,11 @@ enum Kind {
     },
     Level,
     Component,
+    Execution {
+        digest: String,
+        revision: u64,
+        choices: Vec<Choice>,
+    },
 }
 #[derive(Debug)]
 pub(super) struct Picker {
@@ -38,6 +46,36 @@ impl Picker {
         Self {
             kind: Kind::Setting { file, key, values },
             cursor: current,
+            scroll: 0,
+        }
+    }
+    pub fn execution(
+        digest: String,
+        revision: u64,
+        mut choices: Vec<Choice>,
+        current: Execution,
+        profile: &str,
+    ) -> Self {
+        if let Some(first) = choices.first_mut() {
+            first.label = format!("Use profile · {profile}");
+        }
+        let cursor = choices
+            .iter()
+            .position(|choice| choice.execution == current)
+            .unwrap_or_else(|| {
+                choices.push(Choice {
+                    label: format!("{} · not currently observed", current.summary(profile)),
+                    execution: current,
+                });
+                choices.len() - 1
+            });
+        Self {
+            kind: Kind::Execution {
+                digest,
+                revision,
+                choices,
+            },
+            cursor,
             scroll: 0,
         }
     }
@@ -62,6 +100,7 @@ impl Picker {
             Kind::Setting { values, .. } => values.len(),
             Kind::Level => LEVELS.len(),
             Kind::Component => Component::ALL.len() + 1,
+            Kind::Execution { choices, .. } => choices.len(),
         }
     }
     pub fn title(&self) -> String {
@@ -69,6 +108,7 @@ impl Picker {
             Kind::Setting { key, file, .. } => format!("{key} · {}", file.target.label()),
             Kind::Level => "Log level".into(),
             Kind::Component => "Log component".into(),
+            Kind::Execution { .. } => "Execution · model load checks fit".into(),
         }
     }
     pub fn is_setting(&self) -> bool {
@@ -78,6 +118,7 @@ impl Picker {
         match &self.kind {
             Kind::Setting { values, .. } => values[index],
             Kind::Level => LEVELS[index].map_or("All levels", Level::label),
+            Kind::Execution { choices, .. } => &choices[index].label,
             Kind::Component => {
                 if index == 0 {
                     "All components"
@@ -96,6 +137,15 @@ impl Picker {
                 value: values[self.cursor].into(),
             }),
             Kind::Level => Action::Logs(LogAction::SetLevel(LEVELS[self.cursor])),
+            Kind::Execution {
+                digest,
+                revision,
+                mut choices,
+            } => Action::SetExecution {
+                digest,
+                revision,
+                execution: choices.swap_remove(self.cursor).execution,
+            },
             Kind::Component => Action::Logs(LogAction::SetComponent(
                 self.cursor.checked_sub(1).map(|i| Component::ALL[i]),
             )),

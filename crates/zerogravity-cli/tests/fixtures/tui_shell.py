@@ -735,11 +735,11 @@ def lifecycle(root, expected):
         terminal.send(click(105,24), b"accepted", 60)
         terminal.send(alt(b"4"), b"fixture/serve")
         # Exact snapshot identity is disclosed only on request.
-        menu_action(terminal,2,9,b"sha256:",opener=right_click(30,5))
+        menu_action(terminal,2,10,b"sha256:",opener=right_click(30,5))
         os.write(terminal.master,b"\x1b")
         time.sleep(0.2)
         def model_action(index,expected,seconds=10):
-            menu_action(terminal,index,9,expected,seconds,opener=right_click(30,5))
+            menu_action(terminal,index,10,expected,seconds,opener=right_click(30,5))
         model_action(3,b"checked;")
         model_action(4,b"Payloads",60)
         model_action(5,b"replacement.")
@@ -749,7 +749,12 @@ def lifecycle(root, expected):
         time.sleep(0.5)
         model_action(8,b"confirm")
         os.write(terminal.master, b"n")
+        # Explicit execution is a draft attached to this exact snapshot.
+        # The ordinary action still opens its original prompt, not a wizard.
+        model_action(9,b"CPU")
+        terminal.send(b"\x1b[B\x1b[B\r", b"Execution")
         model_action(1,b"Prompt")
+        terminal.until(b"CPU")
         # Original profile raw=true. TUI completion must be actual output.
         terminal.send(b"\x1b[200~" + prompt.encode() + b"\x1b[201~" + click(105,24), b"length", 90)
         assert b"Response" in terminal.transcript
