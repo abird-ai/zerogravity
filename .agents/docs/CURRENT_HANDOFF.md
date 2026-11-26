@@ -34,7 +34,46 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — OA-1A bounded asynchronous text transport (26 Nov)
+### Current checkpoint — OA-1B bounded ingress and owned WebSocket primitives (26 Nov)
+
+Source authoring began from clean signed `fbb4ab1d` on L5. Migrated existing
+fixed-length HTTP text ingress to the shared decoded-body reader. One
+absolute deadline and cumulative byte cap; exact charged known-length
+backing or charged geometric unknown-length staging (old and new leases
+overlap until old allocation drops). Actual Hyper TCP fixtures qualify
+fixed/unknown/empty/exact bodies, overflow, trailers, deadline and ledger
+retirement. Public text continues to reject all chunked/Expect inputs.
+
+Cached tokio-tungstenite 0.29.0 enables a private adapter-admitted upgrade
+continuation after existing authorization and handshake validation.
+Upgraded socket retains the original connection task, slot, wire budget,
+peer-close detection and joined shutdown. Bounded frame/reassembly and
+direct deadline-bounded message IO, with separate charged transport
+allowance. Actual internal test adapter verifies authorization/refusal,
+oversize frame and fragmented message, original cumulative wire budget,
+text/binary/ping/pong, close, abrupt disconnect, listener shutdown and
+ledger retirement. No real Realtime adapter is installed; ordinary server
+and public capability checks still refuse. No new model semantics, model
+owner, scheduler, runtime, TLS or external exposure.
+
+Focused isolated serving 31/0/0 and strict lint passed. Actual cached
+CPU CLI/native/Firefox lifecycle 1/0/0 (60.72s) and SDK shared model/
+listener lifecycle 1/0/0 (10.33s). Full assembled private-network gate
+passed (466.3s): 2,544/0/109 across 318 Rust suites, release TUI/Web,
+installer and scripts. Logs: `target/oa1b-focused-final.log`,
+`target/oa1b-real-consumers.log`, `target/oa1b-assembled.log`.
+
+Remaining OA-1B activation is blocked by two offline facts: Hyper 1.13.0
+normalizes TE+CL by discarding Content-Length before the application
+receives headers (connection close alone is not strict refusal), and no
+mature multipart decoder including multer is in the local approved Cargo
+cache. Preserve strict public framing; seek a mature parser/approved
+policy resolution and authorized pinned multipart acquisition, then
+qualify bounded streaming per-part and aggregate ownership. No automatic
+downloads or duplicate parser. OA-2 follows complete OA-1; no unsupported
+media/Realtime endpoints.
+
+### Prior checkpoint — OA-1A bounded asynchronous text transport (26 Nov)
 
 Source authoring began from clean signed `240bd05e` on L5. Replaced the
 bootstrap per-connection blocking HTTP/1 server with pinned cached Tokio

@@ -5,6 +5,19 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 26 Nov — OA-1B bounded ingress and owned WebSocket primitives
+
+Shared charged decoded-body staging and owned WebSocket continuation
+implemented; isolated focused serving 31/0/0 and strict lint passed.
+Unknown-length and internal adapter transport qualified on actual TCP;
+ordinary public text framing and unsupported Realtime refusal preserved.
+No new physical GPU execution or performance evidence. Actual cached CPU
+CLI/native/Firefox 1/0/0 (60.72s), SDK 1/0/0 (10.33s); full isolated
+gate 2,544/0/109 (318 Rust suites, 466.3s), release TUI/Web, installer
+and scripts passed. Remaining OA-1B strict
+mixed-framing resolution and approved multipart decoder acquisition;
+OA-2 follows complete OA-1.
+
 ## 26 Nov — OA-1A bounded async text transport
 
 Tokio/Hyper persistent HTTP/1.1 and bounded connection tasks now use the

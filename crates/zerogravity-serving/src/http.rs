@@ -16,8 +16,11 @@ use zerogravity_engine::router::token_metrics::validate_wire_id;
 use zerogravity_engine::router::{FailureDetails, Request, ServiceError, TokenMetricsRequest};
 
 mod body;
+mod ingress_body;
 mod transport;
+mod websocket;
 pub(crate) use transport::{SERVER_HEADROOM, ServeConfig, Shutdown, serve};
+pub(crate) use websocket::Admission as RealtimeAdmission;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HttpMethod {

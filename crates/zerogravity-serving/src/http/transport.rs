@@ -1,10 +1,10 @@
 //! Owned HTTP/1 transport. Hyper owns protocol framing; the existing service
 //! owns all model admission, events and cancellation. No detached tasks.
-use super::{ErrorReporting, bind_token_metrics, body, parse_body};
+use super::{ErrorReporting, bind_token_metrics, body, ingress_body, parse_body, websocket};
 use crate::{TextService, ingress::IngressLimits, metrics::Counters};
 use hyper::{
     Method, Request, Response, StatusCode, Version,
-    body::{Body, Incoming},
+    body::Incoming,
     header::{self, HeaderMap},
     server::conn::http1,
     service::service_fn,
@@ -13,11 +13,11 @@ use hyper_util::rt::{TokioIo, TokioTimer};
 use serde_json::json;
 use std::{
     convert::Infallible,
-    future::{Future, poll_fn},
+    future::Future,
     io::{self, IoSlice},
     pin::Pin,
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     task::{Context, Poll},
@@ -31,10 +31,7 @@ use tokio::{
     time,
 };
 use zerogravity_engine::{
-    router::{
-        ServiceError,
-        pending::{self, ServingCharge},
-    },
+    router::{ServiceError, pending::ServingCharge},
     state_cache::PrefixSharingScope,
 };
 
@@ -63,6 +60,7 @@ pub(crate) struct ServeConfig {
     pub errors: ErrorReporting,
     pub prefix_sharing_scope: Option<PrefixSharingScope>,
     pub limits: IngressLimits,
+    pub realtime: Option<websocket::Admission>,
 }
 
 #[derive(Default)]
@@ -319,41 +317,6 @@ fn authorize(headers: &HeaderMap, api_key: Option<&str>) -> Result<(), ServiceEr
     Ok(())
 }
 
-async fn read_body(mut incoming: Incoming, length: usize) -> Result<Box<[u8]>, ServiceError> {
-    // Exact backing admitted by the caller before this allocation. Hyper
-    // yields bounded frames; no growing receive Vec or extra full-body copy.
-    let mut body = pending::allocate_bytes(length)?;
-    let mut offset = 0usize;
-    time::timeout(READ_TIMEOUT, async {
-        while let Some(frame) = poll_fn(|cx| Pin::new(&mut incoming).poll_frame(cx)).await {
-            let frame = frame
-                .map_err(|_| ServiceError::new(400, "incomplete_body", "incomplete JSON body"))?;
-            let chunk = frame.into_data().map_err(|_| {
-                ServiceError::new(400, "unsupported_transfer", "request trailers unsupported")
-            })?;
-            let end = offset
-                .checked_add(chunk.len())
-                .filter(|&end| end <= length)
-                .ok_or_else(|| {
-                    ServiceError::new(400, "bad_length", "body exceeds Content-Length")
-                })?;
-            body[offset..end].copy_from_slice(&chunk);
-            offset = end;
-        }
-        if offset != length {
-            return Err(ServiceError::new(
-                400,
-                "incomplete_body",
-                "short Content-Length",
-            ));
-        }
-        Ok(())
-    })
-    .await
-    .map_err(|_| ServiceError::new(408, "timeout", "HTTP body deadline reached"))??;
-    Ok(body)
-}
-
 struct Host {
     service: Arc<dyn TextService>,
     config: ServeConfig,
@@ -363,6 +326,7 @@ struct Host {
 struct Connection {
     host: Arc<Host>,
     requests: AtomicUsize,
+    upgrade: Mutex<Option<websocket::Pending>>,
 }
 
 impl Connection {
@@ -381,11 +345,44 @@ impl Connection {
             let header_charge = host
                 .service
                 .charge_ingress("http-headers", HTTP_HEADER_ENVELOPE)?;
-            let body_charge = host.service.charge_ingress("http-body", length as u64)?;
             let mut ingress = Vec::with_capacity(4);
             ingress.push(header_charge);
+            if parts.uri.path() == "/v1/realtime" {
+                let admission =
+                    host.config.realtime.as_ref().ok_or_else(|| {
+                        ServiceError::new(404, "not_found", "unsupported endpoint")
+                    })?;
+                let request = Request::from_parts(parts, incoming);
+                let (response, pending) = websocket::prepare(
+                    request,
+                    length,
+                    host.config.limits.body_bytes,
+                    host.service.as_ref(),
+                    admission,
+                )?;
+                host.shutdown.check()?;
+                // The admitted continuation is retained by this connection,
+                // not by a spawned upgrade task.
+                *self.upgrade.lock().expect("upgrade ownership") = Some(pending);
+                return Ok(response);
+            }
+            if parts.headers.contains_key(header::UPGRADE) {
+                return Err(ServiceError::new(
+                    400,
+                    "unsupported_upgrade",
+                    "upgrade not supported on this endpoint",
+                ));
+            }
+            let reader = ingress_body::Reader::new(
+                incoming,
+                Some(length),
+                host.config.limits.body_bytes,
+                READ_TIMEOUT,
+            )?;
+            let (raw, used, body_charge) = ingress_body::collect(reader, host.service.as_ref())
+                .await?
+                .into_parts();
             ingress.push(body_charge);
-            let raw = read_body(incoming, length).await?;
             authorized = host.config.api_key.is_some();
             host.shutdown.check()?;
             let path = parts.uri.path_and_query().map_or("", |uri| uri.as_str());
@@ -428,8 +425,12 @@ impl Connection {
                     "JSON Content-Type required",
                 ));
             }
-            let (mut task, usage) =
-                parse_body(&raw, chat, Some(host.service.as_ref()), &mut ingress)?;
+            let (mut task, usage) = parse_body(
+                &raw[..used],
+                chat,
+                Some(host.service.as_ref()),
+                &mut ingress,
+            )?;
             if chat {
                 host.service.validate_chat(&task.model)?;
             }
@@ -471,7 +472,9 @@ impl Connection {
                 true,
             ),
         };
-        if close || number >= MAX_REQUESTS_PER_CONNECTION || host.shutdown.is_stopped() {
+        if response.status() != StatusCode::SWITCHING_PROTOCOLS
+            && (close || number >= MAX_REQUESTS_PER_CONNECTION || host.shutdown.is_stopped())
+        {
             response.headers_mut().insert(
                 header::CONNECTION,
                 header::HeaderValue::from_static("close"),
@@ -505,9 +508,11 @@ async fn connection(stream: TcpStream, peer: TcpStream, host: Arc<Host>, _charge
     let state = Arc::new(Connection {
         host: host.clone(),
         requests: AtomicUsize::new(0),
+        upgrade: Mutex::new(None),
     });
+    let request_state = state.clone();
     let service = service_fn(move |request| {
-        let state = state.clone();
+        let state = request_state.clone();
         async move { Ok::<_, Infallible>(state.request(request).await) }
     });
     // Explicit queue/writev is also the token-delivery observation contract:
@@ -522,9 +527,18 @@ async fn connection(stream: TcpStream, peer: TcpStream, host: Arc<Host>, _charge
         .writev(true)
         .title_case_headers(true)
         .auto_date_header(false)
-        .serve_connection(TokioIo::new(socket), service);
+        .serve_connection(TokioIo::new(socket), service)
+        .with_upgrades();
+    let work = async {
+        if connection.await.is_ok() {
+            let pending = state.upgrade.lock().expect("upgrade ownership").take();
+            if let Some(pending) = pending {
+                let _ = pending.run().await;
+            }
+        }
+    };
     tokio::select! {
-        _ = connection => {},
+        _ = work => {},
         _ = peer_closed(&peer) => {},
     }
 }

@@ -57,10 +57,27 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   318 Rust suites, release TUI/Web, installer and scripts.
   No numerical/GPU performance comparison. See the
   [OA-1 design](NEXT_ITERATION_OPENAI_COMPATIBLE_SERVING.md#oa-1--async-transport-substrate).
-- [ ] OA-1B: bounded charged unknown-length/streaming ingress, multipart
-  primitives and WebSocket foundation, with approved dependencies and
-  explicit lifetime/authorization tests. No modality endpoints until their
-  real contracts. OA-2 remains ordered after OA-1.
+- [x] OA-1B primitives: shared decoded-body reader with charged fixed/unknown
+  backing, absolute deadline, cap and trailer refusal; current fixed-length
+  text path migrated. Actual private TCP chunked fixture verifies growth,
+  empty/exact/overflow/deadline and full charge retirement. Cached
+  tokio-tungstenite 0.29.0 owned upgrade path over the original connection
+  and wire budget, bounded frames/reassembly/direct message IO, auth and
+  adapter admission before switching. Actual internal test-adapter sockets
+  verify authorization, invalid handshakes, frame/message and wire budgets,
+  slot retention, ping/pong, close, disconnect, stop and ledger retirement.
+  No public Realtime capability or modality route. Focused strict lint and
+  serving 31/0/0 passed. Actual cached CPU CLI/native/Firefox lifecycle
+  1/0/0 (60.72s) and SDK listener/model lifecycle 1/0/0 (10.33s).
+  Full isolated workspace gate passed (466.3s): 2,544/0/109 across
+  318 Rust suites, release TUI/Web, installer and scripts.
+- [ ] OA-1B remaining activation: public chunked/multipart streaming ingress
+  after resolving pinned Hyper mixed Transfer-Encoding/Content-Length
+  normalization (retain strict refusal) and approved acquisition of a
+  mature multipart decoder absent from the offline cache. Qualify bounded
+  per-part/aggregate admission and cleanup. No second HTTP parser, no
+  automatic downloads or fake modality endpoint. OA-2 remains ordered
+  after OA-1.
 
 ### Current continuation — 22 Nov 2026
 

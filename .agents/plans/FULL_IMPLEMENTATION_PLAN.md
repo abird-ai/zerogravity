@@ -765,8 +765,13 @@ protocol or backend performance work was admitted before this bounded exit.
 ### 2.3 Public serving and performance interface
 
 OA-1A bounded async text transport is accepted (complete isolated gate
-2,538/0/109, 318 suites; real cached CLI/TUI/Web and SDK passed). The remaining OA-1B streaming upload/multipart/WebSocket
-foundation precedes the OA-2 semantic request/model-template boundary.
+2,538/0/109, 318 suites; real cached CLI/TUI/Web and SDK passed). OA-1B
+bounded decoded-body staging and owned WebSocket primitives implemented
+and accepted (2,544/0/109 across 318 isolated Rust suites; real cached
+CLI/TUI/Web and SDK passed). Public streaming
+activation requires strict mixed-framing handling and approved multipart
+decoder acquisition. Remaining OA-1B precedes the OA-2 semantic
+request/model-template boundary.
 Preserve the original runtime, admission and listener owner.
 
 - [ ] Close the [OpenAI-compatible serving iteration](serving-and-speculation/NEXT_ITERATION_OPENAI_COMPATIBLE_SERVING.md):

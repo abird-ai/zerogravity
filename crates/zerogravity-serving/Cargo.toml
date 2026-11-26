@@ -20,3 +20,7 @@ hyper-util = { version = "=0.1.21", features = ["tokio"] }
 bytes = "=1.12.1"
 async-stream = "=0.3.6"
 futures-core = "=0.3.34"
+# Owned websocket upgrade/framing; no TLS or client connector.
+tokio-tungstenite = { version = "=0.29.0", default-features = false, features = ["handshake"] }
+futures-util = { version = "=0.3.34", default-features = false, features = ["sink", "std"] }
+base64 = "=0.22.1"

@@ -6,7 +6,7 @@ scaffolding), CLI/TUI/Web and serving, ROCm, CUDA, Vulkan, then concrete
 compiled providers. Native Hugging Face/Safetensors and GGUF are primary.
 Older ordering below is context; valid owner constraints remain authoritative.
 
-Status: **OA-1A bounded async text transport accepted** (26 Nov). OA-1B streaming upload/multipart/WebSocket foundation remains open; OA-2 and later remain ordered.
+Status: **OA-1A accepted; OA-1B bounded ingress and WebSocket primitives accepted** (26 Nov). Public streaming/multipart activation remains open; OA-2 and later remain ordered.
 
 26 Nov user decision: [UX-P native TUI polish](../cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md)
 was the prerequisite. The assembled P4B gate passed on ad7a4178;
@@ -1174,6 +1174,38 @@ checked; no automatic downloads). Keep auth, independent route/tenant scope,
 size/deadline limits, cancellation and owned shutdown; no stub modality
 endpoints or Responses translation hacks. Qualify new boundaries independently
 and preserve OA-1A's original text behavior.
+
+**OA-1B current implementation (26 Nov).** The existing fixed-length text
+path consumes a bounded decoded-body reader under one absolute deadline.
+The reader supports known and unknown lengths; its contiguous staging owner
+charges exact backing before allocation, bounded geometric growth for unknown
+length, and both allocations during a growth overlap. It rejects excess bytes,
+incomplete bodies and trailers. No extra scheduler, upload store or unbounded
+receive queue. Unknown-length staging is qualified against actual Hyper TCP
+frames in a private fixture; public text still requires Content-Length.
+
+Cached tokio-tungstenite 0.29.0 (handshake only; no TLS/client connector)
+provides the reusable WebSocket primitive. Existing HTTP authentication and
+header/body policy precede handshake validation and adapter admission. A
+successful upgrade retains the same connection task, wire output budget,
+connection slot, peer-close observation and joined shutdown. A separately
+charged bounded frame/message allowance precedes the handshake; message IO
+is direct and deadline-bounded. The private adapter admission callback owns
+any semantic session/state and retained-message charges. Only a test adapter
+is installed today: ordinary servers continue refusing /v1/realtime, and
+RealtimeTransport::require_implemented still refuses. No modality endpoint,
+model support or external exposure is claimed.
+
+Two activation blockers remain: (1) pinned Hyper 1.13.0 removes
+Content-Length when Transfer-Encoding is also present (and disables keep-alive),
+so application-level headers cannot prove strict rejection of mixed framing.
+Retain refusal of all public chunked/Expect ingress until a mature parser
+exposes/rejects the ambiguity, or an explicit reviewed policy change is
+approved. Do not add a second handwritten parser. (2) no mature multipart
+decoder (including multer) is installed in the approved offline Cargo cache.
+Obtain an approved pinned decoder and qualify bounded per-part/aggregate
+streaming admission; no automatic download, homegrown parser, or fake
+multipart/Realtime endpoint. OA-1 stays open and OA-2 remains ordered.
 
 ### OA-2 — semantic request model and model template boundary
 

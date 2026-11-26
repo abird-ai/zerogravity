@@ -19,6 +19,8 @@ use zerogravity_engine::{
 mod runtime_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod websocket_tests;
 
 pub struct ServerBuilder {
     service: Arc<dyn TextService>,
@@ -28,6 +30,8 @@ pub struct ServerBuilder {
     enable_per_request_metrics: bool,
     errors: http::ErrorReporting,
     prefix_sharing_scope: Option<PrefixSharingScope>,
+    // Installed only by a real realtime adapter. Ordinary servers refuse it.
+    realtime: Option<http::RealtimeAdmission>,
 }
 pub struct Server {
     builder: ServerBuilder,
@@ -74,6 +78,7 @@ impl ServerBuilder {
             enable_per_request_metrics: false,
             errors: http::ErrorReporting::default(),
             prefix_sharing_scope: None,
+            realtime: None,
         }
     }
     pub fn bind(mut self, address: SocketAddr) -> Self {
@@ -184,6 +189,7 @@ impl Server {
                 errors: builder.errors,
                 prefix_sharing_scope: builder.prefix_sharing_scope,
                 limits: builder.limits,
+                realtime: builder.realtime,
             },
             metrics: Arc::clone(&metrics),
         };
