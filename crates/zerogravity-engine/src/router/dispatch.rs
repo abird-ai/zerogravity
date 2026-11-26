@@ -195,6 +195,8 @@ pub enum ResponseEvent {
     Done {
         output: String,
         prompt_tokens: usize,
+        /// Exact restored prompt prefix from the selected execution owner.
+        cached_prompt_tokens: usize,
         completion_tokens: usize,
         finish_reason: &'static str,
     },
@@ -254,6 +256,7 @@ pub struct GeneratedText {
     events: mpsc::SyncSender<ResponseEvent>,
     max_tokens: usize,
     prompt_tokens: usize,
+    cached_prompt_tokens: usize,
     stream: bool,
     generated: Vec<u32>,
     emitted: String,
@@ -281,6 +284,11 @@ impl GeneratedText {
     ) -> Self {
         Self::new_owned(tokenizer, events, stream, max_tokens, prompt_tokens)
     }
+    pub(super) fn with_cached_prefix(mut self, tokens: usize) -> Self {
+        debug_assert!(tokens <= self.prompt_tokens);
+        self.cached_prompt_tokens = tokens;
+        self
+    }
     pub fn new_owned(
         tokenizer: Arc<dyn TextTokenizer>,
         events: mpsc::SyncSender<ResponseEvent>,
@@ -294,6 +302,7 @@ impl GeneratedText {
             stream,
             max_tokens,
             prompt_tokens,
+            cached_prompt_tokens: 0,
             generated: Vec::new(),
             emitted: String::new(),
             pending: VecDeque::with_capacity(2),
@@ -457,6 +466,7 @@ impl GeneratedText {
                 self.pending.push_back(ResponseEvent::Done {
                     output: decoded,
                     prompt_tokens: self.prompt_tokens,
+                    cached_prompt_tokens: self.cached_prompt_tokens,
                     completion_tokens: self.generated.len(),
                     finish_reason: reason,
                 });
@@ -1462,6 +1472,7 @@ mod tests {
                 prompt_tokens,
                 completion_tokens,
                 finish_reason,
+                ..
             } => {
                 assert_eq!(output, expected);
                 assert_eq!(prompt_tokens, 7);
@@ -1686,6 +1697,7 @@ mod tests {
                     prompt_tokens,
                     completion_tokens,
                     finish_reason,
+                    ..
                 } => {
                     assert_eq!(
                         (

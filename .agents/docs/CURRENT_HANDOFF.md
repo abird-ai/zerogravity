@@ -34,7 +34,68 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — OA-2 accepted; OA-3 Models and Responses text next (27 Nov)
+### Current checkpoint — OA-3 accepted; OA-4 response/conversation resources next (27 Nov)
+
+Started from clean signed a76ddbfe on L5. Current OpenAI Responses create
+and streaming reference checked before selecting the supported text slice:
+https://developers.openai.com/api/reference/resources/responses/methods/create
+https://developers.openai.com/api/reference/resources/responses/streaming-events
+No new dependency acquisition. GET /v1/models and exact GET /v1/models/{id}
+use only the accepting original registry aliases; preserve the legacy
+created=0 unknown timestamp. POST /v1/responses accepts fixed/chunked
+strict JSON, text or ordered message input, text parts concatenated in
+their role, instructions as a developer turn, bounded metadata, existing
+greedy controls and max output. Explicit full assistant text can be
+replayed; its optional item ID is not a stored-resource reference.
+No translation through Chat JSON. Same charged SemanticRequest, selected
+model template, queue, scheduler, original ResponseEvent and receipt.
+
+Local stateless default is store=false; explicit store=true, background
+work, continuation/conversation references, non-text input/output,
+structured output, sampling/reasoning/tool capabilities and unsupported
+fields refuse before model admission. Neutral no-tools/default text
+controls accepted explicitly. OA-4 owns stateful response/conversation
+resources and retrieval/continuation; input-token counting still open.
+No separate reasoning-output capability. No fake cloud tool behavior.
+
+Responses projection uses borrowed serde views, bounded cumulative payload
+writer, original socket wire budget and one conservative projection lease
+(6x configured output payload limit plus retained metadata and 64 KiB
+headroom). The lease travels with retained response bytes; no new producer
+task or event queue. SSE uses named canonical created/in_progress,
+item/part added, text deltas, text/part/item done and completed/incomplete/
+failed terminal events; monotonic sequence and stable item/response IDs.
+Length finish is incomplete; failures retain already delivered partial
+text, safe canonical error and no invented usage. Disconnect/stop/output
+exhaustion retires original receipt. Additive cached_prompt_tokens on
+ResponseEvent::Done reports exact original executor-restored prefix;
+legacy presentation unchanged, exhaustive native matches adapted.
+Generated request correlation IDs for application HTTP responses/errors
+(process namespace/counter); legacy opt-in token metrics stream ID kept.
+Parser-level malformed framing remains Hyper-owned. Static parameter names
+on typed ServiceError enter the public error envelope, arbitrary diagnostic
+messages remain hidden unless explicitly authorized.
+
+Focused engine/serving 167/0/0 and strict lint passed, actual TCP tests
+cover model retrieval, typed inputs, fixed/chunked, IDs, all terminal
+states, usage, refusal and cancellation/ledger retirement. Existing
+cached official OpenAI Python SDK 2.33.0 with strict response validation
+passed Models and Responses JSON/SSE, exact actual cached Qwen3.5 Chat
+output/usage parity, store refusal and correlation on the real listener.
+Optional SDK fixture takes ZG_TEST_OPENAI_PYTHON and
+ZG_TEST_OPENAI_PYTHONPATH; isolated existing Nix store closure, no download.
+Real native/browser/official SDK lifecycle (80.88s) and Rust SDK
+lifecycle (15.02s) each passed 1/0/0. Full isolated assembled gate exited
+0 (617.5s): 2,557/0/109 across 318 Rust suites, strict lint, backend
+feature boundaries, release TUI/Web, installer and scripts passed.
+OA-3 accepted. Next OA-4 bounded response/conversation protocol resources,
+storage, cancellation, retrieval/deletion, input items and input-token
+counting over the original model/runtime. No model-state store duplication.
+Logs: `target/oa3-focused.log`, `target/oa3-real-consumers.log`,
+`target/oa3-assembled.log`. Existing exact Nix source-integrity blocker
+remains separate. No new physical GPU or performance evidence.
+
+### Prior checkpoint — OA-2 accepted; OA-3 Models and Responses text next (27 Nov)
 
 Started from clean signed 3f8329f2 on L5. Core task text intent now has
 ChatRole, ChatMessage and TextInput::{Raw, User, Conversation}. Engine

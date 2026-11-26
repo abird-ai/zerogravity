@@ -131,6 +131,7 @@ impl<A: Executor> Active<A> {
             request.max_tokens,
             prompt.len(),
         )
+        .with_cached_prefix(cursor)
         .observed_charged(
             metrics.metrics,
             model.model().vocabulary_size(),

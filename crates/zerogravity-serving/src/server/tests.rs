@@ -134,6 +134,9 @@ struct Script {
     cancellations: Mutex<Vec<CancelToken>>,
     raw_only: bool,
     failure: Option<ServiceError>,
+    fail_after_delta: bool,
+    finish_reason: &'static str,
+    cached_prompt_tokens: usize,
 }
 impl Script {
     fn new(host: ServingHost) -> Arc<Self> {
@@ -143,6 +146,9 @@ impl Script {
             cancellations: Mutex::new(Vec::new()),
             raw_only: false,
             failure: None,
+            fail_after_delta: false,
+            finish_reason: "stop",
+            cached_prompt_tokens: 0,
         })
     }
 }
@@ -199,6 +205,10 @@ impl TextService for Script {
         }
         let (tx, rx) = mpsc::try_sync_channel(&self.host, "fixture", "events", 4)?;
         if let Some(error) = &self.failure {
+            if request.stream && self.fail_after_delta {
+                tx.try_send(ResponseEvent::Text("partial text".into()))
+                    .unwrap_or_else(|_| panic!("fixture channel"));
+            }
             tx.try_send(ResponseEvent::Error(error.clone()))
                 .unwrap_or_else(|_| panic!("fixture channel"));
             return Ok(RequestEvents::new(
@@ -235,8 +245,9 @@ impl TextService for Script {
         tx.try_send(ResponseEvent::Done {
             output: output.into(),
             prompt_tokens: 3,
+            cached_prompt_tokens: self.cached_prompt_tokens,
             completion_tokens,
-            finish_reason: "stop",
+            finish_reason: self.finish_reason,
         })
         .unwrap_or_else(|_| panic!("fixture channel"));
         let cancel = test_support::cancel(&self.host);
@@ -1002,6 +1013,285 @@ fn multipart_foundation_does_not_publish_media_or_bypass_text_content_policy() {
             response.starts_with(&format!("HTTP/1.1 {status}")),
             "{response}"
         );
+    }
+    assert!(service.requests.lock().unwrap().is_empty());
+    server.shutdown().unwrap();
+    drop(service);
+    assert_eq!(host.serving_bytes(), baseline);
+}
+
+// Responses is a protocol projection over the same original typed receipt.
+fn responses_request(
+    client: &mut BufReader<TcpStream>,
+    value: &serde_json::Value,
+    chunked: bool,
+) -> (String, serde_json::Value) {
+    let data = value.to_string();
+    let socket = client.get_mut();
+    if chunked {
+        write!(socket, "POST /v1/responses HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nTransfer-Encoding: chunked\r\n\r\n").unwrap();
+        for part in data.as_bytes().chunks(17) {
+            write!(socket, "{:x}\r\n", part.len()).unwrap();
+            socket.write_all(part).unwrap();
+            socket.write_all(b"\r\n").unwrap();
+        }
+        socket.write_all(b"0\r\n\r\n").unwrap();
+    } else {
+        write!(socket, "POST /v1/responses HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{data}", data.len()).unwrap();
+    }
+    let (head, body) = read_response(client);
+    (head, serde_json::from_str(&body).unwrap())
+}
+fn response_client(address: std::net::SocketAddr) -> BufReader<TcpStream> {
+    let socket = TcpStream::connect(address).unwrap();
+    socket
+        .set_read_timeout(Some(Duration::from_secs(3)))
+        .unwrap();
+    BufReader::new(socket)
+}
+fn correlation(head: &str) -> &str {
+    head.lines()
+        .find_map(|line| {
+            let (key, value) = line.split_once(':')?;
+            key.eq_ignore_ascii_case("x-request-id")
+                .then(|| value.trim())
+        })
+        .expect("server request correlation")
+}
+fn request_response_events(address: std::net::SocketAddr) -> (String, Vec<serde_json::Value>) {
+    let mut client = response_client(address);
+    let request = r#"{"model":"fixture","input":"hello","stream":true,"store":false}"#;
+    write!(client.get_mut(), "POST /v1/responses HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{request}", request.len()).unwrap();
+    let (head, body) = read_response(&mut client);
+    assert!(
+        head.starts_with("HTTP/1.1 200") && head.to_ascii_lowercase().contains("text/event-stream")
+    );
+    let events = body
+        .split("\n\n")
+        .filter(|event| !event.is_empty())
+        .enumerate()
+        .map(|(sequence, event)| {
+            let (kind, data) = event.split_once("\ndata: ").expect("named Responses event");
+            let value: serde_json::Value = serde_json::from_str(data).unwrap();
+            assert_eq!(kind.strip_prefix("event: "), value["type"].as_str());
+            assert_eq!(value["sequence_number"], sequence);
+            value
+        })
+        .collect();
+    (head, events)
+}
+
+#[test]
+fn models_retrieve_and_stateless_responses_share_original_semantic_admission() {
+    use serde_json::json;
+    let _lock = test_support::lock();
+    let host = test_support::host();
+    let baseline = host.serving_bytes();
+    let mut service = Script::new(host.clone());
+    Arc::get_mut(&mut service).unwrap().cached_prompt_tokens = 2;
+    let server = ServerBuilder::from_service(service.clone())
+        .bind("127.0.0.1:0".parse().unwrap())
+        .build()
+        .unwrap()
+        .start()
+        .unwrap();
+    let mut client = response_client(server.local_addr());
+    client
+        .get_mut()
+        .write_all(b"GET /v1/models HTTP/1.1\r\nHost: localhost\r\n\r\n")
+        .unwrap();
+    let (head, list) = read_response(&mut client);
+    let first_id = correlation(&head).to_owned();
+    let list: serde_json::Value = serde_json::from_str(&list).unwrap();
+    client
+        .get_mut()
+        .write_all(b"GET /v1/models/fixture HTTP/1.1\r\nHost: localhost\r\n\r\n")
+        .unwrap();
+    let (head, model) = read_response(&mut client);
+    assert_ne!(correlation(&head), first_id);
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&model).unwrap(),
+        list["data"][0]
+    );
+    let request = json!({
+        "model":"fixture","instructions":"Brief.","input":[
+            {"role":"user","content":[{"type":"input_text","text":"hé"},{"type":"input_text","text":"llo"}]},
+            {"type":"message","role":"assistant","content":[{"type":"output_text","text":"Hi","annotations":[],"logprobs":[]}],"status":"completed","id":"msg_explicit"},
+            {"role":"user","content":"again"}
+        ],"store":false,"max_output_tokens":2,"temperature":0,"top_p":1,
+        "text":{"format":{"type":"text"}},"tools":[],"tool_choice":"none","metadata":{"label":"test"}
+    });
+    let (head, response) = responses_request(&mut client, &request, true);
+    assert!(head.starts_with("HTTP/1.1 200"), "{response}");
+    assert!(correlation(&head).starts_with("req_zg_"));
+    assert_eq!(
+        response["id"].as_str().unwrap(),
+        correlation(&head).replacen("req_", "resp_", 1)
+    );
+    assert_eq!(response["object"], "response");
+    assert_eq!(response["status"], "completed");
+    assert_eq!(response["store"], false);
+    assert_eq!(response["instructions"], "Brief.");
+    assert_eq!(response["metadata"], request["metadata"]);
+    assert_eq!(
+        response["output"][0]["content"][0]["text"],
+        "transport fixture"
+    );
+    assert_eq!(
+        response["usage"],
+        json!({"input_tokens":3,"input_tokens_details":{"cached_tokens":2},"output_tokens":1,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":4})
+    );
+    let requests = service.requests.lock().unwrap();
+    assert_eq!(requests.len(), 1);
+    assert_eq!(
+        requests[0].0.input,
+        TextInput::Conversation(vec![
+            ChatMessage {
+                role: ChatRole::Developer,
+                text: "Brief.".into()
+            },
+            ChatMessage {
+                role: ChatRole::User,
+                text: "héllo".into()
+            },
+            ChatMessage {
+                role: ChatRole::Assistant,
+                text: "Hi".into()
+            },
+            ChatMessage {
+                role: ChatRole::User,
+                text: "again".into()
+            },
+        ])
+    );
+    drop(requests);
+    drop(client);
+    let missing = exchange(
+        server.local_addr(),
+        "GET /v1/models/missing HTTP/1.1\r\nHost: localhost\r\n\r\n",
+    );
+    assert!(missing.starts_with("HTTP/1.1 404"));
+    assert_eq!(document(&missing)["error"]["param"], "model");
+    server.shutdown().unwrap();
+    drop(service);
+    assert_eq!(host.serving_bytes(), baseline);
+}
+
+#[test]
+fn responses_stream_projects_named_monotonic_events_and_truthful_terminal_states() {
+    let _lock = test_support::lock();
+    let host = test_support::host();
+    let baseline = host.serving_bytes();
+    for finish in ["stop", "length", "error"] {
+        let mut service = Script::new(host.clone());
+        let fixture = Arc::get_mut(&mut service).unwrap();
+        fixture.finish_reason = finish;
+        if finish == "error" {
+            fixture.failure = Some(ServiceError::new(
+                500,
+                "inference_error",
+                "private backend detail",
+            ));
+            fixture.fail_after_delta = true;
+        }
+        let server = ServerBuilder::from_service(service.clone())
+            .bind("127.0.0.1:0".parse().unwrap())
+            .build()
+            .unwrap()
+            .start()
+            .unwrap();
+        let (head, events) = request_response_events(server.local_addr());
+        let id = correlation(&head).replacen("req_", "resp_", 1);
+        let kinds = events
+            .iter()
+            .map(|event| event["type"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        let mut expected = vec![
+            "response.created",
+            "response.in_progress",
+            "response.output_item.added",
+            "response.content_part.added",
+            "response.output_text.delta",
+        ];
+        if finish != "error" {
+            expected.extend([
+                "response.output_text.done",
+                "response.content_part.done",
+                "response.output_item.done",
+            ]);
+        }
+        expected.push(match finish {
+            "stop" => "response.completed",
+            "length" => "response.incomplete",
+            _ => "response.failed",
+        });
+        assert_eq!(kinds, expected);
+        assert_eq!(events[0]["response"]["id"], id);
+        let terminal = &events.last().unwrap()["response"];
+        assert_eq!(terminal["id"], id);
+        assert_eq!(events[2]["item"]["id"], terminal["output"][0]["id"]);
+        assert_eq!(events[4]["item_id"], terminal["output"][0]["id"]);
+        assert_eq!(
+            events[4]["delta"],
+            terminal["output"][0]["content"][0]["text"]
+        );
+        if finish == "length" {
+            assert_eq!(terminal["status"], "incomplete");
+            assert_eq!(
+                terminal["incomplete_details"]["reason"],
+                "max_output_tokens"
+            );
+            assert_eq!(terminal["output"][0]["status"], "incomplete");
+        } else if finish == "error" {
+            assert_eq!(terminal["status"], "failed");
+            assert_eq!(terminal["error"]["code"], "server_error");
+            assert!(terminal["usage"].is_null());
+            assert!(!terminal.to_string().contains("private backend detail"));
+        } else {
+            assert_eq!(terminal["status"], "completed");
+            assert_eq!(terminal["usage"]["total_tokens"], 4);
+        }
+        server.shutdown().unwrap();
+        drop(service);
+        assert_eq!(host.serving_bytes(), baseline);
+    }
+}
+
+#[test]
+fn responses_refuses_unsupported_state_controls_and_content_before_enqueue() {
+    use serde_json::json;
+    let _lock = test_support::lock();
+    let host = test_support::host();
+    let baseline = host.serving_bytes();
+    let service = Script::new(host.clone());
+    let server = ServerBuilder::from_service(service.clone())
+        .bind("127.0.0.1:0".parse().unwrap())
+        .build()
+        .unwrap()
+        .start()
+        .unwrap();
+    for (key, value) in [
+        ("store", json!(true)),
+        ("background", json!(true)),
+        ("previous_response_id", json!("resp_prior")),
+        ("conversation", json!("conv_prior")),
+        ("temperature", json!(0.7)),
+        ("reasoning", json!({"effort":"high"})),
+        ("tools", json!([{"type":"web_search"}])),
+        ("text", json!({"format":{"type":"json_schema"}})),
+        ("max_output_tokens", json!(5)),
+        (
+            "input",
+            json!([{"role":"user","content":[{"type":"input_image","image_url":"not-a-local-resource"}]}]),
+        ),
+    ] {
+        let mut request = json!({"model":"fixture","input":"hello"});
+        request[key] = value;
+        let (head, body) =
+            responses_request(&mut response_client(server.local_addr()), &request, false);
+        assert!(head.starts_with("HTTP/1.1 400"), "{body}");
+        assert_eq!(body["error"]["param"], key);
+        assert!(correlation(&head).starts_with("req_zg_"));
     }
     assert!(service.requests.lock().unwrap().is_empty());
     server.shutdown().unwrap();

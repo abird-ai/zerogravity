@@ -1,6 +1,8 @@
 //! Owned HTTP/1 transport. Hyper owns protocol framing; the existing service
 //! owns all model admission, events and cancellation. No detached tasks.
-use super::{ErrorReporting, bind_token_metrics, body, ingress_body, parse_body, websocket};
+use super::{
+    ErrorReporting, bind_token_metrics, body, ingress_body, parse_body, responses, websocket,
+};
 use crate::{TextService, ingress::IngressLimits, metrics::Counters};
 use hyper::{
     Method, Request, Response, StatusCode, Version,
@@ -17,8 +19,8 @@ use std::{
     io::{self, IoSlice},
     pin::Pin,
     sync::{
-        Arc, Mutex,
-        atomic::{AtomicBool, AtomicUsize, Ordering},
+        Arc, Mutex, OnceLock,
+        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
     },
     task::{Context, Poll},
     time::Duration,
@@ -332,6 +334,30 @@ pub(super) fn authorize(headers: &HeaderMap, api_key: Option<&str>) -> Result<()
     Ok(())
 }
 
+// Opaque process-wide correlation IDs, not authentication or resource
+// permits. The process namespace keeps restarts/listeners distinct.
+fn request_id() -> Result<String, ServiceError> {
+    static NAMESPACE: OnceLock<u128> = OnceLock::new();
+    static NEXT: AtomicU64 = AtomicU64::new(1);
+    let namespace = NAMESPACE.get_or_init(|| {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    });
+    let sequence = NEXT
+        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
+        .map_err(|_| ServiceError::new(503, "id_exhausted", "HTTP request IDs exhausted"))?;
+    Ok(format!(
+        "req_zg_{namespace:x}_{:x}_{sequence:x}",
+        std::process::id()
+    ))
+}
+
+fn model_object(id: &str) -> serde_json::Value {
+    json!({"id":id,"object":"model","created":0,"owned_by":"zerogravity"})
+}
+
 struct Host {
     service: Arc<dyn TextService>,
     config: ServeConfig,
@@ -349,11 +375,16 @@ impl Connection {
         let host = &self.host;
         let number = self.requests.fetch_add(1, Ordering::Relaxed) + 1;
         let mut authorized = false;
+        let id = request_id();
         let result = async {
+            let request_id = id.as_deref().map_err(Clone::clone)?;
             host.shutdown.check()?;
             let (parts, incoming) = incoming.into_parts();
             let path = parts.uri.path_and_query().map_or("", |uri| uri.as_str());
-            let accepts_chunked = matches!(path, "/v1/completions" | "/v1/chat/completions");
+            let accepts_chunked = matches!(
+                path,
+                "/v1/completions" | "/v1/chat/completions" | "/v1/responses"
+            );
             let length = validate_headers(&parts, host.config.limits.body_bytes, accepts_chunked)?;
             // Auth before any body read, allocation or model admission.
             host.metrics.accept_request();
@@ -415,23 +446,39 @@ impl Connection {
                     None,
                 ));
             }
-            if parts.method == Method::GET && path == "/v1/models" {
-                let data = host
-                    .service
-                    .model_ids()?
-                    .into_iter()
-                    .map(
-                        |id| json!({"id":id,"object":"model","created":0,"owned_by":"zerogravity"}),
-                    )
-                    .collect::<Vec<_>>();
-                return Ok(body::json_response(
-                    200,
-                    &json!({"object":"list","data":data}),
-                    None,
-                ));
+            if parts.method == Method::GET {
+                if path == "/v1/models" {
+                    let data: Vec<_> = host
+                        .service
+                        .model_ids()?
+                        .iter()
+                        .map(|id| model_object(id))
+                        .collect();
+                    return Ok(body::json_response(
+                        200,
+                        &json!({"object":"list","data":data}),
+                        None,
+                    ));
+                }
+                if let Some(alias) = path.strip_prefix("/v1/models/") {
+                    // Served aliases are bounded ASCII unreserved path
+                    // segments; no cache lookup or acquisition.
+                    zerogravity_engine::router::validate_alias(alias)
+                        .map_err(|error| error.with_parameter("model"))?;
+                    if !host.service.model_ids()?.iter().any(|id| id == alias) {
+                        return Err(ServiceError::new(
+                            404,
+                            "model_not_found",
+                            "model is not registered",
+                        )
+                        .with_parameter("model"));
+                    }
+                    return Ok(body::json_response(200, &model_object(alias), None));
+                }
             }
             let chat = path == "/v1/chat/completions";
-            if parts.method != Method::POST || !(chat || path == "/v1/completions") {
+            let responses = path == "/v1/responses";
+            if parts.method != Method::POST || !(chat || responses || path == "/v1/completions") {
                 return Err(ServiceError::new(404, "not_found", "unsupported endpoint"));
             }
             if !header_value(&parts.headers, "content-type").is_some_and(|t| {
@@ -444,12 +491,23 @@ impl Connection {
                     "JSON Content-Type required",
                 ));
             }
-            let (mut task, usage) = parse_body(
-                &raw[..used],
-                chat,
-                Some(host.service.as_ref()),
-                &mut ingress,
-            )?;
+            let (mut task, usage, projection) = if responses {
+                let (task, options, wire) = responses::parse(
+                    &raw[..used],
+                    host.service.as_ref(),
+                    &mut ingress,
+                    host.config.limits.output_bytes,
+                )?;
+                (task, false, Some((options, wire)))
+            } else {
+                let (task, usage) = parse_body(
+                    &raw[..used],
+                    chat,
+                    Some(host.service.as_ref()),
+                    &mut ingress,
+                )?;
+                (task, usage, None)
+            };
             bind_token_metrics(
                 &mut task,
                 header_value(&parts.headers, "x-request-id"),
@@ -466,7 +524,20 @@ impl Connection {
                     .request_semantic_admitted_scoped(task, ingress, scope)?,
                 None => host.service.request_semantic_admitted(task, ingress)?,
             };
-            if stream {
+            if let Some((options, wire)) = projection {
+                if stream {
+                    Ok(responses::streaming(
+                        events,
+                        options,
+                        wire,
+                        request_id,
+                        host.config.errors.clone(),
+                        authorized,
+                    ))
+                } else {
+                    responses::completion(events, options, wire, request_id).await
+                }
+            } else if stream {
                 Ok(body::streaming(
                     events,
                     chat,
@@ -490,6 +561,16 @@ impl Connection {
                 true,
             ),
         };
+        // Preserve the explicit opt-in token-metrics wire ID on legacy
+        // streams. Ordinary application responses/errors receive a server ID.
+        if !response.headers().contains_key("x-request-id")
+            && let Ok(id) = id
+        {
+            response.headers_mut().insert(
+                "x-request-id",
+                header::HeaderValue::from_str(&id).expect("bounded generated ID"),
+            );
+        }
         if response.status() != StatusCode::SWITCHING_PROTOCOLS
             && (close || number >= MAX_REQUESTS_PER_CONNECTION || host.shutdown.is_stopped())
         {

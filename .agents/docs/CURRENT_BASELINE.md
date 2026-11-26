@@ -5,6 +5,18 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 27 Nov — OA-3 stateless Models and Responses text
+
+Actual registry model retrieval and stateless Responses JSON/SSE over
+original typed requests/events, bounded projection ownership, correlation
+and exact restored-prefix usage. Focused 167/0/0 and strict lint passed;
+installed OpenAI Python SDK 2.33.0 strict real cached-model canary passed
+Models, Responses JSON/SSE, exact Chat parity, refusal and IDs. Real
+native/browser/official SDK (80.88s) and Rust SDK (15.02s) passed.
+Full isolated gate 2,557/0/109 (318 suites, 617.5s), release TUI/Web,
+installer and scripts passed. OA-3 accepted; OA-4 next.
+No storage/continuation, new model capability or physical GPU evidence.
+
 ## 27 Nov — OA-2 semantic text request/model template
 
 Typed raw/user/conversation intent through original queue and worker,

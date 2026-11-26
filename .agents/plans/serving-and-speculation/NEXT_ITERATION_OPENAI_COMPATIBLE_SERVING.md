@@ -6,7 +6,7 @@ scaffolding), CLI/TUI/Web and serving, ROCm, CUDA, Vulkan, then concrete
 compiled providers. Native Hugging Face/Safetensors and GGUF are primary.
 Older ordering below is context; valid owner constraints remain authoritative.
 
-Status: **OA-1 and OA-2 accepted** (27 Nov). OA-3 Models and Responses text next; later units remain ordered.
+Status: **OA-1 through OA-3 accepted** (27 Nov). OA-4 bounded response/conversation resources next; later units remain ordered.
 
 26 Nov user decision: [UX-P native TUI polish](../cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md)
 was the prerequisite. The assembled P4B gate passed on ad7a4178;
@@ -1310,6 +1310,34 @@ Implement:
 - request IDs.
 
 Use the smallest real text model canary.
+
+**OA-3 implementation (27 Nov).** Rechecked the current
+[create](https://developers.openai.com/api/reference/resources/responses/methods/create)
+and [streaming](https://developers.openai.com/api/reference/resources/responses/streaming-events)
+reference. Models list/retrieve use accepting registered aliases only.
+Responses text input string or ordered explicit message items, plain
+text parts, instructions (developer), metadata and greedy generation
+controls lower directly to SemanticRequest. Local stateless default
+store=false; explicit store=true, background, prior-response/conversation
+references, tools, structured output, other modalities/sampling/reasoning
+and unsupported fields refuse with named static parameters where known.
+No implicit resource lookup from a replayed complete assistant item ID.
+
+Borrowed typed wire views and charged bounded projection over original
+ResponseEvent/RequestEvents; exact restored prefix from the executor
+cursor is exposed as additive cached_prompt_tokens on Done and projected
+into input_tokens_details. Separate reasoning capability not claimed.
+Named ordered SSE lifecycle, length -> incomplete, backend failure ->
+failed with already-delivered partial text and safe canonical code.
+No Chat chunks or [DONE] sentinel. Same listener, queue/cancellation,
+deadline, backpressure, socket cumulative budget. Server correlation ID
+and response/item IDs; preserve explicit legacy metrics-stream wire ID.
+Focused 167/0/0 and strict lint; cached official OpenAI SDK 2.33.0 strict
+validation passed actual cached Qwen3.5 Models/retrieve, Responses JSON
+and SSE, exact Chat output/usage parity, refusal and correlation. Native/
+browser/official SDK lifecycle (80.88s) and Rust SDK lifecycle (15.02s)
+passed. Full isolated gate 2,557/0/109 across 318 Rust suites (617.5s),
+release TUI/Web, installer and scripts passed. OA-3 accepted.
 
 ### OA-4 — response/conversation resources
 

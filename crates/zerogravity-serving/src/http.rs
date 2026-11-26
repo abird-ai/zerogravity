@@ -26,6 +26,7 @@ mod ingress_body;
     reason = "reusable multipart transport primitive qualified by real socket tests"
 )]
 mod multipart;
+mod responses;
 mod transport;
 mod websocket;
 pub(crate) use transport::{SERVER_HEADROOM, ServeConfig, Shutdown, serve};
@@ -118,12 +119,13 @@ fn allowed_keys(map: &Map<String, Value>, allowed: &[&str]) -> Result<(), Servic
     }
     Ok(())
 }
-fn parse_body(
+/// Shared charged strict JSON ingress. Each protocol adapter validates its
+/// own schema without reparsing or lowering through another wire format.
+fn parse_json(
     body: &[u8],
-    chat: bool,
     router: Option<&dyn TextService>,
     ingress: &mut Vec<ServingCharge>,
-) -> Result<(SemanticRequest, bool), ServiceError> {
+) -> Result<Value, ServiceError> {
     // Census scratch is admitted before the census allocates it, the extra
     // construction peak is admitted before the direct `StrictValue`
     // constructor sees the bytes, and the retained tree bound is held on the
@@ -174,6 +176,16 @@ fn parse_body(
         .0;
     drop(parse_scratch);
     drop(census_scratch);
+    Ok(value)
+}
+
+fn parse_body(
+    body: &[u8],
+    chat: bool,
+    router: Option<&dyn TextService>,
+    ingress: &mut Vec<ServingCharge>,
+) -> Result<(SemanticRequest, bool), ServiceError> {
+    let value = parse_json(body, router, ingress)?;
     let map = value
         .as_object()
         .ok_or_else(|| ServiceError::new(400, "invalid_request", "expected JSON object"))?;
@@ -440,10 +452,20 @@ fn diagnostic_text(value: &str) -> String {
 }
 fn error_json(e: &ServiceError, details: bool) -> Value {
     let metadata = e.details();
+    let message = if let Some(param) = e.parameter() {
+        if e.code == "unsupported_parameter" {
+            format!("Unsupported parameter: {param}.")
+        } else {
+            format!("{} Parameter: {param}.", metadata.public_message())
+        }
+    } else {
+        metadata.public_message().to_owned()
+    };
     let mut value = json!({"error":{
-        "message":metadata.public_message(),
+        "message":message,
         "type":if e.status >= 500 {"server_error"} else {"invalid_request_error"},
-        "code":e.code
+        "code":e.code,
+        "param":e.parameter()
     }});
     if details {
         use std::error::Error as _;

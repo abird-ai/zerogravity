@@ -122,6 +122,7 @@ pub fn compare_prepared(
             prompt_tokens,
             completion_tokens,
             finish_reason,
+            ..
         } = events
             .events
             .recv_timeout(Duration::from_secs(120))
@@ -205,6 +206,7 @@ pub fn compare_prepared(
                 prompt_tokens,
                 completion_tokens,
                 finish_reason,
+                ..
             } => terminal = Some((output, prompt_tokens, completion_tokens, finish_reason)),
             ResponseEvent::Error(error) => panic!("physical pipeline: {error}"),
             _ => panic!("unexpected pipeline event"),

@@ -181,6 +181,7 @@ fn complete_with_fused(
                 prompt_tokens,
                 completion_tokens,
                 finish_reason,
+                ..
             } => {
                 assert_eq!(prompt_tokens, tokens);
                 assert_eq!(completion_tokens, result.ids.len());

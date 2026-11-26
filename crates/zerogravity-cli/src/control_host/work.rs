@@ -622,6 +622,7 @@ fn invoke(
                 prompt_tokens,
                 completion_tokens,
                 finish_reason,
+                ..
             }) => {
                 let mut response = output
                     .lock()

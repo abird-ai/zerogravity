@@ -175,6 +175,7 @@ fn done(event: ResponseEvent, expected: &str, tokens: usize, reason: &str) {
             prompt_tokens,
             completion_tokens,
             finish_reason,
+            ..
         } => {
             assert_eq!(output, expected);
             assert_eq!(prompt_tokens, 7);

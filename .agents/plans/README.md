@@ -18,9 +18,9 @@ The latest [comprehensive takeover through UX-P-M1](../docs/FULL_COMPREHENSIVE_H
 UX-P1/P2/P3/P4A, full default/error follow-up and live model metrics.
 UX-P and the model-local execution selector are accepted. The
 [standalone P4B prompt](../docs/NEXT_AGENT_2026-11-26_UX_P4B.md) is historical.
-OA-1 public serving transport and OA-2 semantic request/model-template boundary are accepted.
-Current unit: [OA-3 Models and Responses text](serving-and-speculation/NEXT_ITERATION_OPENAI_COMPATIBLE_SERVING.md#oa-3--models--responses-text).
-Read the live handoff for assembled acceptance and ordered OA-3 work;
+OA-1 public serving transport, OA-2 semantic request/model-template boundary and OA-3 Models/stateless Responses text are accepted.
+Current unit: [OA-4 response/conversation resources](serving-and-speculation/NEXT_ITERATION_OPENAI_COMPATIBLE_SERVING.md#oa-4--responseconversation-resources).
+Read the live handoff for assembled acceptance and ordered OA-4 work;
 deeper M2 inspection stays optional and capability-bound. The comprehensive handoff §10.2 records known full-default
 link/gate/packaging and physical qualification caveats.
 Its Appendices A–E preserve the engineering index, unresolved snapshot,

@@ -309,6 +309,7 @@ impl Trace {
                 prompt_tokens,
                 completion_tokens,
                 finish_reason,
+                ..
             } => {
                 self.done
                     .push((output, prompt_tokens, completion_tokens, finish_reason));

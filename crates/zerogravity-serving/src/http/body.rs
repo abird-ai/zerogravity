@@ -19,11 +19,11 @@ use std::{
 };
 use tokio::{sync::oneshot, time};
 use zerogravity_engine::router::{
-    RequestEvents, ResponseEvent, ServiceError, token_metrics::TokenMetrics,
+    RequestEvents, ResponseEvent, ServiceError, pending::ServingCharge, token_metrics::TokenMetrics,
 };
 
-const RESPONSE_TIMEOUT: Duration = Duration::from_secs(180);
-const KEEPALIVE: Duration = Duration::from_secs(10);
+pub(super) const RESPONSE_TIMEOUT: Duration = Duration::from_secs(180);
+pub(super) const KEEPALIVE: Duration = Duration::from_secs(10);
 
 /// Hyper HTTP/1 queue mode advances this buffer only after the socket's
 /// successful write. The optional token receipt measures completed SSE
@@ -34,6 +34,7 @@ pub(super) struct Data {
     written: Option<oneshot::Sender<Instant>>,
     // Keep output admission and cancellation alive while Hyper retains bytes.
     _owner: Option<Arc<RequestEvents>>,
+    _projection: Option<Arc<ServingCharge>>,
 }
 impl Data {
     fn new(bytes: Vec<u8>, owner: Option<Arc<RequestEvents>>) -> Self {
@@ -41,7 +42,17 @@ impl Data {
             bytes: bytes.into(),
             written: None,
             _owner: owner,
+            _projection: None,
         }
+    }
+    pub(super) fn projected(
+        bytes: Vec<u8>,
+        owner: &Arc<RequestEvents>,
+        charge: &Arc<ServingCharge>,
+    ) -> Self {
+        let mut data = Self::new(bytes, Some(owner.clone()));
+        data._projection = Some(charge.clone());
+        data
     }
     fn sse(value: &Value, owner: &Arc<RequestEvents>) -> Self {
         Self::new(
@@ -49,11 +60,12 @@ impl Data {
             Some(owner.clone()),
         )
     }
-    fn literal(value: &'static str, owner: &Arc<RequestEvents>) -> Self {
+    pub(super) fn literal(value: &'static str, owner: &Arc<RequestEvents>) -> Self {
         Self {
             bytes: Bytes::from_static(value.as_bytes()),
             written: None,
             _owner: Some(owner.clone()),
+            _projection: None,
         }
     }
 }
@@ -120,7 +132,9 @@ pub(super) fn json_response(
         .expect("fixed HTTP response headers")
 }
 
-async fn next(events: &RequestEvents) -> Result<ResponseEvent, std::sync::mpsc::RecvError> {
+pub(super) async fn next(
+    events: &RequestEvents,
+) -> Result<ResponseEvent, std::sync::mpsc::RecvError> {
     poll_fn(|cx| events.events.poll_recv(cx)).await
 }
 pub(super) async fn completion(
@@ -158,6 +172,7 @@ pub(super) async fn completion(
                 prompt_tokens,
                 completion_tokens,
                 finish_reason,
+                ..
             } => {
                 let mut value = completion_response(
                     events.id,

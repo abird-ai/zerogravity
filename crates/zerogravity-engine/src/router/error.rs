@@ -144,6 +144,8 @@ pub struct ServiceError {
     pub message: String,
     #[serde(skip)]
     origin: Option<Arc<Error>>,
+    #[serde(skip)]
+    parameter: Option<&'static str>,
 }
 impl ServiceError {
     pub fn new(status: u16, code: &'static str, message: impl Into<String>) -> Self {
@@ -152,6 +154,7 @@ impl ServiceError {
             code,
             message: message.into(),
             origin: None,
+            parameter: None,
         }
     }
     pub fn inference(error: Error) -> Self {
@@ -166,7 +169,16 @@ impl ServiceError {
             code: details.code,
             message: error.to_string(),
             origin: Some(Arc::new(error)),
+            parameter: None,
         }
+    }
+    /// Only static protocol parameter names, never arbitrary request values.
+    pub fn with_parameter(mut self, parameter: &'static str) -> Self {
+        self.parameter = Some(parameter);
+        self
+    }
+    pub fn parameter(&self) -> Option<&'static str> {
+        self.parameter
     }
     pub fn details(&self) -> FailureDetails {
         let mut details = self

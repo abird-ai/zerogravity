@@ -779,7 +779,11 @@ request/model-template boundary is implemented (core typed input,
 original semantic queue/events and model-owned Qwen template/pricing;
 focused and actual tokenizer checks passed). Actual cached consumers
 and assembled gate passed (2,553/0/109, 318 suites, 878.6s). OA-2
-accepted; OA-3 Models and Responses text next.
+accepted; OA-3 Models/retrieve and stateless Responses text JSON/SSE
+implemented over the original typed receipt, focused 167/0/0 and strict
+actual cached official SDK canary passed. Native/browser/Rust SDK
+regressions and assembled gate (2,557/0/109, 318 suites, 617.5s)
+passed. OA-3 accepted; OA-4 bounded response/conversation resources next.
 Preserve the original runtime, admission and listener owner.
 
 - [ ] Close the [OpenAI-compatible serving iteration](serving-and-speculation/NEXT_ITERATION_OPENAI_COMPATIBLE_SERVING.md):

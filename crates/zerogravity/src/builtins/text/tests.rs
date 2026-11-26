@@ -218,6 +218,7 @@ mod serving_population {
                     prompt_tokens,
                     completion_tokens,
                     finish_reason,
+                    ..
                 } => {
                     assert!(terminal.is_none(), "duplicate terminal event");
                     assert!(prompt_tokens >= 1, "actual prompt token count");

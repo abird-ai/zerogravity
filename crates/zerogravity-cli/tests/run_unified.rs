@@ -1295,6 +1295,17 @@ serve:
     assert!(error.starts_with("HTTP/1.1 400"), "{error}");
     assert!(error.contains("invalid_messages"), "{error}");
     drop(refusal);
+    // Explicit installed SDK lane, never acquire a Python dependency here.
+    if let Some(python) = std::env::var_os("ZG_TEST_OPENAI_PYTHON") {
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/responses_sdk.py");
+        let mut command = Command::new(python);
+        command.arg("-B").arg(fixture).arg(address.to_string());
+        if let Some(path) = std::env::var_os("ZG_TEST_OPENAI_PYTHONPATH") {
+            command.env("PYTHONPATH", path);
+        }
+        let status = command.status().unwrap();
+        assert!(status.success(), "official Responses SDK canary failed");
+    }
     // Aliases sharing the original snapshot must appear in one startup row.
     let text = std::fs::read_to_string(&log).unwrap();
     assert_eq!(

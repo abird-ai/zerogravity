@@ -2,7 +2,7 @@
 //! hold original cancellation receipts; they do not qualify model arithmetic.
 use crate::{
     ServerBuilder, ServerHandle, TextService,
-    service::{Request, RequestEvents, ServiceError, ServingCharge},
+    service::{Request, RequestEvents, SemanticRequest, ServiceError, ServingCharge},
     test_support::{self, HostBytes},
 };
 use std::{
@@ -118,6 +118,13 @@ impl TextService for PendingService {
     fn request_admitted(
         &self,
         request: Request,
+        ingress: Vec<ServingCharge>,
+    ) -> Result<RequestEvents, ServiceError> {
+        self.request_semantic_admitted(request.into(), ingress)
+    }
+    fn request_semantic_admitted(
+        &self,
+        request: SemanticRequest,
         _ingress: Vec<ServingCharge>,
     ) -> Result<RequestEvents, ServiceError> {
         assert_ne!(request.model, "panic", "injected protocol-task panic");
@@ -240,6 +247,41 @@ fn disconnect_cancels_only_its_original_request_before_first_token() {
         drop((first_token, second_token, consumer, service));
         assert_eq!(host.serving_bytes(), baseline);
     }
+}
+
+#[test]
+fn responses_disconnect_and_shutdown_retire_original_receipts_and_projection() {
+    let _lock = test_support::lock();
+    let host = test_support::host();
+    let baseline = host.serving_bytes();
+    let service = PendingService::open(host.clone());
+    let consumer = service.queue.worker().unwrap();
+    let server = start(service.clone());
+    let connect = |stream: bool| {
+        let mut socket = TcpStream::connect(server.local_addr()).unwrap();
+        let body = format!(r#"{{"model":"fixture","input":"x","stream":{stream},"store":false}}"#);
+        write!(socket, "POST /v1/responses HTTP/1.1\r\nHost: localhost\r\nContent-Length: {}\r\nContent-Type: application/json\r\n\r\n{body}", body.len()).unwrap();
+        socket
+    };
+    let first = connect(true);
+    let first_token = service.receipt(0);
+    let second = connect(false);
+    let second_token = service.receipt(1);
+    drop(first);
+    wait_until(|| first_token.is_cancelled());
+    assert!(!second_token.is_cancelled());
+    assert_eq!(
+        service
+            .queue
+            .sweep(|(cancel, _)| cancel.is_cancelled())
+            .unwrap(),
+        1
+    );
+    server.shutdown().unwrap();
+    assert!(second_token.is_cancelled());
+    assert_closed(second);
+    drop((first_token, second_token, consumer, service));
+    assert_eq!(host.serving_bytes(), baseline);
 }
 
 #[test]

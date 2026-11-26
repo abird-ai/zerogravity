@@ -21,6 +21,7 @@ fn terminal(event: ResponseEvent) -> Outcome {
             prompt_tokens,
             completion_tokens,
             finish_reason,
+            ..
         } => (output, prompt_tokens, completion_tokens, finish_reason),
         ResponseEvent::Error(error) => panic!("real fixture failed: {error}"),
         _ => panic!("expected one terminal event"),

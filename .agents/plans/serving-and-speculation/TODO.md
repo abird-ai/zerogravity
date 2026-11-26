@@ -113,12 +113,24 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   15.85s); full isolated assembled gate 2,553/0/109 across 318 Rust
   suites (878.6s), release TUI/Web, installer and scripts passed.
   No Responses, arbitrary Jinja, new modality, model owner or scheduler.
-- [ ] OA-3: Models list/retrieve and Responses text create/stream through
-  the accepted semantic request/events. Preserve original listener,
-  runtime, admission, cancellation and selected model template. Qualify
-  actual request fields, output/SSE grammar, request IDs, canonical
-  errors and smallest real cached text-model canary. Stateful response/
-  conversation resources belong to OA-4.
+- [x] OA-3: Models list/retrieve accepting aliases, stateless Responses
+  text create/stream directly on SemanticRequest and original receipt.
+  Typed text items/instructions, bounded metadata/greedy controls,
+  charged bounded projection and exact restored prefix usage. Canonical
+  ordered SSE completed/incomplete/failed, server request/response/item
+  IDs, named parameter refusals; preserve legacy metrics stream ID.
+  Focused 167/0/0 and strict lint passed. Cached official OpenAI SDK
+  2.33.0 strict actual Qwen3.5 Models/Responses JSON/SSE and Chat parity
+  passed; real native/browser/official SDK (80.88s), Rust SDK (15.02s)
+  and full isolated gate 2,557/0/109 (318 suites, 617.5s), release
+  TUI/Web, installer and scripts passed. Store defaults false locally;
+  explicit persistence/continuation, tools, non-text and unsupported
+  controls refuse. OA-3 accepted.
+- [ ] OA-4: bounded response/conversation resource owner, explicit store/
+  continuation, cancellation, retrieval/deletion, input-item retrieval
+  and input-token counting. Recheck current API contract, preserve
+  original model/source/session/scheduler/receipt; no duplicate model
+  state store. Qualify actual cached text-model/SDK lifecycle.
 
 ### Current continuation — 22 Nov 2026
 
