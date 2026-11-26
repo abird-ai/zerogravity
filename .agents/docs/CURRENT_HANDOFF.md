@@ -34,7 +34,47 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — OA-1B bounded ingress and owned WebSocket primitives (26 Nov)
+### Current checkpoint — OA-1B public chunked text / strict framing (26 Nov)
+
+Source authoring began from clean synchronized signed `3156ce45` on L5.
+Cached Hyper 1.13.0 archive verified against the locked checksum; vendored
+under serving with one upstream source file changed (server request parser
+and matching assertions, client unchanged), license and provenance retained.
+Mixed TE/CL in either order and all repeated CL now fail before normalization
+or application dispatch. One mature HTTP parser remains authoritative.
+New chunked ingress only on supported POST text routes, single chunked
+coding, no trailers/Expect/upgrade. Original auth, charged reader (absolute
+deadline, cumulative cap, growth-overlap charge), complete JSON validation,
+model lowering, SSE, persistent socket and scheduler ownership preserved.
+No new model semantics or modality endpoints.
+
+Focused isolated serving 33/0/0 and strict lint pass: public actual socket
+tests cover fixed/chunked, exact cap, UTF-8 split, complete-body admission,
+pipeline, malformed/mixed/duplicate framing, unauthorized and oversize,
+trailers and partial disconnect ledger retirement. Real cached-model
+CLI/TUI/Web (60.52s) and SDK (9.11s) regressions each passed 1/0/0.
+The CLI fixture sends both alias completions (fixed and chunked) over one
+connection and compares exact model output. Assembled gate passed all
+HIP/Vulkan/CUDA compile boundaries, strict full-default lint, GPU feature
+boundary tests (26/0/2), source-only qualification, dependency isolation
+and strict CPU workspace Clippy. Timed out at 1100s during CPU workspace
+test compilation after dependency-path cache invalidation; no CPU test
+suites executed. Full assembled gate remains required; retry with the
+warmed cache, then finish OA-1B multipart. Vendor source filter/check
+updated; Nix syntax passes, exact source-integrity derivation is blocked
+by the locked nixpkgs archive unavailable in the private network.
+Logs: `target/oa1b-chunked-focused-final.log`,
+`target/oa1b-chunked-real-consumers.log`, `target/oa1b-chunked-assembled.log`,
+`target/oa1b-chunked-nix-source.log`.
+
+Next OA-1B multipart: `multer 3.1.0` exists in local index, no archive or
+source. Cached form-data 0.6.0 rejected after reviewing decoder: truncated
+input may loop, invalid delimiter suffix may be treated as EOF. No
+downloads or duplicate parser. Obtain approved pinned decoder and qualify
+bounded part/aggregate ownership and cleanup, then OA-2. No real
+Realtime/model/media or new physical GPU performance claim.
+
+### Prior checkpoint — OA-1B bounded ingress and owned WebSocket primitives (26 Nov)
 
 Source authoring began from clean signed `fbb4ab1d` on L5. Migrated existing
 fixed-length HTTP text ingress to the shared decoded-body reader. One

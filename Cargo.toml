@@ -21,6 +21,7 @@ exclude = [
     "crates/zerogravity-gpu/vendor/cubecl-cuda",
     "crates/zerogravity-gpu/vendor/cubecl-hip",
     "crates/zerogravity-gpu/vendor/cubecl-wgpu",
+    "crates/zerogravity-serving/vendor/hyper",
 ]
 resolver = "3"
 
@@ -28,6 +29,8 @@ resolver = "3"
 version = "0.1.0"
 
 [patch.crates-io]
+# Strict server request framing; see the vendor PATCHES.md.
+hyper = { path = "crates/zerogravity-serving/vendor/hyper" }
 cubecl-common = { path = "crates/zerogravity-gpu/vendor/cubecl-common" }
 cubecl-runtime = { path = "crates/zerogravity-gpu/vendor/cubecl-runtime" }
 cubecl-ir = { path = "crates/zerogravity-gpu/vendor/cubecl-ir" }

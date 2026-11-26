@@ -1180,12 +1180,28 @@ serve:
         .set_read_timeout(Some(Duration::from_secs(60)))
         .unwrap();
     let mut connection = BufReader::new(stream);
-    let mut http = |path: &str, body: Option<&str>| {
+    let mut http = |path: &str, body: Option<&str>, chunked: bool| {
         let request = if let Some(body) = body {
-            format!(
-                "POST {path} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
-                body.len()
-            )
+            if chunked {
+                // Fragment the decoded body independently of HTTP framing.
+                let mut request = format!(
+                    "POST {path} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nTransfer-Encoding: chunked\r\n\r\n"
+                );
+                for bytes in body.as_bytes().chunks(11) {
+                    request.push_str(&format!(
+                        "{:x}\r\n{}\r\n",
+                        bytes.len(),
+                        std::str::from_utf8(bytes).unwrap()
+                    ));
+                }
+                request.push_str("0\r\n\r\n");
+                request
+            } else {
+                format!(
+                    "POST {path} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+                    body.len()
+                )
+            }
         } else {
             format!("GET {path} HTTP/1.1\r\nHost: localhost\r\n\r\n")
         };
@@ -1217,7 +1233,7 @@ serve:
         connection.read_exact(&mut body).unwrap();
         serde_json::from_slice::<serde_json::Value>(&body).unwrap()
     };
-    let models = http("/v1/models", None);
+    let models = http("/v1/models", None, false);
     let mut ids = models["data"]
         .as_array()
         .unwrap()
@@ -1226,15 +1242,15 @@ serve:
         .collect::<Vec<_>>();
     ids.sort_unstable();
     assert_eq!(ids, ["fast", "served-fixture"]);
-    let outputs = ids.into_iter().map(|alias| {
+    let outputs = ids.into_iter().enumerate().map(|(index, alias)| {
         let request = serde_json::json!({"model":alias,"prompt":"Continue: 1, 2, 3,","max_tokens":2,"stream":false}).to_string();
-        let response = http("/v1/completions", Some(&request));
+        let response = http("/v1/completions", Some(&request), index == 1);
         assert!(response["choices"][0]["text"].is_string(), "{response}");
         assert!(response["usage"]["completion_tokens"].as_u64().unwrap() > 0);
         response["choices"][0]["text"].clone()
     }).collect::<Vec<_>>();
     assert_eq!(outputs[0], outputs[1]);
-    assert_eq!(http("/v1/models", None), models);
+    assert_eq!(http("/v1/models", None, false), models);
     drop(connection);
     // Aliases sharing the original snapshot must appear in one startup row.
     let text = std::fs::read_to_string(&log).unwrap();

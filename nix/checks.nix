@@ -33,19 +33,18 @@
       import hashlib, json, pathlib, sys, tomllib
       original, filtered, output = map(pathlib.Path, sys.argv[1:])
       vendor = pathlib.Path("crates/zerogravity-gpu/vendor")
-      packages = ["cubecl-ir", "cubecl-cpp", "cubecl-cuda", "cubecl-hip"]
       manifest = tomllib.loads((filtered / "Cargo.toml").read_text())
       assert "package" not in manifest and manifest["workspace"]["package"]["version"]
       members = set(manifest["workspace"]["members"])
-      assert members == {"crates/zerogravity-core", "crates/zerogravity-artifacts", "crates/zerogravity-cpu", "crates/zerogravity-model-qwen35", "crates/zerogravity-model-gemma4", "crates/zerogravity-gpu", "crates/zerogravity", "crates/zerogravity-cli", "tools/gpu-qualify"}, members
+      assert members == {"crates/zerogravity-core", "crates/zerogravity-artifacts", "crates/zerogravity-cpu", "crates/zerogravity-model-qwen35", "crates/zerogravity-model-gemma4", "crates/zerogravity-gpu", "crates/zerogravity-engine", "crates/zerogravity-serving", "crates/zerogravity", "crates/zerogravity-cli", "tools/gpu-qualify"}, members
       for member in members:
           cargo_file = pathlib.Path(member) / "Cargo.toml"
           assert (filtered / cargo_file).read_bytes() == (original / cargo_file).read_bytes(), cargo_file
           member_manifest = tomllib.loads((filtered / cargo_file).read_text())
           assert member_manifest["package"]["version"] == {"workspace": True}, cargo_file
       excluded = set(manifest["workspace"].get("exclude", []))
-      for package in packages:
-          relative = vendor / package
+      vendors = sorted(pathlib.Path(spec["path"]) for spec in manifest["patch"]["crates-io"].values())
+      for relative in vendors:
           assert str(relative) in excluded, (relative, "vendor workspace member")
           assert (filtered / relative / "Cargo.toml").is_file(), relative
           cargo = tomllib.loads((original / relative / "Cargo.toml").read_text())
@@ -54,13 +53,14 @@
               if isinstance(name, str):
                   assert (filtered / relative / name).is_file(), (relative, key, name)
       files = []
-      for path in sorted((original / vendor).rglob("*")):
-          if not path.is_file():
-              continue
-          relative = path.relative_to(original)
-          actual = filtered / relative
-          assert actual.is_file() and actual.read_bytes() == path.read_bytes(), relative
-          files.append({"path": str(relative), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()})
+      for directory in [vendor, pathlib.Path("crates/zerogravity-serving/vendor")]:
+          for path in sorted((original / directory).rglob("*")):
+              if not path.is_file():
+                  continue
+              relative = path.relative_to(original)
+              actual = filtered / relative
+              assert actual.is_file() and actual.read_bytes() == path.read_bytes(), relative
+              files.append({"path": str(relative), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()})
       assert files
       arm_notice = pathlib.Path("crates/zerogravity-gpu/LICENSE-ARM-MATH")
       assert (filtered / arm_notice).read_bytes() == (original / arm_notice).read_bytes()

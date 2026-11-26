@@ -194,10 +194,11 @@ fn header_value<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
         .map(str::trim)
 }
 
+/// Some(length) is fixed length, None is strictly decoded chunked input.
 fn validate_headers(
     parts: &hyper::http::request::Parts,
     limit: usize,
-) -> Result<usize, ServiceError> {
+) -> Result<Option<usize>, ServiceError> {
     let path = parts.uri.path_and_query().map_or("", |uri| uri.as_str());
     if parts.version != Version::HTTP_11 {
         return Err(ServiceError::new(
@@ -214,10 +215,9 @@ fn validate_headers(
     {
         return Err(ServiceError::new(400, "bad_path", "invalid request target"));
     }
-    // Hyper owns raw framing, including conflicting lengths. Retain the
-    // stricter application-level duplicate-header policy for exposed fields.
-    // Identical repeated Content-Length may already have been normalized by
-    // the mature parser; differing lengths remain rejected by it.
+    // The pinned Hyper server parser rejects mixed framing and repeated
+    // lengths before normalization. Apply duplicate-header policy here to
+    // the remaining exposed fields.
     let mut bytes = parts.method.as_str().len() + path.len() + 16;
     for name in parts.headers.keys() {
         if parts.headers.get_all(name).iter().count() != 1 {
@@ -244,15 +244,11 @@ fn validate_headers(
             "HTTP headers too large",
         ));
     }
-    if parts.headers.contains_key(header::TRANSFER_ENCODING)
-        || parts.headers.contains_key(header::EXPECT)
-    {
-        // Bounded fixed-length JSON frames only in the text substrate. Unknown
-        // length/chunked ingress and multipart/upgrade policy are a later slice.
+    if parts.headers.contains_key(header::EXPECT) {
         return Err(ServiceError::new(
             400,
             "unsupported_transfer",
-            "chunked request/Expect is not supported",
+            "Expect is not supported",
         ));
     }
     if !parts.headers.contains_key(header::HOST) {
@@ -261,6 +257,24 @@ fn validate_headers(
             "bad_request",
             "HTTP/1.1 Host header required",
         ));
+    }
+    if let Some(encoding) = header_value(&parts.headers, "transfer-encoding") {
+        // Only the supported JSON text routes accept decoded chunked bodies.
+        // No other transfer codings or trailers, and no body on an upgrade.
+        if !encoding.eq_ignore_ascii_case("chunked")
+            || parts.headers.contains_key(header::CONTENT_LENGTH)
+            || parts.headers.contains_key(header::TRAILER)
+            || parts.headers.contains_key(header::UPGRADE)
+            || parts.method != Method::POST
+            || !matches!(path, "/v1/completions" | "/v1/chat/completions")
+        {
+            return Err(ServiceError::new(
+                400,
+                "unsupported_transfer",
+                "only chunked JSON text requests are supported",
+            ));
+        }
+        return Ok(None);
     }
     let length = match header_value(&parts.headers, "content-length") {
         Some(value) => {
@@ -279,7 +293,7 @@ fn validate_headers(
             return Err(ServiceError::new(
                 411,
                 "length_required",
-                "POST requires Content-Length",
+                "POST requires Content-Length or chunked encoding",
             ));
         }
         None => 0,
@@ -291,7 +305,7 @@ fn validate_headers(
             "JSON body too large",
         ));
     }
-    Ok(length)
+    Ok(Some(length))
 }
 
 fn authorize(headers: &HeaderMap, api_key: Option<&str>) -> Result<(), ServiceError> {
@@ -355,7 +369,9 @@ impl Connection {
                 let request = Request::from_parts(parts, incoming);
                 let (response, pending) = websocket::prepare(
                     request,
-                    length,
+                    length.ok_or_else(|| {
+                        ServiceError::new(400, "bad_upgrade", "upgrade body is not supported")
+                    })?,
                     host.config.limits.body_bytes,
                     host.service.as_ref(),
                     admission,
@@ -375,7 +391,7 @@ impl Connection {
             }
             let reader = ingress_body::Reader::new(
                 incoming,
-                Some(length),
+                length,
                 host.config.limits.body_bytes,
                 READ_TIMEOUT,
             )?;
@@ -523,6 +539,7 @@ async fn connection(stream: TcpStream, peer: TcpStream, host: Arc<Host>, _charge
         .timer(TokioTimer::new())
         .header_read_timeout(READ_TIMEOUT)
         .max_headers(MAX_PARSED_HEADERS)
+        .max_header_size(MAX_HEADERS)
         .max_buf_size(MAX_HEADERS)
         .writev(true)
         .title_case_headers(true)

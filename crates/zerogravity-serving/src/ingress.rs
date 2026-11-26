@@ -4,7 +4,8 @@ use crate::{Error, Result};
 pub struct IngressLimits {
     /// Concurrent retained HTTP connection tasks (1..=64).
     pub connections: usize,
-    /// Content-Length limit (1..=1 MiB); checked before body allocation/read.
+    /// Decoded body limit (1..=1 MiB). Fixed lengths are checked before allocation;
+    /// chunked requests are checked cumulatively before staging each frame.
     pub body_bytes: usize,
     /// Total emitted bytes per connection, including HTTP headers/chunk/SSE framing.
     /// Exhaustion closes the connection and cancels its request.

@@ -768,10 +768,11 @@ OA-1A bounded async text transport is accepted (complete isolated gate
 2,538/0/109, 318 suites; real cached CLI/TUI/Web and SDK passed). OA-1B
 bounded decoded-body staging and owned WebSocket primitives implemented
 and accepted (2,544/0/109 across 318 isolated Rust suites; real cached
-CLI/TUI/Web and SDK passed). Public streaming
-activation requires strict mixed-framing handling and approved multipart
-decoder acquisition. Remaining OA-1B precedes the OA-2 semantic
-request/model-template boundary.
+CLI/TUI/Web and SDK passed). Public chunked text now uses the same
+bounded reader and a narrow cached Hyper server framing patch; focused
+33/0/0 and real cached CLI/TUI/Web/SDK pass; assembled acceptance pending. Remaining OA-1B multipart
+requires authorized pinned decoder acquisition; OA-2 semantic
+request/model-template boundary follows complete OA-1.
 Preserve the original runtime, admission and listener owner.
 
 - [ ] Close the [OpenAI-compatible serving iteration](serving-and-speculation/NEXT_ITERATION_OPENAI_COMPATIBLE_SERVING.md):

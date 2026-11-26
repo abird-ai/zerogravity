@@ -5,6 +5,20 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 26 Nov — OA-1B public chunked text / strict framing
+
+Cached Hyper 1.13.0 server-parser patch resolves mixed/repeated length
+normalization; bounded public chunked JSON now reuses original auth,
+charged staging, SSE and model scheduler. Actual public socket tests
+and strict lint pass (focused 33/0/0); real cached CLI/TUI/Web and SDK
+regressions pass (60.52s and 9.11s). Assembled GPU boundary tests
+26/0/2, strict default/CPU lint and dependency isolation passed; gate
+timed out at 1100s during CPU workspace test compilation, no CPU suites
+executed. Complete assembled acceptance remains pending. Nix vendor source check blocked by uncached locked
+nixpkgs input; syntax passed. No new physical GPU or performance evidence.
+Multipart remains blocked on approved decoder acquisition (cached
+form-data 0.6.0 not suitable). OA-2 follows complete OA-1.
+
 ## 26 Nov — OA-1B bounded ingress and owned WebSocket primitives
 
 Shared charged decoded-body staging and owned WebSocket continuation

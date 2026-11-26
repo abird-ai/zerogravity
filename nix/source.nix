@@ -25,7 +25,7 @@ in
       sourceTree = builtins.elem top ["crates" "tools" "src" "examples" "tests" ".cargo"];
       webTree = lib.hasPrefix "crates/zerogravity-cli/web/dist/" relative || relative == "crates/zerogravity-cli/web/dist";
       webNodeModules = lib.hasPrefix "crates/zerogravity-cli/web/node_modules/" relative || relative == "crates/zerogravity-cli/web/node_modules";
-      vendorTree = lib.hasPrefix "crates/zerogravity-gpu/vendor/" relative;
+      vendorTree = lib.hasPrefix "crates/zerogravity-gpu/vendor/" relative || lib.hasPrefix "crates/zerogravity-serving/vendor/" relative;
       buildOutput = builtins.any (root: relative == root || lib.hasPrefix "${root}/" relative) excluded;
       packageNotice = builtins.elem base ["README.md" "LICENSE" "LICENSE-MIT" "LICENSE-APACHE" "LICENSE-ARM-MATH" "NOTICE"];
       modelFixture = builtins.elem relative [

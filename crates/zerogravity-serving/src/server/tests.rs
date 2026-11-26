@@ -741,6 +741,198 @@ fn actual_framing_refuses_ambiguity_and_preauth_body_without_admitting() {
     assert_eq!(host.serving_bytes(), baseline);
 }
 
+fn chunked_head(path: &str, auth: &str) -> String {
+    format!(
+        "POST {path} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nTransfer-Encoding: chunked\r\n{auth}\r\n"
+    )
+}
+
+fn write_chunk(socket: &mut TcpStream, bytes: &[u8]) {
+    write!(socket, "{:x}\r\n", bytes.len()).unwrap();
+    socket.write_all(bytes).unwrap();
+    socket.write_all(b"\r\n").unwrap();
+}
+
+#[test]
+fn chunked_text_routes_admit_only_after_complete_body_and_reuse_connection() {
+    let _lock = test_support::lock();
+    let host = test_support::host();
+    let baseline = host.serving_bytes();
+    let service = Script::new(host.clone());
+    let server = ServerBuilder::from_service(service.clone())
+        .bind("127.0.0.1:0".parse().unwrap())
+        .api_key(Some("secret".into()))
+        .limits(IngressLimits {
+            body_bytes: 128,
+            ..Default::default()
+        })
+        .build()
+        .unwrap()
+        .start()
+        .unwrap();
+    let auth = "Authorization: Bearer secret\r\n";
+    let stream = TcpStream::connect(server.local_addr()).unwrap();
+    stream
+        .set_read_timeout(Some(Duration::from_secs(3)))
+        .unwrap();
+    let mut client = BufReader::new(stream);
+    let mut raw = br#"{"model":"fixture","prompt":"hello","max_tokens":2}"#.to_vec();
+    // Exactly the decoded byte cap, not the HTTP chunk framing bytes.
+    raw.resize(128, b' ');
+    client
+        .get_mut()
+        .write_all(chunked_head("/v1/completions", auth).as_bytes())
+        .unwrap();
+    write_chunk(client.get_mut(), &raw[..17]);
+    wait(|| server.metrics().accepted_requests == 1);
+    assert!(service.requests.lock().unwrap().is_empty());
+    for piece in raw[17..].chunks(19) {
+        write_chunk(client.get_mut(), piece);
+    }
+    client.get_mut().write_all(b"0\r\n\r\n").unwrap();
+    client
+        .get_mut()
+        .write_all(get("/v1/models", auth).as_bytes())
+        .unwrap();
+    let (head, result) = read_response(&mut client);
+    assert!(head.starts_with("HTTP/1.1 200"));
+    assert!(!head.to_ascii_lowercase().contains("connection: close"));
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&result).unwrap()["choices"][0]["text"],
+        "transport fixture"
+    );
+    let (head, result) = read_response(&mut client);
+    assert!(head.starts_with("HTTP/1.1 200"));
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&result).unwrap()["data"][0]["id"],
+        "fixture"
+    );
+
+    // Split a UTF-8 code point across separate decoded frames. The same
+    // original chat lowering and SSE path must receive the full JSON.
+    let chat = r#"{"model":"fixture","messages":[{"role":"user","content":"héllo"}],"stream":true,"max_tokens":2}"#;
+    let split = chat.find('é').unwrap() + 1;
+    client
+        .get_mut()
+        .write_all(chunked_head("/v1/chat/completions", auth).as_bytes())
+        .unwrap();
+    write_chunk(client.get_mut(), &chat.as_bytes()[..split]);
+    write_chunk(client.get_mut(), &chat.as_bytes()[split..]);
+    client.get_mut().write_all(b"0\r\n\r\n").unwrap();
+    let (head, result) = read_response(&mut client);
+    assert!(head.starts_with("HTTP/1.1 200"));
+    assert!(result.contains("transport fixture") && result.ends_with("data: [DONE]\n\n"));
+    let requests = service.requests.lock().unwrap();
+    assert_eq!(requests.len(), 2);
+    assert_eq!(requests[0].0.input, "hello");
+    assert!(!requests[0].0.chat && !requests[0].0.stream);
+    assert_eq!(
+        requests[1].0.input,
+        "<|im_start|>user\nhéllo<|im_end|>\n<|im_start|>assistant\n"
+    );
+    assert!(!requests[1].0.chat && requests[1].0.stream);
+    drop(requests);
+    assert_eq!(server.metrics().active_connections, 1);
+    assert_eq!(server.metrics().accepted_requests, 3);
+    drop(client);
+    server.shutdown().unwrap();
+    drop(service);
+    assert_eq!(host.serving_bytes(), baseline);
+}
+
+#[test]
+fn chunked_ingress_refuses_bad_framing_auth_and_bounds_before_model_admission() {
+    let _lock = test_support::lock();
+    let host = test_support::host();
+    let baseline = host.serving_bytes();
+    let service = Script::new(host.clone());
+    let server = ServerBuilder::from_service(service.clone())
+        .bind("127.0.0.1:0".parse().unwrap())
+        .api_key(Some("secret".into()))
+        .limits(IngressLimits {
+            body_bytes: 128,
+            ..Default::default()
+        })
+        .build()
+        .unwrap()
+        .start()
+        .unwrap();
+    let address = server.local_addr();
+    let auth = "Authorization: Bearer secret\r\n";
+    let idle = host.serving_bytes();
+    let head = format!(
+        "POST /v1/completions HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\n{auth}"
+    );
+    // These must fail in the actual Hyper parser, before the service sees a
+    // normalized head, even when both lengths agree or TE occurs first.
+    for framing in [
+        "Content-Length: 64\r\nTransfer-Encoding: chunked\r\n",
+        "Transfer-Encoding: chunked\r\nContent-Length: 64\r\n",
+        "Transfer-Encoding: chunked\r\nContent-Length: invalid\r\n",
+        "Content-Length: 64\r\nContent-Length: 64\r\n",
+        "Content-Length: 64\r\nContent-Length: 65\r\n",
+    ] {
+        let response = exchange(address, &format!("{head}{framing}\r\n"));
+        assert!(
+            response.starts_with("HTTP/1.1 400"),
+            "{framing:?}: {response}"
+        );
+    }
+    assert_eq!(server.metrics().accepted_requests, 0);
+    for framing in [
+        "Transfer-Encoding: gzip, chunked\r\n",
+        "Transfer-Encoding: chunked\r\nTransfer-Encoding: chunked\r\n",
+        "Transfer-Encoding: chunked\r\nTrailer: X-Trace\r\n",
+        "Transfer-Encoding: chunked\r\nExpect: 100-continue\r\n",
+    ] {
+        let response = exchange(address, &format!("{head}{framing}\r\n"));
+        assert!(
+            response.starts_with("HTTP/1.1 400"),
+            "{framing:?}: {response}"
+        );
+        assert!(!response.contains("100 Continue"));
+    }
+    let response = exchange(address, &chunked_head("/v1/completions", ""));
+    assert!(response.starts_with("HTTP/1.1 401"));
+    assert_eq!(document(&response)["error"]["code"], "unauthorized");
+    let response = exchange(address, &chunked_head("/v1/audio/transcriptions", auth));
+    assert!(response.starts_with("HTTP/1.1 400"));
+
+    // Actual decoded aggregate overflow, malformed chunks and trailers
+    // cannot publish a request, even after receiving valid initial bytes.
+    let head = chunked_head("/v1/completions", auth);
+    let oversized = format!(
+        "{head}40\r\n{}\r\n41\r\n{}\r\n0\r\n\r\n",
+        "x".repeat(64),
+        "x".repeat(65)
+    );
+    let response = exchange(address, &oversized);
+    assert!(response.starts_with("HTTP/1.1 413"), "{response}");
+    for suffix in [
+        "not-a-size\r\n",
+        "4\r\nabcd\r\n0\r\nX-Trace: ignored\r\n\r\n",
+    ] {
+        let response = exchange(address, &format!("{head}{suffix}"));
+        assert!(response.starts_with("HTTP/1.1 400"), "{response}");
+    }
+    wait(|| server.metrics().active_connections == 0);
+    wait(|| host.serving_bytes() == idle);
+    assert!(service.requests.lock().unwrap().is_empty());
+
+    // A partial upload owns only bounded staging, not a model request.
+    let mut client = TcpStream::connect(address).unwrap();
+    client.write_all(head.as_bytes()).unwrap();
+    write_chunk(&mut client, b"partial");
+    wait(|| server.metrics().active_connections == 1 && host.serving_bytes() > idle);
+    drop(client);
+    wait(|| server.metrics().active_connections == 0);
+    wait(|| host.serving_bytes() == idle);
+    assert!(service.requests.lock().unwrap().is_empty());
+    server.shutdown().unwrap();
+    drop(service);
+    assert_eq!(host.serving_bytes(), baseline);
+}
+
 #[test]
 fn persistent_wire_budget_is_not_reset_by_next_request() {
     let _lock = test_support::lock();

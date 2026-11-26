@@ -71,13 +71,26 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   1/0/0 (60.72s) and SDK listener/model lifecycle 1/0/0 (10.33s).
   Full isolated workspace gate passed (466.3s): 2,544/0/109 across
   318 Rust suites, release TUI/Web, installer and scripts.
-- [ ] OA-1B remaining activation: public chunked/multipart streaming ingress
-  after resolving pinned Hyper mixed Transfer-Encoding/Content-Length
-  normalization (retain strict refusal) and approved acquisition of a
-  mature multipart decoder absent from the offline cache. Qualify bounded
-  per-part/aggregate admission and cleanup. No second HTTP parser, no
-  automatic downloads or fake modality endpoint. OA-2 remains ordered
-  after OA-1.
+- [~] OA-1B public chunked text: pinned cached Hyper 1.13.0 server-parser
+  patch refuses mixed TE/CL and repeated CL before normalization; exact
+  upstream bytes except role.rs and local patch notice. Same charged
+  reader, authorization, JSON/SSE, persistent connection and listener.
+  Actual public socket tests verify exact cap, UTF-8 split, complete-body
+  admission, pipeline, bad framing, unauthorized/oversize/trailer refusal
+  and partial disconnect charge retirement. Focused serving 33/0/0 and
+  strict lint pass; real cached CLI/TUI/Web (60.52s) and SDK (9.11s)
+  regressions pass 1/0/0 each. Assembled HIP/Vulkan/CUDA compile
+  boundaries, full-default/CPU strict lint, GPU boundary tests 26/0/2,
+  source-only regressions and dependency isolation passed. Gate timed out
+  at 1100s compiling CPU workspace tests; no CPU suites executed. Retry
+  full isolated gate with the warmed cache before acceptance.
+  Nix vendor source filter/check updated and syntax passes; actual locked
+  source-integrity check blocked by unavailable nixpkgs archive offline.
+- [ ] OA-1B multipart: acquire approved pinned mature multipart decoder
+  (multer 3.1.0 indexed but bytes absent); cached form-data 0.6.0 rejected
+  on truncated-input loop and invalid boundary termination. Qualify
+  bounded per-part/aggregate admission and cleanup. No second HTTP parser,
+  automatic downloads or fake modality endpoint. OA-2 follows OA-1.
 
 ### Current continuation — 22 Nov 2026
 

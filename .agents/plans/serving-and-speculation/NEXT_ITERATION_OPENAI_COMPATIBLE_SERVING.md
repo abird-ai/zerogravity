@@ -6,7 +6,7 @@ scaffolding), CLI/TUI/Web and serving, ROCm, CUDA, Vulkan, then concrete
 compiled providers. Native Hugging Face/Safetensors and GGUF are primary.
 Older ordering below is context; valid owner constraints remain authoritative.
 
-Status: **OA-1A accepted; OA-1B bounded ingress and WebSocket primitives accepted** (26 Nov). Public streaming/multipart activation remains open; OA-2 and later remain ordered.
+Status: **OA-1A and OA-1B ingress/WebSocket primitives accepted; public chunked text focused-qualified, assembled gate pending** (26 Nov). Multipart remains open; OA-2 and later remain ordered.
 
 26 Nov user decision: [UX-P native TUI polish](../cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md)
 was the prerequisite. The assembled P4B gate passed on ad7a4178;
@@ -1196,16 +1196,29 @@ is installed today: ordinary servers continue refusing /v1/realtime, and
 RealtimeTransport::require_implemented still refuses. No modality endpoint,
 model support or external exposure is claimed.
 
-Two activation blockers remain: (1) pinned Hyper 1.13.0 removes
-Content-Length when Transfer-Encoding is also present (and disables keep-alive),
-so application-level headers cannot prove strict rejection of mixed framing.
-Retain refusal of all public chunked/Expect ingress until a mature parser
-exposes/rejects the ambiguity, or an explicit reviewed policy change is
-approved. Do not add a second handwritten parser. (2) no mature multipart
-decoder (including multer) is installed in the approved offline Cargo cache.
-Obtain an approved pinned decoder and qualify bounded per-part/aggregate
-streaming admission; no automatic download, homegrown parser, or fake
-multipart/Realtime endpoint. OA-1 stays open and OA-2 remains ordered.
+**Public chunked text activation (26 Nov).** The cached checksum-verified
+Hyper 1.13.0 registry source is vendored with one server request parser
+patch: refuse mixed Transfer-Encoding/Content-Length (either order) and
+repeated Content-Length (including identical values), before normalization
+or application dispatch. Client parsing/encoding stays upstream. Preserve
+the exact source revision/license, one root lock, and existing vendor
+packaging; remove this patch when upstream supports the strict policy.
+No duplicate wire parser. The original public text routes now accept
+only single chunked transfer coding on POST; Expect, other codings,
+trailers and upgrades with chunked bodies remain refused. Decoded frames
+use the same charged staging owner and absolute deadline as fixed-length
+JSON, with authorization before reads and complete JSON validation before
+model admission. Persistent connection and SSE ownership are unchanged.
+No new model semantics or modality capability.
+
+Remaining multipart blocker: `multer` is indexed locally (3.1.0 candidate)
+but its archive/source is absent. Cached `form-data 0.6.0` was reviewed and
+rejected: its decoder loops after truncated input and can treat malformed
+boundary suffixes as EOF. Do not substitute that parser or a whole-body
+email MIME decoder for strict streaming form-data. Obtain authorized pinned
+multipart acquisition, then qualify bounded part/aggregate admission and
+cleanup. No automatic download, homegrown parser or fake endpoints.
+OA-1 stays open and OA-2 remains ordered.
 
 ### OA-2 — semantic request model and model template boundary
 
