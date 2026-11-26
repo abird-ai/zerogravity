@@ -218,6 +218,52 @@ try {
     await waitFor(() => contains("No model owners"), "device-selected owner retired", 90000);
     console.log("Browser library: cached/catalog/partial shelves, exact inspect/verify/alias/removal preview, offline consent, physical device check and load");
   }
+  if (!residentRoot && !downloadFixture) {
+    await go("Profiles");
+    await waitFor(() => contains("config.yaml"), "profile inventory").catch(async error => { console.error(await evaluate("document.querySelector('main').innerText")); throw error; });
+    await fill("#profile-name", "browserdesk");
+    await click("Create profile");
+    await waitFor(() => evaluate("Array.from(document.querySelectorAll('.entries .row')).some(b=>b.textContent.includes('browserdesk'))"), "created profile observation");
+    await evaluate("Array.from(document.querySelectorAll('.entries .row')).find(b=>b.textContent.includes('browserdesk')).click()");
+    await waitFor(() => contains("run.backend"), "typed config observation");
+    await fill("#config-search", "run.backend");
+    await click("Edit");
+    await fill("#config-draft", "cpu");
+    await click("Save configuration");
+    await waitFor(() => contains("Saved configuration"), "typed save");
+    await waitFor(() => evaluate("!document.querySelector('#config-draft') && document.querySelector('.config-row > .mono')?.textContent.trim() === 'cpu'"), "saved observation");
+    await click("Edit YAML");
+    await fill("#config-draft", "schema: zerogravity.pipeline.v2\nrun: {backend: cpu, task: {raw: true}}\n");
+    await click("Save configuration");
+    await waitFor(() => evaluate("!document.querySelector('#config-draft')"), "raw save").catch(async error => { console.error(await evaluate("document.querySelector('main').innerText")); throw error; });
+    await click("Validate");
+    await waitFor(() => contains("Valid configuration"), "validate");
+    await click("Activate profile");
+    await waitFor(() => evaluate("document.querySelector('.profile').textContent.includes('browserdesk')"), "active profile");
+    await fill("#copy-profile", "browsercopy");
+    await click("Copy profile");
+    await waitFor(() => contains("Created profile browsercopy"), "copy");
+    await go("Profiles");
+    await waitFor(() => evaluate("Array.from(document.querySelectorAll('.entries .row')).some(b=>b.textContent.includes('browsercopy'))"), "copied profile observation");
+    await evaluate("Array.from(document.querySelectorAll('.entries .row')).find(b=>b.textContent.includes('browsercopy')).click()");
+    await waitFor(() => contains("Editing only; not active"), "inactive copy");
+    await click("Remove profile");
+    await click("Cancel");
+    await click("Remove profile");
+    await click("Confirm");
+    await waitFor(() => contains("Removed profile"), "remove");
+    await go("Logs");
+    await waitFor(() => contains("Save config completed"), "shared log ring");
+    await click("Pause logs");
+    await waitFor(() => contains("Paused view; collection continues"), "log pause");
+    await fill('[aria-label="Search logs"]', "Save config");
+    await waitFor(() => evaluate("Array.from(document.querySelectorAll('.log-row')).every(row=>row.textContent.includes('Save config')) && document.querySelectorAll('.log-row').length>0"), "log filter");
+    await click("Follow logs");
+    await viewport(390,844);
+    await waitFor(() => evaluate("document.documentElement.scrollWidth <= innerWidth + 1"), "logs responsive width");
+    await viewport(1440,900);
+    console.log("Browser settings: profile create/copy/activate/remove, typed and raw save, validation, bounded log search and pause/follow");
+  }
   await go("Home");
   if (residentRoot) {
     // Real action buttons, original cached fixture, actual inference output.

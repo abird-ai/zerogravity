@@ -23,8 +23,8 @@ test("coalesced event frames survive fragmented delivery and resync", () => {
   decode("event: resync\ndata: {}");
   decode("\n\n");
   decode("event: models\ndata: {}\n\nevent: dev");
-  decode("ices\ndata: {}\n\n");
-  assert.deepEqual(refreshes, ["refresh", "resync", "models", "devices"]);
+  decode("ices\ndata: {}\n\nevent: configuration\ndata: {}\n\nevent: logs\ndata: {}\n\n");
+  assert.deepEqual(refreshes, ["refresh", "resync", "models", "devices", "configuration", "logs"]);
   assert.throws(() => decode("x".repeat(16385)), /bound/);
 });
 

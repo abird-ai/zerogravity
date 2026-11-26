@@ -27,7 +27,48 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — Phase 2.1 UX-9C (26 Nov)
+### Current checkpoint — Phase 2.1 UX-9D implementation (26 Nov)
+
+Profiles / Config / Logs are implemented for both foreground clients; the
+focused qualification is complete. Full phase acceptance remains pending.
+
+- The original native configuration actions and typed observations now live
+  in control_host/settings.rs. One ConfigFile snapshot/validation/atomic
+  writer, one shared action slot and process-local active Selection. Exact
+  stale writes refuse; activation only affects future actions. Native raw
+  repair remains available; inactive edits invalidate both clients without
+  reconfiguring admitted owners.
+- Web profiles/config authenticated cold reads retain one latest exact
+  snapshot with an opaque identity; reading a different document can require
+  refresh. Typed safe policy fields and normalized YAML for wholly safe
+  documents only. No paths, prompts, graphs, credentials or comments on the
+  wire; protected fields are not writable by Web. Trusted existing profiles
+  can be activated/copied without disclosure. Default, portable and active
+  removal refused by original owner. Native-only unrestricted raw repair.
+- Shared host-owned 128-entry operational ring in control_host/logs.rs,
+  safe action/owner correlations; one event collector per host. Web/native
+  view-local filtering and pause/follow; no prompts/model output or durable
+  history. SSE configuration/log invalidation; bounded retries only for
+  refused cold reads, never mutations. Completed Web settings receipts
+  reread configuration before enabling the next edit.
+- Strict minimal TUI/Web, Web-only CPU/serve/acquisition and combined
+  Clippy pass; Web-only tree terminal-free; JS 3/0; actual isolated HTTP,
+  native PTY plus attached Web cross-client edit/activation/logs, and real
+  Firefox profile/config/log and responsive smoke pass. Fixed fixture SSE
+  response closure and a real cold-read navigation/receipt refresh race.
+  No live acquisition, new dependency, model or GPU/performance change.
+- Full isolated gate began after strict lint; stopped intentionally at the
+  turn boundary during unchanged Vulkan feature-boundary compilation,
+  not a reported test failure. Do not count it as passed. The original
+  UX-9C cached-model and transfer evidence remains unchanged.
+
+**Next:** complete the private-network scripts/check.sh gate for this
+checkpoint, then accept UX-9D and proceed to UX-9E simultaneous native/Web
+mutation acceptance, including real admitted owners and controlled transfer.
+No further configuration or runtime store; UX-10 and the ordered public
+serving/performance roadmap remain unchanged.
+
+### Previous checkpoint — Phase 2.1 UX-9C (26 Nov; a6744b12)
 
 Models / Downloads / Devices now use the original cache, transfer and
 resident device authorities from either client. No new scheduler,
@@ -88,7 +129,7 @@ the action slot and address the original active operation.
 UX-9C optimized cached integration passed 1/0/0 (48.13s, five filtered); full isolated gate 2,489/0/109 (318 Rust suites), release Web/TUI/installer/scripts passed. UX-9C accepted.
 No new GPU or performance claim.
 
-**Next: UX-9D — Web Profiles / Config / Logs.** Promote original
+**Historical next (implemented in UX-9D above): Web Profiles / Config / Logs.** Promote original
 ConfigFile typed/raw atomic snapshot/validation/edit, profile copy/
 protected remove/activation and bounded operational observations to the
 same authenticated control seam. No second configuration store,

@@ -3,7 +3,7 @@
 import { createEffect, createSignal, onCleanup } from "solid-js";
 import * as api from "./api.js";
 
-export function createInventory(key, control, view, unauthorized) {
+export function createInventory(key, control, view, unauthorized, configTarget) {
   const [values, setValues] = createSignal({});
   const [state, setState] = createSignal("idle");
   const [notice, setNotice] = createSignal("");
@@ -17,9 +17,11 @@ export function createInventory(key, control, view, unauthorized) {
 
   createEffect(() => {
     const credential = key();
-    const kind = {Models:"models", Devices:"devices"}[view()];
+    const kind = {Models:"models", Devices:"devices", Profiles:"profiles", Config:"config", Logs:"logs"}[view()];
+    const target = kind === "config" ? configTarget() : null;
     if (!api.validKey(credential) || !kind) return;
     const abort = new AbortController();
+    if (kind === "config") setValues(previous => ({...previous, config:undefined}));
     let inFlight = false;
     let pending = false;
     async function refresh() {
@@ -29,7 +31,19 @@ export function createInventory(key, control, view, unauthorized) {
       setState("loading");
       setNotice("");
       try {
-        const data = await api.inventory(credential, abort.signal, kind);
+        // The host bounds concurrent cold reads. A previous shelf's aborted
+        // connection may still be retiring; retry only a refused read, never
+        // an action. Keep retries finite and scoped to the visible shelf.
+        const read = () => kind === "config" ? api.config(credential, abort.signal, target) : api.inventory(credential, abort.signal, kind);
+        let data;
+        for (let attempt = 0; ; attempt++) {
+          try { data = await read(); break; }
+          catch (error) {
+            if (abort.signal.aborted || error.status !== 503 || attempt === 2) throw error;
+            await new Promise(resolve => setTimeout(resolve, 200));
+            if (abort.signal.aborted) return;
+          }
+        }
         if (!abort.signal.aborted) {
           setValues(previous => ({...previous, [kind]:data}));
           setState("ready");

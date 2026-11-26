@@ -5,6 +5,16 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 26 Nov — Web profile, configuration and log implementation (UX-9D)
+
+Shared original ConfigFile/Selection/action slot, safe typed and normalized
+YAML editing, protected profiles and one bounded operational ring; exact
+stale refusal and cross-client invalidation. Strict feature/lint/dependency
+isolation, JS 3/0, actual HTTP/native PTY attached-Web edit and Firefox
+settings/log smoke pass. Full isolated gate interrupted intentionally in
+Vulkan feature-boundary rebuild at turn boundary; acceptance pending.
+No performance, admission, model download or physical GPU claim.
+
 ## 26 Nov — Web model, download and device management (UX-9C)
 
 Original cache and device observations shared by both frontends;

@@ -1,9 +1,8 @@
 //! Shared action execution. Original resident planner, ControlPlane and
 //! OutputStream remain the only execution owners.
 use super::Document;
+use super::settings;
 use crate::resident;
-#[cfg(feature = "tui")]
-use crate::tui::settings;
 use std::{
     num::NonZeroUsize,
     sync::{
@@ -57,7 +56,6 @@ pub(crate) enum Request {
     Unload(Owner),
     Start(String),
     Stop(u64),
-    #[cfg(feature = "tui")]
     Settings(settings::Action),
     Inspect(String),
     Verify(String),
@@ -89,7 +87,6 @@ impl Request {
             Self::Unload(_) => "Unload",
             Self::Start(_) => "Start listener",
             Self::Stop(_) => "Stop listener",
-            #[cfg(feature = "tui")]
             Self::Settings(action) => action.title(),
             Self::Inspect(_) => "Inspect snapshot",
             Self::Verify(_) => "Verify snapshot",
@@ -101,6 +98,20 @@ impl Request {
             Self::Pull(_) => "Pull model",
             #[cfg(all(feature = "web", feature = "acquisition", target_os = "linux"))]
             Self::PullPreview(_) => "Pull preview",
+        }
+    }
+    pub fn correlation(&self) -> String {
+        match self {
+            Self::Invoke { owner, .. } | Self::Unload(owner) => {
+                format!("registration {}", owner.registration)
+            }
+            Self::Stop(generation) => format!("generation {generation}"),
+            Self::Inspect(digest)
+            | Self::Verify(digest)
+            | Self::Reclaim { digest, .. }
+            | Self::Alias { digest, .. } => format!("sha256:{digest}"),
+            Self::Settings(_) => "configuration".into(),
+            _ => "local".into(),
         }
     }
     pub fn generates(&self) -> bool {
@@ -160,7 +171,6 @@ pub(crate) enum Completed {
         message: String,
         native_detail: Option<String>,
     },
-    #[cfg(feature = "tui")]
     Settings(Box<settings::Outcome>),
 }
 
@@ -208,21 +218,36 @@ pub(super) fn perform(
     output: &Mutex<Response>,
     origin: super::Origin,
 ) -> Result<Completed> {
-    #[cfg(feature = "tui")]
     if let Request::Settings(action) = request {
         if cancel.load(Ordering::Acquire) {
             return Ok(Completed::Message("Cancelled before starting".into()));
         }
-        let mut outcome = settings::perform(action, &document.target)?;
+        let changes = !matches!(&action, settings::Action::Validate(_));
+        let result = settings::perform(action, &document.target);
+        // A failed publication can still have changed durable bytes.
+        if result.is_err() && changes {
+            selection.configuration_changed();
+        }
+        let mut outcome = result?;
+        #[cfg(feature = "web")]
+        if origin == super::Origin::Web
+            && outcome
+                .active
+                .as_ref()
+                .is_some_and(|(target, _)| target.profile.is_none())
+        {
+            outcome.message = "Updated portable configuration for future actions".into();
+        }
         // Commit selection while the same action is still the slot owner.
         // A competing Web action must not read the previous selection.
         if let Some((target, config)) = outcome.active.take() {
             selection.update(Document::from_config(target, config, document.offline));
         }
+        if changes {
+            selection.configuration_changed();
+        }
         return Ok(Completed::Settings(Box::new(outcome)));
     }
-    #[cfg(not(feature = "tui"))]
-    let _ = selection;
     if cancel.load(Ordering::Acquire) {
         return Ok(Completed::Message("Cancelled before starting".into()));
     }
@@ -266,7 +291,6 @@ fn execute(
     }
     let control = runtime.control();
     match request {
-        #[cfg(feature = "tui")]
         Request::Settings(_) => unreachable!("settings worker dispatch"),
         Request::Inspect(_)
         | Request::Verify(_)

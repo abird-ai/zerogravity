@@ -18,9 +18,13 @@ export function createControl(key, unauthorized) {
   const [updated, setUpdated] = createSignal(null);
   const [modelsRevision, setModelsRevision] = createSignal(0);
   const [devicesRevision, setDevicesRevision] = createSignal(0);
+  const [configurationRevision, setConfigurationRevision] = createSignal(0);
+  const [logsRevision, setLogsRevision] = createSignal(0);
   const invalidate = kind => {
     if (kind === "models" || kind === "resync") setModelsRevision(n => n + 1);
     if (kind === "devices" || kind === "resync") setDevicesRevision(n => n + 1);
+    if (kind === "configuration" || kind === "resync") setConfigurationRevision(n => n + 1);
+    if (kind === "logs" || kind === "resync") setLogsRevision(n => n + 1);
   };
   let manual = () => {};
   createEffect(() => {
@@ -108,7 +112,7 @@ export function createControl(key, unauthorized) {
   });
   return {
     value, status, eventStatus, updated, refresh: () => manual(),
-    inventoryRevision: kind => kind === "models" ? modelsRevision() : devicesRevision(),
-    refreshInventory: () => invalidate("resync"),
+    inventoryRevision: kind => ({models: modelsRevision, devices: devicesRevision, profiles: configurationRevision, config: configurationRevision, logs: logsRevision}[kind])(),
+    refreshInventory: (kind = "resync") => invalidate(kind),
   };
 }

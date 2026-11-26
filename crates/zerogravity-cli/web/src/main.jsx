@@ -5,6 +5,7 @@ import { createControl } from "./control-state.js";
 import { createWork } from "./work-state.js";
 import { createInventory } from "./inventory-state.js";
 import { Models, Devices } from "./library.jsx";
+import { Profiles, Config, Logs } from "./settings.jsx";
 import { QuickRun, OwnerActions, ServeActions, ActionPanel } from "./resident.jsx";
 import "./styles.css";
 
@@ -142,12 +143,14 @@ function App() {
   const [selection, select] = createSignal("");
   const [light, setLight] = createSignal(false);
   const deviceSource = createSignal("");
+  const configTarget = createSignal("@active");
   let previousFocus;
-  const lock = () => { storeKey(""); setKey(""); setInput(""); deviceSource[1](""); };
+  const lock = () => { storeKey(""); setKey(""); setInput(""); deviceSource[1](""); configTarget[1]("@active"); };
   const control = createControl(key, lock);
   const work = createWork(key, control, lock);
-  const inventory = createInventory(key, control, view, lock);
+  const inventory = createInventory(key, control, view, lock, configTarget[0]);
   const navigate = name => { setView(name); setNav(false); };
+  const openConfig = name => { configTarget[1](name); navigate("Config"); };
   const chooseDevice = digest => { deviceSource[1](digest); navigate("Devices"); };
   const openPalette = () => { previousFocus = document.activeElement; setPalette(true); };
   const closePalette = () => { setPalette(false); queueMicrotask(() => previousFocus?.focus()); };
@@ -206,14 +209,13 @@ function App() {
             <Match when={view() === "Running"}><Running value={row()} selection={selection} select={select} work={work}/></Match>
             <Match when={view() === "Serve"}><Serve value={row()} work={work}/></Match>
             <Match when={view() === "Downloads"}><Download value={row()} work={work}/><Show when={row().capabilities.acquisition}><button class="quiet" onClick={() => navigate("Models")}>Acquire or resume from Models</button></Show></Match>
-            <Match when={view() === "Profiles" || view() === "Config"}>
-              <section class="panel"><h2>Active configuration</h2><Facts items={[["Selection", row().configuration.profile ?? "Portable file"], ["Acquisition", row().configuration.offline ? "Offline" : "Explicit consent required"]]}/><p class="note">Editing and profile management are available in the native client. This browser shell does not expose raw documents.</p></section>
-            </Match>
+            <Match when={view() === "Profiles"}><Profiles inventory={inventory} work={work} open={openConfig}/></Match>
+            <Match when={view() === "Config"}><Config inventory={inventory} work={work} target={configTarget[0]} open={openConfig}/></Match>
             <Match when={view() === "Models"}><Models value={row()} inventory={inventory} work={work} navigate={navigate} chooseDevice={chooseDevice}/></Match>
             <Match when={view() === "Devices"}><Devices value={row()} inventory={inventory} work={work} source={deviceSource}/></Match>
-            <Match when={view() === "Logs"}><Empty title="Operational logs">The native client's bounded operational log is not yet exposed to this browser. Model output is never used as log history.</Empty></Match>
+            <Match when={view() === "Logs"}><Logs inventory={inventory}/></Match>
           </Switch>
-          <Show when={["Running","Serve","Models","Downloads","Devices"].includes(view())}><ActionPanel value={row()} work={work}/></Show></>
+          <Show when={["Running","Serve","Models","Downloads","Devices","Profiles","Config"].includes(view())}><ActionPanel value={row()} work={work}/></Show></>
         }</Show>
       </Show>
     </main>

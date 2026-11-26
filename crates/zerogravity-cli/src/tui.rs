@@ -67,17 +67,18 @@ fn session(
     let control = runtime.control();
     let mut events = control.subscribe();
     let snapshot = control.snapshot()?;
+    let actions = Actions::default();
     let mut app = App {
         navigation: Navigation::default(),
         snapshot,
-        logs: logs::Logs::default(),
+        logs: logs::Logs::new(actions.clone()),
         #[cfg(feature = "web")]
         web: None,
         library: Library::new(document.snapshot().target),
         notice: None,
         color,
         document,
-        actions: Actions::default(),
+        actions,
         active: None,
         job: None,
         selected: None,
@@ -85,11 +86,13 @@ fn session(
     };
     app.reconcile_owner();
     #[cfg(all(feature = "acquisition", target_os = "linux"))]
-    app.logs.observe_download(app.snapshot.download.as_ref());
+    app.actions
+        .with_logs_mut(|ring| ring.observe_download(app.snapshot.download.as_ref()));
     let mut terminal = terminal::Session::enter()?;
     let result = (|| {
         let mut dirty = true;
         let mut sampled = Instant::now();
+        let mut config_revision = app.document.configuration_revision();
         while !stop.requested() {
             dirty |= app.poll_job(runtime, control);
             let active = app.actions.active();
@@ -97,6 +100,16 @@ fn session(
             app.active = active;
             dirty |= action_changed;
             dirty |= app.library.poll(runtime);
+            let observed = app.document.configuration_revision();
+            if config_revision != observed {
+                config_revision = observed;
+                app.color = output::document_color(app.document.snapshot().ui);
+                app.library.invalidate_config();
+                if matches!(app.navigation.view(), View::Config | View::Profiles) {
+                    app.refresh_cold(runtime, control);
+                }
+                dirty = true;
+            }
             let mut changed = false;
             let mut cache_changed = false;
             let mut devices_changed = false;
@@ -108,11 +121,11 @@ fn session(
                     ControlPoll::Event(event) => {
                         cache_changed |= control_host::inventory::models_changed(event.kind);
                         devices_changed |= control_host::inventory::devices_changed(event.kind);
-                        app.logs.event(event);
+                        app.actions.with_logs_mut(|ring| ring.event(event));
                         changed = true;
                     }
                     ControlPoll::Resync { missed } => {
-                        app.logs.gap(missed);
+                        app.actions.with_logs_mut(|ring| ring.gap(missed));
                         app.notice =
                             Some(format!("Missed {missed} events; reloaded owner snapshot"));
                         changed = true;
@@ -267,12 +280,6 @@ impl App {
         if let Some(active) = &self.active {
             match self.actions.cancel(active.id, None) {
                 Ok(()) => {
-                    if let Some(job) = &self.job
-                        && job.id == active.id
-                        && !active.cancel_requested
-                    {
-                        self.logs.cancel(job.log_id);
-                    }
                     self.notice =
                         Some("Cancellation requested; waiting for the action owner".into());
                 }
@@ -288,9 +295,7 @@ impl App {
             return;
         }
         let generates = request.generates();
-        let title = request.title();
-        let log_id = self.logs.start(title, request.correlation());
-        let mut job = Job::ticket(&request, log_id);
+        let mut job = Job::ticket(&request);
         match self
             .actions
             .start(runtime, &self.document, request, Origin::Native)
@@ -305,7 +310,6 @@ impl App {
                 self.active = self.actions.active();
             }
             Err(error) => {
-                self.logs.finish(log_id, title, false);
                 self.notice = Some(error.to_string());
             }
         }
@@ -328,10 +332,6 @@ impl App {
             return changed;
         };
         let mut job = self.job.take().expect("finished native ticket");
-        let success = result.is_ok();
-        #[cfg(all(feature = "cache", target_os = "linux"))]
-        let success = success && !matches!(&result, Ok(Completed::Refused { .. }));
-        self.logs.finish(job.log_id, job.title, success);
         let message = match result {
             Ok(Completed::Message(message)) => message,
             #[cfg(all(feature = "cache", target_os = "linux"))]
@@ -723,7 +723,8 @@ impl App {
             Ok(snapshot) => {
                 self.snapshot = snapshot;
                 #[cfg(all(feature = "acquisition", target_os = "linux"))]
-                self.logs.observe_download(self.snapshot.download.as_ref());
+                self.actions
+                    .with_logs_mut(|ring| ring.observe_download(self.snapshot.download.as_ref()));
                 self.reconcile_owner();
             }
             Err(error) => self.notice = Some(format!("Observation failed: {error}")),

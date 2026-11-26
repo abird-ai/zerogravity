@@ -647,7 +647,14 @@ demand. Preserve the existing detailed
   original transfer pause/resume/cancel and native/Web invalidations.
   Actual controlled HTTP/native PTY/Firefox transfer, cold browser and
   strict lint/dependency isolation passed. UX-9C optimized cached integration passed 1/0/0 (48.13s, five filtered); full isolated gate 2,489/0/109 (318 Rust suites), release Web/TUI/installer/scripts passed. UX-9C accepted.
-  **Next: UX-9D Web Profiles / Config / Logs (§46A.28).**
+- [ ] UX-9D Web Profiles / Config / Logs: implementation and focused
+  qualification complete. Shared ConfigFile/Selection/action slot, safe
+  typed and normalized raw YAML, protected removal and exact stale refusal;
+  one bounded host operational log, native/Web invalidations. Strict lint,
+  terminal-free Web, JS, actual HTTP/native attached-Web PTY and Firefox
+  pass. Full gate stopped during Vulkan feature-boundary rebuild at turn
+  boundary; resume and pass before phase acceptance.
+  **Next: close UX-9D gate, then UX-9E simultaneous TUI/Web acceptance (§46A.28).**
 
 - [ ] Close typed command tree, ConfigDocument/profile merge and shared
   presentation/action/snapshot/event model. One resolver for local paths,

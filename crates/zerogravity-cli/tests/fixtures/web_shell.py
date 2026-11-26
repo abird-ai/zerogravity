@@ -48,6 +48,12 @@ class Client:
         assert self.key.encode() not in data
         return json.loads(data)
 
+    def config(self, name):
+        status, _, data = self.request("/zg/control/config/" + name)
+        assert status == 200
+        assert self.key.encode() not in data
+        return json.loads(data)
+
     def post(self, value, *, status=202, auth=True, headers=None):
         body = value if isinstance(value, bytes) else json.dumps(value).encode()
         fields = {"Origin": self.origin, "Content-Type": "application/json"}
@@ -91,7 +97,10 @@ class Client:
             assert response.readline() == b"event: refresh\n"
             assert response.readline() == b"data: {}\n"
             assert response.readline() == b"\n"
-            yield response
+            try:
+                yield response
+            finally:
+                response.close()
 
     def closed(self):
         with socket.socket() as connection:
@@ -130,7 +139,7 @@ def smoke(binary):
                 assert client.key.encode() not in body
             status, _, license_text = client.request("/ui/licenses.txt", auth=False)
             assert status == 200 and b"MIT License" in license_text
-            for path in ["/zg/control/snapshot", "/zg/events", "/zg/control/inventory/models", "/zg/control/inventory/devices"]:
+            for path in ["/zg/control/snapshot", "/zg/events", "/zg/control/inventory/models", "/zg/control/inventory/devices", "/zg/control/inventory/profiles", "/zg/control/inventory/logs", "/zg/control/config/@active"]:
                 assert client.request(path, auth=False)[0] == 401
                 assert client.request(path, headers={"Authorization": "Bearer fixture-inference-only"})[0] == 401
                 assert client.request(path, headers={"Host": "rebinding.invalid"})[0] == 400
@@ -229,6 +238,73 @@ def smoke(binary):
                 if recipe:
                     preview = client.action({"kind": "pull_preview", "source": recipe["slug"], "selection": ""})
                     assert recipe["recipe"]["snapshot"] in preview["message"]
+            # The real typed owner, never a browser-selected filesystem path.
+            assert client.inventory("profiles") == {"profiles": ["default", "desk"], "active": "desk"}
+            protected = client.config("@active")
+            assert protected["raw"] is None and protected["active"]
+            assert "PRIVATE_PROMPT_NOT_IN_WIRE" not in json.dumps(protected)
+            assert str(root) not in json.dumps(protected)
+            def setting(command, **fields):
+                return {"kind": "settings", "action": {"command": command, **fields}}
+            client.post(setting("create", name="../outside"), status=400)
+            client.post(setting("set", snapshot="0" * 32, key="ui.color", value="never"), status=409)
+            client.post(setting("set", snapshot=protected["snapshot"], key="run.task.prompt", value="secret"), status=403)
+            client.post(setting("replace", snapshot=protected["snapshot"], yaml="schema: zerogravity.pipeline.v2"), status=403)
+            client.action(setting("remove", snapshot=protected["snapshot"], confirm=True), state="failed")
+            assert profile.read_text() == original
+            with client.events() as stream:
+                client.action(setting("create", name="webdesk"))
+                for _ in range(24):
+                    if stream.readline() == b"event: configuration\n":
+                        break
+                else:
+                    raise AssertionError("no configuration invalidation")
+            webdesk = profiles / "webdesk.yaml"
+            first = client.config("webdesk")
+            assert first["raw"] is not None and first["exists"] and not first["active"]
+            # Out-of-process edit: the original ConfigFile must refuse stale bytes.
+            outside = "schema: zerogravity.pipeline.v2\n# PRIVATE_COMMENT_NOT_IN_WIRE\nui: {color: always}\n"
+            webdesk.write_text(outside)
+            client.action(setting("set", snapshot=first["snapshot"], key="ui.color", value="never"), state="failed")
+            assert webdesk.read_text() == outside
+            current = client.config("webdesk")
+            assert current["snapshot"] != first["snapshot"]
+            assert "PRIVATE_COMMENT_NOT_IN_WIRE" not in json.dumps(current)
+            client.post(setting("set", snapshot=first["snapshot"], key="ui.color", value="never"), status=409)
+            client.post(setting("set", snapshot=current["snapshot"], key="run.device", value="[/dev/dri/renderD128]"), status=403)
+            client.post(setting("replace", snapshot=current["snapshot"], yaml="schema: zerogravity.pipeline.v2\nrun: {task: {prompt: hidden}}"), status=403)
+            client.action(setting("set", snapshot=current["snapshot"], key="ui.color", value="never"))
+            assert "color: never" in webdesk.read_text()
+            current = client.config("webdesk")
+            client.action(setting("unset", snapshot=current["snapshot"], key="ui.color", confirm=True))
+            current = client.config("webdesk")
+            client.action(setting("replace", snapshot=current["snapshot"],
+                                  yaml="schema: zerogravity.pipeline.v2\nrun: {backend: cpu, task: {raw: true}}"))
+            current = client.config("webdesk")
+            client.action(setting("validate", snapshot=current["snapshot"]))
+            client.action(setting("activate", snapshot=current["snapshot"]))
+            assert client.snapshot()["configuration"] == {"profile": "webdesk", "offline": True, "chat": False}
+            client.action(setting("remove", snapshot=current["snapshot"], confirm=True), state="failed")
+            client.action(setting("copy", snapshot=current["snapshot"], name="webcopy"))
+            copied = profiles / "webcopy.yaml"
+            assert copied.read_bytes() == webdesk.read_bytes()
+            copy = client.config("webcopy")
+            client.post(setting("remove", snapshot=copy["snapshot"], confirm=False), status=400)
+            client.action(setting("remove", snapshot=copy["snapshot"], confirm=True))
+            assert not copied.exists()
+            default = client.config("default")
+            assert not default["exists"] and not default["removable"]
+            client.action(setting("remove", snapshot=default["snapshot"], confirm=True), state="failed")
+            desk = client.config("desk")
+            client.action(setting("activate", snapshot=desk["snapshot"]))
+            assert client.snapshot()["configuration"]["profile"] == "desk"
+            logs = client.inventory("logs")
+            assert len(logs["entries"]) <= 128
+            assert any(row["message"] == "Save config completed" for row in logs["entries"])
+            assert any(row["message"] == "Save config returned error" for row in logs["entries"])
+            assert all(secret not in json.dumps(logs) for secret in ["PRIVATE_PROMPT_NOT_IN_WIRE", "PRIVATE_WEB_PROMPT_NOT_IN_WIRE", "PRIVATE_COMMENT_NOT_IN_WIRE", "fixture-inference-only", str(root)])
+            assert not (profiles.parent / "config.yaml").exists()
+            print("Web settings HTTP: shared create/copy/activate/validate/set/unset/raw/remove, stale file/token and protected-field refusal, redaction, configuration SSE, bounded operational logs")
             # Four SSE slots leave capacity for snapshots and refuse excess
             # streams; process retirement joins every stream and slow reader.
             with contextlib.ExitStack() as active:

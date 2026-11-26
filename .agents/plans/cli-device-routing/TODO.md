@@ -376,10 +376,21 @@ build or general model/backend grant. Historical failures keep their source scop
   actual controlled HTTP/native PTY/Firefox transfer pass.
 - [x] UX-9C optimized cached integration passed 1/0/0 (48.13s, five filtered); full isolated gate 2,489/0/109 (318 Rust suites), release Web/TUI/installer/scripts passed. UX-9C accepted.
 
+### Phase 2.1 UX-9D — Web profile/config/log implementation (26 Nov)
+
+- [x] Shared original configuration observation and actions, exact snapshot
+  validation/atomic write, active/default/portable protection, Web safe
+  typed and normalized YAML policy, native unrestricted repair; shared
+  bounded host log, safe action/owner correlations, cross-client refresh.
+- [x] Strict feature/lint/dependency isolation, JS, actual HTTP, attached
+  Web/native PTY cross-client settings and real Firefox smoke pass.
+
 ## Uncommitted
 
-- [ ] UX-9D Web Profiles / Config / Logs; UX-9E
-  simultaneous TUI/Web acceptance and UX-10 remain ordered. Broader
+- [ ] UX-9D final isolated workspace gate (interrupted intentionally at
+  turn boundary during Vulkan feature-boundary rebuild); accept only
+  after pass. UX-9E simultaneous TUI/Web acceptance and UX-10 remain
+  ordered. Broader
   catalog presets, conversation history and unsupported routes remain
   explicit.
 - [ ] Extend advanced direct provider forced interactive/JSONL presentation

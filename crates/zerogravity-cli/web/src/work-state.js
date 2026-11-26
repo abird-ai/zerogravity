@@ -20,7 +20,7 @@ export function createWork(key, control, unauthorized) {
 
   createEffect(() => {
     const credential = key();
-    session = { credential, abort: new AbortController() };
+    session = { credential, abort: new AbortController(), settingsId: null };
     const owned = session;
     setSubmitted(null);
     setResult(null);
@@ -44,6 +44,12 @@ export function createWork(key, control, unauthorized) {
         const value = await api.actionResult(credential, abort.signal, id);
         if (abort.signal.aborted) return;
         if (value.id !== id) throw new Error("Mismatched action result.");
+        // A completed settings action can publish before SSE catches up.
+        // Reread the visible configuration shelf before enabling another edit.
+        if (value.state !== "running" && session?.settingsId === id) {
+          session.settingsId = null;
+          control.refreshInventory("configuration");
+        }
         setResult(value);
         if (value.state === "running") {
           schedule(document.visibilityState === "visible" ? 200 : 1000);
@@ -75,6 +81,14 @@ export function createWork(key, control, unauthorized) {
     try {
       const receipt = await api.submit(owned.credential, owned.abort.signal, action);
       if (owned.abort.signal.aborted || session !== owned) return;
+      if (action.kind === "settings") {
+        owned.settingsId = receipt.id;
+        // The receipt might already have been observed through SSE.
+        if (result()?.id === receipt.id && result().state !== "running") {
+          owned.settingsId = null;
+          control.refreshInventory("configuration");
+        }
+      }
       if (action.kind !== "cancel" && action.kind !== "download") setSubmitted(receipt.id);
       control.refresh();
       return receipt;

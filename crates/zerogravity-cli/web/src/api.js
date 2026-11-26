@@ -71,7 +71,7 @@ export function eventDecoder(onRefresh) {
     while ((end = pending.indexOf("\n\n")) >= 0) {
       const frame = pending.slice(0, end);
       pending = pending.slice(end + 2);
-      for (const kind of ["refresh", "resync", "models", "devices"]) {
+      for (const kind of ["refresh", "resync", "models", "devices", "configuration", "logs"]) {
         if (frame.startsWith("event: " + kind + "\n")) { onRefresh(kind); break; }
       }
     }
@@ -112,7 +112,13 @@ export async function actionResult(key, signal, id) {
 
 // An authenticated cold read, deliberately separate from hot runtime snapshots.
 export async function inventory(key, signal, kind) {
-  if (!["models", "devices"].includes(kind)) throw new Error("Unknown inventory.");
+  if (!["models", "devices", "profiles", "logs"].includes(kind)) throw new Error("Unknown inventory.");
   const response = await request("/zg/control/inventory/" + kind, key, signal);
+  return response.json();
+}
+
+export async function config(key, signal, profile) {
+  if (profile !== "@active" && (!/^[a-z0-9._-]{1,128}$/.test(profile) || [".",".."].includes(profile))) throw new Error("Invalid profile identity.");
+  const response = await request("/zg/control/config/" + profile, key, signal);
   return response.json();
 }

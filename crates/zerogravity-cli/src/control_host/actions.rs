@@ -2,6 +2,7 @@
 //! The worker is joined before replacement or host retirement.
 use super::{
     Selection,
+    logs::Ring,
     work::{self, Completed, Request, Response},
 };
 use std::{
@@ -34,6 +35,8 @@ struct Active {
     origin: Origin,
     title: &'static str,
     generates: bool,
+    #[cfg(feature = "web")]
+    settings: bool,
     cancel: Arc<AtomicBool>,
     response: Arc<Mutex<Response>>,
     worker: JoinHandle<Result<Completed>>,
@@ -79,6 +82,7 @@ struct Slot {
     closed: bool,
     revision: u64,
     active: Option<Active>,
+    logs: Ring,
     #[cfg(feature = "web")]
     latest: Option<WebResult>,
 }
@@ -98,6 +102,7 @@ impl Slot {
         let job = self.active.take().expect("finished Web worker");
         let summary = job.summary();
         let response = job.sample(None);
+        let settings = job.settings;
         let (state, message) = match job.join() {
             Ok(Completed::Message(message)) => ("completed", message),
             #[cfg(all(feature = "cache", target_os = "linux"))]
@@ -108,10 +113,21 @@ impl Slot {
                 let _ = native_detail;
                 ("failed", message)
             }
-            #[cfg(feature = "tui")]
-            Ok(Completed::Settings(_)) => ("failed", "Unsupported control result".into()),
-            Err(error) => ("failed", safe_error(&error).into()),
+            Ok(Completed::Settings(outcome)) => {
+                let _ = outcome.editor;
+                ("completed", outcome.message)
+            }
+            Err(error) => ("failed", if settings {
+                match error {
+                    Error::State(_) => "Configuration changed, already exists, or publication is uncertain; refresh before retrying.",
+                    Error::Unsupported(_) => "Configuration action refused; default and active profiles are protected.",
+                    Error::Malformed(_) => "Configuration validation refused the draft.",
+                    _ => safe_error(&error),
+                }
+            } else { safe_error(&error) }.into()),
         };
+        self.logs
+            .finish(summary.id, summary.title, state == "completed");
         self.latest = Some(WebResult {
             summary,
             state,
@@ -142,6 +158,13 @@ impl Actions {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
+    pub fn with_logs<T>(&self, f: impl FnOnce(&Ring) -> T) -> T {
+        f(&self.lock().logs)
+    }
+    pub fn with_logs_mut<T>(&self, f: impl FnOnce(&mut Ring) -> T) -> T {
+        f(&mut self.lock().logs)
+    }
+
     pub fn start(
         &self,
         runtime: &Runtime,
@@ -162,7 +185,10 @@ impl Actions {
             .checked_add(1)
             .ok_or_else(|| Error::Limit("control action identities exhausted".into()))?;
         let title = request.title();
+        let correlation = request.correlation();
         let generates = request.generates();
+        #[cfg(feature = "web")]
+        let settings = matches!(&request, Request::Settings(_));
         let runtime = runtime.clone();
         let selection = selection.clone();
         let document = selection.snapshot();
@@ -178,6 +204,7 @@ impl Actions {
                 )
             })?;
         slot.next = id;
+        slot.logs.start(id, title, correlation);
         #[cfg(feature = "web")]
         if origin == Origin::Web {
             slot.latest = None;
@@ -187,6 +214,8 @@ impl Actions {
             origin,
             title,
             generates,
+            #[cfg(feature = "web")]
+            settings,
             cancel,
             response,
             worker,
@@ -216,6 +245,7 @@ impl Actions {
             .filter(|job| job.id == id && origin.is_none_or(|origin| origin == job.origin))
             .ok_or_else(|| Error::State("Selected action is no longer active".into()))?;
         if !job.cancel.swap(true, Ordering::AcqRel) {
+            slot.logs.cancel(id);
             slot.changed();
         }
         Ok(())
@@ -246,7 +276,12 @@ impl Actions {
         // Completion may have arrived between the first sample and finished
         // check; take the exact final bounded output before joining.
         let response = job.sample(Some(revision));
+        let title = job.title;
         let result = job.join();
+        let success = result.is_ok();
+        #[cfg(all(feature = "cache", target_os = "linux"))]
+        let success = success && !matches!(&result, Ok(Completed::Refused { .. }));
+        slot.logs.finish(id, title, success);
         slot.changed();
         (response, Some(result))
     }
@@ -347,6 +382,7 @@ mod tests {
                 origin: Origin::Native,
                 title: "Run",
                 generates: true,
+                settings: false,
                 cancel: cancel.clone(),
                 response: Arc::new(Mutex::new(Response::default())),
                 worker: thread::spawn(move || {

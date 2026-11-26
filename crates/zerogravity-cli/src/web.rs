@@ -2,6 +2,7 @@
 //! connection, owns the runtime and the shared action slot.
 mod actions;
 mod http;
+mod settings;
 mod wire;
 
 use crate::control_host::{self, Actions, Document, Selection, Stop};
@@ -27,6 +28,7 @@ struct Shared {
     stop: AtomicBool,
     streams: AtomicUsize,
     inventory_read: std::sync::Mutex<()>,
+    config_snapshot: std::sync::Mutex<settings::Observed>,
     selection: Selection,
     actions: Actions,
 }
@@ -69,6 +71,7 @@ impl Host {
             stop: AtomicBool::new(false),
             streams: AtomicUsize::new(0),
             inventory_read: std::sync::Mutex::new(()),
+            config_snapshot: std::sync::Mutex::new(None),
             selection,
             actions,
         });
@@ -196,6 +199,8 @@ pub(super) fn run(args: &[String], selection: Option<(&str, &str)>, offline: boo
     let stop = Stop::install()?;
     let actions = Actions::default();
     let result = (|| {
+        let control = runtime.control();
+        let mut events = control.subscribe();
         let host = Host::start(&runtime, address, document, actions.clone())?;
         use std::io::Write;
         let mut output = std::io::stdout().lock();
@@ -203,6 +208,18 @@ pub(super) fn run(args: &[String], selection: Option<(&str, &str)>, offline: boo
         output.flush()?;
         drop(output);
         while !stop.requested() && !host.finished() {
+            actions.observe();
+            actions.with_logs_mut(|ring| {
+                for _ in 0..64 {
+                    match events.poll(Duration::ZERO) {
+                        zerogravity::control::ControlPoll::Pending => break,
+                        zerogravity::control::ControlPoll::Event(event) => ring.event(event),
+                        zerogravity::control::ControlPoll::Resync { missed } => ring.gap(missed),
+                    }
+                }
+                #[cfg(all(feature = "acquisition", target_os = "linux"))]
+                ring.observe_download(control.download().as_ref());
+            });
             thread::sleep(Duration::from_millis(100));
         }
         host.close()

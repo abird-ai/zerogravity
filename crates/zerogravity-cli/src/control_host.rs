@@ -1,6 +1,8 @@
 //! Foreground interactive host policy, shared by native and browser clients.
 mod actions;
 pub(crate) mod inventory;
+pub(crate) mod logs;
+pub(crate) mod settings;
 pub(crate) mod work;
 #[cfg(feature = "tui")]
 pub(crate) use actions::ActionSummary;
@@ -12,7 +14,6 @@ use std::{
         atomic::{AtomicBool, Ordering},
     },
 };
-#[cfg(feature = "tui")]
 use zerogravity::configuration::ConfigFile;
 use zerogravity::{
     Error, Result, Runtime,
@@ -38,7 +39,6 @@ impl Target {
             allow_missing: selection.is_none(),
         })
     }
-    #[cfg(feature = "tui")]
     pub fn profile(name: &str) -> Result<Self> {
         Self::selected(if name == "default" {
             None
@@ -46,13 +46,11 @@ impl Target {
             Some(("--profile", name))
         })
     }
-    #[cfg(feature = "tui")]
     pub fn label(&self) -> String {
         self.profile
             .clone()
             .unwrap_or_else(|| self.path.display().to_string())
     }
-    #[cfg(feature = "tui")]
     pub(crate) fn open(&self) -> Result<ConfigFile> {
         let file = ConfigFile::open(self.path.clone())?;
         if !self.allow_missing {
@@ -131,6 +129,7 @@ impl Document {
 pub(crate) struct Selection(Arc<Selected>);
 struct Selected {
     document: RwLock<Document>,
+    configuration_revision: std::sync::atomic::AtomicU64,
     #[cfg(feature = "web")]
     revision: std::sync::atomic::AtomicU64,
 }
@@ -138,6 +137,7 @@ impl Selection {
     pub fn new(document: Document) -> Self {
         Self(Arc::new(Selected {
             document: RwLock::new(document),
+            configuration_revision: std::sync::atomic::AtomicU64::new(0),
             #[cfg(feature = "web")]
             revision: std::sync::atomic::AtomicU64::new(0),
         }))
@@ -153,7 +153,14 @@ impl Selection {
     pub fn revision(&self) -> u64 {
         self.0.revision.load(Ordering::Acquire)
     }
-    #[cfg(feature = "tui")]
+    pub fn configuration_revision(&self) -> u64 {
+        self.0.configuration_revision.load(Ordering::Acquire)
+    }
+    pub fn configuration_changed(&self) {
+        self.0
+            .configuration_revision
+            .fetch_add(1, Ordering::Release);
+    }
     pub fn update(&self, document: Document) {
         *self
             .0

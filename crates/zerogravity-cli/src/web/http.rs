@@ -1,6 +1,6 @@
 //! Small HTTP/1.1 control boundary, not the inference wire parser. Explicit
 //! route allowlist, numeric Host, same-origin bearer, finite socket owners.
-use super::{EVENT_STREAMS, Shared, actions, wire};
+use super::{EVENT_STREAMS, Shared, actions, settings, wire};
 use crate::control_host::inventory;
 use std::{
     io::{self, Read, Write},
@@ -161,6 +161,7 @@ pub(super) fn connection(
     }
     // Explicit route allowlist. Static files are public, never a directory.
     let action_id = path.strip_prefix("/zg/control/actions/");
+    let config_name = path.strip_prefix("/zg/control/config/");
     let control = matches!(
         path,
         "/zg/control/snapshot"
@@ -168,7 +169,10 @@ pub(super) fn connection(
             | "/zg/control/actions"
             | "/zg/control/inventory/models"
             | "/zg/control/inventory/devices"
-    ) || action_id.is_some();
+            | "/zg/control/inventory/profiles"
+            | "/zg/control/inventory/logs"
+    ) || action_id.is_some()
+        || config_name.is_some();
     if control {
         let origin = format!("http://{}", shared.authority);
         let origin_ok = header(request.headers, "Origin").is_ok_and(|value| {
@@ -232,6 +236,42 @@ pub(super) fn connection(
             "/zg/events" => events(&mut socket, runtime, shared),
             "/zg/control/snapshot" => {
                 match wire::snapshot(runtime, &shared.selection, &shared.actions) {
+                    Ok(value) => json_response(&mut socket, "200 OK", &value),
+                    Err(_) => error(&mut socket, "503 Service Unavailable"),
+                }
+            }
+            "/zg/control/inventory/logs" => {
+                let value = shared.actions.with_logs(|ring| {
+                    serde_json::json!({
+                        "revision": ring.revision().to_string(),
+                        "dropped": ring.dropped().to_string(),
+                        "entries": ring.entries().iter().map(|entry| serde_json::json!({
+                            "sequence": entry.sequence.to_string(),
+                            "level": entry.level.label(), "component": entry.component.label(),
+                            "correlation": entry.correlation, "message": entry.message,
+                        })).collect::<Vec<_>>(),
+                    })
+                });
+                json_response(&mut socket, "200 OK", &value)
+            }
+            "/zg/control/inventory/profiles" => {
+                let Ok(_read) = shared.inventory_read.try_lock() else {
+                    return error(&mut socket, "503 Service Unavailable");
+                };
+                match settings::profiles(shared) {
+                    Ok(value) => json_response(&mut socket, "200 OK", &value),
+                    Err(_) => error(&mut socket, "503 Service Unavailable"),
+                }
+            }
+            _ if config_name.is_some() => {
+                let Some(target) = settings::target(config_name.expect("config route"), shared)
+                else {
+                    return error(&mut socket, "400 Bad Request");
+                };
+                let Ok(_read) = shared.inventory_read.try_lock() else {
+                    return error(&mut socket, "503 Service Unavailable");
+                };
+                match settings::observe(shared, target) {
                     Ok(value) => json_response(&mut socket, "200 OK", &value),
                     Err(_) => error(&mut socket, "503 Service Unavailable"),
                 }
@@ -311,6 +351,8 @@ fn events(socket: &mut TcpStream, runtime: &Runtime, shared: &Shared) -> io::Res
     let mut cursor = control.subscribe();
     let mut selection = shared.selection.revision();
     let mut action = shared.actions.observe().0;
+    let mut configuration = shared.selection.configuration_revision();
+    let mut logs = shared.actions.with_logs(|ring| ring.revision());
     write!(
         socket,
         "HTTP/1.1 200 OK\r\n{SECURITY}Content-Type: text/event-stream\r\n\r\nevent: refresh\ndata: {{}}\n\n"
@@ -345,7 +387,13 @@ fn events(socket: &mut TcpStream, runtime: &Runtime, shared: &Shared) -> io::Res
         let observed_action = shared.actions.observe().0;
         changed |= observed_action != action;
         action = observed_action;
-        if changed || resync {
+        let observed_configuration = shared.selection.configuration_revision();
+        let configuration_changed = observed_configuration != configuration;
+        configuration = observed_configuration;
+        let observed_logs = shared.actions.with_logs(|ring| ring.revision());
+        let logs_changed = observed_logs != logs;
+        logs = observed_logs;
+        if changed || resync || configuration_changed || logs_changed {
             // Invalidation only. Clients refresh the same owner snapshot;
             // never treat transient notification delivery as state authority.
             socket.write_all(if resync {
@@ -354,6 +402,12 @@ fn events(socket: &mut TcpStream, runtime: &Runtime, shared: &Shared) -> io::Res
                 b"event: refresh\ndata: {}\n\n"
             })?;
             if !resync {
+                if configuration_changed {
+                    socket.write_all(b"event: configuration\ndata: {}\n\n")?;
+                }
+                if logs_changed {
+                    socket.write_all(b"event: logs\ndata: {}\n\n")?;
+                }
                 if models {
                     socket.write_all(b"event: models\ndata: {}\n\n")?;
                 }

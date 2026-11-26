@@ -7,8 +7,8 @@ clients share the same foreground runtime and active configuration
 selection and one host-owned action slot. Home / Running / Serve support
 explicit resident load, invoke, load-and-run, unload, and inference start/
 stop. Models / Downloads / Devices also expose original cache, acquisition
-and physical-device owners. Profiles / Config / Logs management follows
-in UX-9D.
+and physical-device owners. Profiles / Config / Logs use the shared
+configuration owner and bounded foreground operational observations.
 
 Run **zerogravity web** (or **zerogravity --profile NAME --offline web**).
 The host prints a private loopback URL; open it in your browser. Use
@@ -63,6 +63,31 @@ shared worker owns the pull. The operation ID is distinct from an action
 receipt ID. Device selection requires an exact observed physical ID and
 cached digest for a policy check or explicit load, not a persistent
 configuration change or implicit fallback.
+
+Authenticated GET /zg/control/inventory/profiles and /config/NAME (or
+/config/@active) expose the original profile list and a bounded typed
+configuration observation. A browser retains only the latest exact observed
+ConfigFile snapshot through an opaque token; another document observation
+can require a refresh, and changed bytes refuse a stale draft. Typed
+create/copy/validate/activate/set/unset/replace/confirmed removal use the
+same action slot and atomic file owner as the native editor. Default,
+portable and currently active documents cannot be removed. Activation
+changes only future actions. The browser can edit safe scalar/physical
+selector policy fields, not arbitrary paths, model graphs, prompts or
+credentials. Raw YAML view and replacement are limited to wholly safe,
+validated documents, normalized without comments; unrestricted raw repair
+is native-only. An existing trusted document can be copied or activated
+without disclosing its protected contents. No selected-profile pointer is
+persisted.
+
+GET /zg/control/inventory/logs exposes one bounded 128-entry operational
+ring per foreground host (native or Web standalone). Action and owner
+outcomes have safe correlations, not model text, prompts, filesystem paths
+or credentials. Search/level/component and pause/follow are view-local;
+collection continues, old rows can expire, and there is no durable log.
+SSE configuration/logs invalidations refresh only relevant visible shelves.
+A refused cold read may be retried finitely; mutations are never retried
+implicitly.
 
 ## Development / reproducible build
 

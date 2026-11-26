@@ -6,7 +6,7 @@ scaffolding), CLI/TUI/Web and serving, ROCm, CUDA, Vulkan, then concrete
 compiled providers. Native Hugging Face/Safetensors and GGUF are primary.
 Older ordering below is context; valid owner constraints remain authoritative.
 
-Status (26 Nov): **Phase 2.1 UX-1 through UX-9C accepted; UX-9D Web Profiles / Config / Logs next (§46A.28).**
+Status (26 Nov): **Phase 2.1 UX-1 through UX-9C accepted; UX-9D implemented and focused-qualified, full gate pending; UX-9E follows (§46A.28).**
 The bounded Phase 1 minimum exit is accepted at `d5030ad4`.
 See the [Phase 1 exit takeover](../../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-25_PHASE1_EXIT.md)
 and [live full plan](../FULL_IMPLEMENTATION_PLAN.md). The original design below
@@ -3654,7 +3654,17 @@ and Web share terminal transfer status-at-emission and relevant owner
 invalidations, not progress-triggered cache scans. Strict feature/lint/
 dependency isolation, JS, cold HTTP/Firefox, controlled HTTP/native PTY
 and real Firefox transfer pass. UX-9C optimized cached integration passed 1/0/0 (48.13s, five filtered); full isolated gate 2,489/0/109 (318 Rust suites), release Web/TUI/installer/scripts passed. UX-9C accepted.
-UX-9D next.
+UX-9D implementation (26 Nov): promote original ConfigFile observations,
+actions and process-local Selection; Web safe typed edits and normalized
+YAML only for wholly safe validated documents, exact stale token/file
+refusal, protected profile removal, native unrestricted repair. One
+bounded host operational ring, safe correlations, local filters and
+pause/follow. Relevant configuration/log invalidations; finite retry
+only for refused cold reads and post-receipt configuration refresh.
+Strict feature/lint isolation, JS, actual isolated HTTP/native PTY with
+attached Web cross-client settings, real Firefox pass. Full isolated
+gate stopped intentionally during Vulkan feature-boundary rebuild at
+turn boundary; final UX-9D acceptance pending. Next: gate then UX-9E.
 
 Build TUI before Web so the shared control surface proves it is not browser-shaped.
 

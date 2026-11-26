@@ -82,6 +82,9 @@ enum Input {
         operation_id: String,
         command: DownloadCommand,
     },
+    Settings {
+        action: super::settings::Input,
+    },
     Cancel {
         id: String,
     },
@@ -206,6 +209,7 @@ fn source(value: String) -> Option<String> {
 }
 
 enum Intent {
+    Settings(super::settings::Input),
     Start(Request),
     Cancel(u64),
     #[cfg(all(feature = "acquisition", target_os = "linux"))]
@@ -313,6 +317,7 @@ impl Input {
                 operation_id,
                 command,
             } => return Some(Intent::Download(id(&operation_id)?, command.into())),
+            Self::Settings { action } => return Some(Intent::Settings(action)),
             Self::Cancel { id: value } => return Some(Intent::Cancel(id(&value)?)),
             _ => return None,
         };
@@ -332,7 +337,12 @@ pub(super) fn submit(
     if shared.stop.load(std::sync::atomic::Ordering::Acquire) {
         return Err("503 Service Unavailable");
     }
+    let intent = match intent {
+        Intent::Settings(input) => Intent::Start(Request::Settings(input.action(shared)?)),
+        other => other,
+    };
     match intent {
+        Intent::Settings(_) => unreachable!("settings resolved before admission"),
         Intent::Start(request) => {
             #[cfg(all(feature = "acquisition", target_os = "linux"))]
             if matches!(&request, Request::Pull(_)) && shared.selection.snapshot().offline {
