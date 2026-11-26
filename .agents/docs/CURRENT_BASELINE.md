@@ -5,7 +5,19 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
-## 26 Nov — native UX-P polish (P1/P2/P3A)
+## 26 Nov — native UX-P polish (P1/P2/P3A/P3B)
+
+P3B typed finite settings/log choices, local shelf search, grapheme
+caret/selection and independent editor viewport. Focused Rust 86/0/3,
+strict lint, actual native editor/choices and stale draft refusal,
+original control/appearance/settings/mouse PTY and approved cached
+CPU/browser/native/HTTP 1/0/0 (55.96s, five filtered) pass. Original
+admitted scheduler/registration/generation and exact output unchanged.
+Only existing locked Unicode dependency edges exposed to optional TUI;
+no version changes/download, physical GPU or performance claim. P4A
+remaining ergonomics and visual review, P4B full isolated acceptance.
+
+### Earlier UX-P1/P2/P3A results
 
 Presentation-only theme, scoped mouse, resizable panes/scroll and bound
 action buttons/More/explicit modal controls. UX-P1 and P2 focused
@@ -13,7 +25,7 @@ acceptance, P3A optimized Rust 82/0/3, strict lint and actual native
 PTY shell/config/theme/mouse regressions; controlled transfer mouse
 pause/resume/durable/cancel and approved cached CPU/browser/native/HTTP
 1/0/0 (52.81s, five filtered) pass on original owners. No measured
-performance comparison or new GPU qualification. UX-P3B next; overall
+performance comparison or new GPU qualification. UX-P3B accepted above; overall
 UX-P exit requires full isolated gate at P4 before public serving.
 
 ## 26 Nov — CLI/TUI/Web acceptance (UX-10)

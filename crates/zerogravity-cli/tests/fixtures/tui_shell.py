@@ -360,6 +360,95 @@ def mouse_controls(root):
     print("TUI action PTY: mouse create/edit/theme preview/cancel/save, overflow activate, remove cancel/confirm, release mismatch, stale Web edit, narrow overflow; no cache effects")
 
 
+def editor_and_choices(root):
+    # Real mouse input into the same native configuration draft and the
+    # same local model/log observations. No cache/model acquisition.
+    document = root / "config/abird/zerogravity/config.yaml"
+    document.parent.mkdir(parents=True)
+    original = "schema: zerogravity.pipeline.v2\nrun:\n  backend: cpu\n  task: {raw: false}\n"
+    document.write_text(original)
+    with Terminal(root, [], width=150, height=40) as terminal:
+        terminal.repaint_on_wait = True
+        terminal.check_started()
+        terminal.send(b"8", b"ui.theme")
+        terminal.send(click(33,1),b"Enter search")
+        terminal.send(b"run.backend" + click(105,24),b"run.backend = cpu")
+        terminal.send(click(26,1),b"> cpu")
+        terminal.send(click(51,19),b"> rocm")
+        assert document.read_text()==original
+        os.write(terminal.master,click(86,22))
+        time.sleep(0.2)
+        terminal.send(click(26,1),b"> cpu")
+        terminal.send(click(51,19),b"> rocm")
+        terminal.send(click(99,22),b"Saved",10)
+        assert "backend: rocm" in document.read_text()
+        terminal.until(b"run.backend = rocm")
+        terminal.send(click(33,1),b"Enter search")
+        terminal.send(b"\x15run.task.raw" + click(105,24),b"run.task.raw = false")
+        terminal.send(click(26,1),b"> false")
+        terminal.send(click(51,17),b"> true")
+        terminal.send(click(99,21),b"Saved",10)
+        assert "raw: true" in document.read_text()
+        terminal.until(b"run.task.raw = true")
+        # A finite choice uses the same exact document bytes as a YAML
+        # value. An external update cannot be overwritten by its Apply.
+        terminal.send(click(26,1),b"> true")
+        terminal.send(click(51,16),b"> false")
+        concurrent = "# concurrent edit\n" + document.read_text()
+        document.write_text(concurrent)
+        terminal.send(click(99,21),b"changed",10)
+        assert document.read_text()==concurrent
+        os.write(terminal.master,b"\x1b")
+        time.sleep(0.2)
+        # Log filter choices are local, not configuration writes.
+        before = document.read_bytes()
+        terminal.send(b"9",b"Operational logs")
+        terminal.send(click(48,1),b"All levels")
+        terminal.send(click(51,19),b"> ERROR")
+        terminal.send(click(99,21),b"returned")
+        terminal.send(click(58,1),b"All components")
+        terminal.send(click(51,15),b"> action")
+        terminal.send(click(99,23),b"action")
+        assert document.read_bytes()==before
+
+        # Search the existing catalog locally and replace the visible
+        # query via a drag selection, not a remote provider query.
+        terminal.send(b"4",b"Cached")
+        terminal.send(click(35,3),b"qwen3.5-plus")
+        terminal.send(click(117,1),b"Enter search")
+        terminal.send(b"gemma4" + click(105,24),b"gemma4-e2b-it")
+        terminal.send(b"/",b"Enter search")
+        x=(terminal.width-76)//2+1
+        terminal.send(drag(x,15,x+6,15) + b"qwen3.5",b"qwen3.5")
+        terminal.send(click(105,24),b"qwen3.5-plus")
+        terminal.send(b"m",b"Partial")
+        terminal.send(b"m",b"Cached")
+        terminal.send(b"m",b"Catalog")
+        terminal.until(b"qwen3.5-plus")
+        os.write(terminal.master,b"q")
+        terminal.finish()
+
+    # A long raw editor is independently scrollable. Select wide and
+    # combining graphemes by their painted cells; original YAML bytes
+    # outside the selected text must be unchanged.
+    long_yaml = "# a界e\u0301z\n" + "".join(f"# filler-{i:02d}\n" for i in range(65)) + original
+    document.write_text(long_yaml)
+    with Terminal(root, [], width=150, height=40) as terminal:
+        terminal.repaint_on_wait = True
+        terminal.check_started()
+        terminal.send(b"8",b"ui.theme")
+        terminal.send(b"w",b"Ctrl-S")
+        terminal.send(click(terminal.width-2,4), b"filler-00")
+        terminal.send(drag(4,4,7,4) + b"X",b"Xz")
+        terminal.send(click(5,4) + b"_",b"_z")
+        terminal.send(click(terminal.width-8,36),b"Saved",10)
+        assert document.read_text() == long_yaml.replace("a界e\u0301z","aX_z",1)
+        os.write(terminal.master,b"q")
+        terminal.finish()
+    assert not (root/"cache").exists()
+    print("TUI editor/choices PTY: typed effective enum and boolean, cancel/apply, log pickers, local shelf search, grapheme drag/caret replacement and independent raw scroll; exact saved bytes")
+
+
 def appearance(root):
     default = root / "config/abird/zerogravity/config.yaml"
     hints = {"COLORTERM": "truecolor", "COLORFGBG": "0;15", "NO_COLOR": ""}
@@ -909,6 +998,9 @@ elif sys.argv[2] == "--mouse-fixture":
 elif sys.argv[2] == "--controls-fixture":
     with tempfile.TemporaryDirectory(prefix="zg-tui-controls-") as tmp:
         mouse_controls(Path(tmp))
+elif sys.argv[2] == "--editor-fixture":
+    with tempfile.TemporaryDirectory(prefix="zg-tui-editor-") as tmp:
+        editor_and_choices(Path(tmp))
 elif sys.argv[2] == "--appearance-fixture":
     with tempfile.TemporaryDirectory(prefix="zg-tui-appearance-") as tmp:
         appearance(Path(tmp))

@@ -726,11 +726,12 @@ UX-1–10 remains accepted; this is additional presentation work.
   exact inert selection, focus, draggable splits, maximize/restore,
   responsive collapse and independent visual-row scrolling. Strict lint,
   focused Rust 84/0/3, real SGR PTY and original native/Firefox smoke pass.
-- [ ] UX-P3: complete mouse and keyboard affordances across nine views,
-  actions, pickers, forms, settings and exact-owner confirmations.
-  UX-P3A action bars/overflow, bound commands and modal buttons landed
-  and focused-qualified (82/0/3 + real cached lifecycle 1/0/0; controlled
-  transfer and config PTY). UX-P3B typed pickers/editor interaction next.
+- [x] UX-P3: action bars/overflow, bound commands and modal controls,
+  typed setting/log choices, local shelf search, grapheme caret/selection
+  and independent editor scrolling. Focused UX-P3A/B accepted; P3B
+  86/0/3 plus real cached lifecycle 1/0/0, native editor/settings/mouse
+  regressions and stale refusal passed. Remaining final view affordances,
+  stable anchors and visual/focus edge cases are UX-P4A; P4B full gate.
 - [ ] UX-P4: visual/terminal-depth/accessibility polish, actual PTY and
   simultaneous-client lifecycle acceptance; full isolated gate.
 

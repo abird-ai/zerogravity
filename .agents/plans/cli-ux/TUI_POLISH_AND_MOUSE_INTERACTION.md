@@ -4,7 +4,7 @@ Author: Project owner
 Co-authors: GPT-6.2
 Owner: @pvl
 Decision: 26 Nov 2026 — polish before public serving
-Status: UX-P1/P2 and UX-P3A implemented and focused-qualified (26 Nov); UX-P3B next.
+Status: UX-P1/P2/P3 implemented and focused-qualified (26 Nov); UX-P4 final ergonomics/acceptance next.
 
 This is the follow-on to the accepted UX-1–10 iteration at `1b8de1cb`.
 It supersedes only the relevant interaction/presentation details of
@@ -471,7 +471,7 @@ not mark an untested or interrupted phase accepted.
   fixture assertions corrected for ANSI differential updates; no
   production interaction relaxed. Full workspace and actual resident/
   transfer acceptance remain assembled UX-P4.
-- [ ] **UX-P3 — full view controls:** action bars/overflow and mouse row/tab/
+- [x] **UX-P3 — full view controls:** action bars/overflow and mouse row/tab/
   filter selection for all nine views; pickers/modal buttons and typed
   settings/editor mouse interaction. Shared original actions and guards,
   no keyboard-only remaining visible operation. Verify controlled actual
@@ -500,11 +500,39 @@ not mark an untested or interrupted phase accepted.
     failures corrected to use actual modal labels/selected rows, original
     file and transfer effects unchanged. No new dependency, remote
     download, GPU or performance claim.
-  - [ ] UX-P3B: typed enum/boolean setting and log filter pickers,
-    model shelf search, mouse caret/text selection/editor scroll and
-    accessible keyboard focus/compact modal handling; finish any
-    missing view affordances. Keep raw repair and exact draft/owner
-    guard. Stable reorder anchors and final ergonomics remain P4.
+  - [x] UX-P3B: typed enum/boolean setting and log filter pickers,
+    local per-shelf model search, grapheme caret/selection and independent
+    editor scroll. Effective finite choices derive from the observed
+    setting, not invented defaults. Edit/e opens picker, Enter retains
+    original YAML scalar editor, F2 converts selected choice into a YAML
+    draft; nonlisted/custom values retain lossless original editor.
+    Explicit Apply/Cancel uses the same exact observed ConfigFile and
+    original Action::Submit. Log l/f pickers are local; L/F cycles.
+    Model Rows retains original observations and visible indices,
+    no duplicate catalog or provider reads. Row identity remains exact.
+    One bounded Editor owns caret/anchor/visual viewport; GraphemeCursor,
+    shared width calculation, rendered row ranges and visible-only hit
+    targets. No per-cell map, clipboard, secondary document store or
+    execution owner. Wheel/drag scrollbar and PageUp/Down are local;
+    selection replacement/paste preserves UTF-8 and input limits. Shared
+    Viewport uses usize offsets; editor reaches >65,535 visual rows;
+    ordinary Ratatui Paragraph scroll retains its explicit u16 bound.
+    Already locked Unicode packages 1.13.3/0.2.2 are now direct optional
+    TUI dependencies (only two dependency edges changed, no version
+    resolution change or download). Compact forms reserve input and
+    control rows; dialog identifies document or prompt registration.
+    Strict minimal/Web-only/TUI-Web/combined lint, optimized Rust
+    86/0/3 (58/0/3 CLI units), real editor/choices PTY with exact saved
+    Unicode YAML bytes, stale finite-choice refusal, mouse filters,
+    local shelf search, original mouse/controls/shell/settings/theme
+    passed. Cached Qwen browser/native/HTTP 1/0/0 (55.96s, five filtered)
+    passed with unchanged admitted scheduler/registration/generation
+    and exact output; original cache and listener owner unchanged.
+    Actual controlled transfer mouse pause/resume/durable/cancel and
+    default CPU/TUI/Web release native fixtures also passed.
+    Initial fixture assertions corrected for ANSI differential rendering
+    and the expected logged error after deliberate stale refusal.
+    Full visual/focus and remaining view affordance review belongs P4.
 
 - [ ] **UX-P4 — finish ergonomics and acceptance:** Unicode wrapping/caret,
   scrollbar/follow/selection edge cases, small viewports, accessibility,
@@ -513,6 +541,16 @@ not mark an untested or interrupted phase accepted.
   Real cached resident inference/serve/download/config simultaneous
   regression through mouse and keyboard, full offline isolated gate,
   updated CLI guide/help and owner handoff. No physical GPU perf claim.
+  Suggested coherent exit slices: P4A remaining ergonomics/visual review
+  (stable item/log/output anchors across refresh/resize/reorder, distinct
+  Running selected-detail/output affordance, safe log-row detail, compact
+  modal navigation/scroll and editor edge-of-viewport selection, keyboard
+  focus/shortcuts and minimal remaining view actions). Verify actual
+  rendered cells and terminal PTY at representative sizes/themes; no
+  golden matrix. P4B final simultaneous cached resident/transfer/config
+  regressions and full offline isolated workspace gate. No premature
+  acceptance; keep native Auto hint fallback truthful unless separately
+  authorized bounded probe. Resume public serving only after P4 exit.
 
 Use these as order, not four compulsory isolated branches. Preserve
 working keyboard controls during every slice. Continue from the live

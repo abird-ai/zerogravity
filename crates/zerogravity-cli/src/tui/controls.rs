@@ -107,7 +107,8 @@ impl Scope {
             View::Config => Some(Kind::Config),
             _ => None,
         };
-        let selection = kind.and_then(|kind| app.library.rows(kind).selected.clone());
+        let selection =
+            kind.and_then(|kind| app.library.rows(kind).selected().map(|row| row.key.clone()));
         let document = app.document.snapshot();
         let editor = if view == View::Config {
             app.library.snapshot()
@@ -305,6 +306,7 @@ impl Scope {
                     "x",
                     self.busy().or(choose_snapshot),
                 );
+                add(C::Library(L::Search), "Search", "/", None);
                 // Available in overflow even when shelf tabs cannot fit.
                 for (shelf, label) in [
                     (Shelf::Cached, "Cached"),
@@ -355,9 +357,9 @@ impl Scope {
             }
             View::Config => {
                 add(
-                    C::Settings(S::Open),
+                    C::Settings(S::Choose),
                     "Edit",
-                    "Enter",
+                    "e",
                     self.file().or(select_row),
                 );
                 add(C::Settings(S::Search), "Search", "/", None);
@@ -411,8 +413,8 @@ impl Scope {
                     "p",
                     None,
                 );
-                add(C::Logs(G::Level), "Level", "l", None);
-                add(C::Logs(G::Component), "Component", "f", None);
+                add(C::Logs(G::PickLevel), "Level", "l", None);
+                add(C::Logs(G::PickComponent), "Component", "f", None);
             }
         }
         if self.has_response && matches!(self.view, View::Home | View::Running) {

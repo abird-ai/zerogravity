@@ -156,6 +156,7 @@ if [[ "$(uname -s)" == Linux ]]; then
   python3 -B crates/zerogravity-cli/tests/fixtures/tui_shell.py ./target/release/zerogravity --appearance-fixture
   python3 -B crates/zerogravity-cli/tests/fixtures/tui_shell.py ./target/release/zerogravity --mouse-fixture
   python3 -B crates/zerogravity-cli/tests/fixtures/tui_shell.py ./target/release/zerogravity --controls-fixture
+  python3 -B crates/zerogravity-cli/tests/fixtures/tui_shell.py ./target/release/zerogravity --editor-fixture
   python3 -B crates/zerogravity-cli/tests/fixtures/web_shell.py ./target/release/zerogravity
 fi
 

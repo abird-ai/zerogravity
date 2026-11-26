@@ -215,8 +215,11 @@ splits, focus/maximize and independent scrolling landed; focused Rust 84/0/3,
 strict lint, actual SGR/native/Firefox tests passed. UX-P3A action strips,
 More/F4, original identity-bound commands and modal buttons landed;
 focused Rust 82/0/3 plus actual local cached lifecycle 1/0/0, controlled
-transfer and configuration mouse PTY passed. UX-P3B typed pickers,
-filtering/editor interaction next. Complete UX-P before public serving/ordinary benchmarks, then
+transfer and configuration mouse PTY passed. UX-P3B typed settings/log
+pickers, local shelf search, grapheme caret/selection and independent
+editor viewport landed; focused 86/0/3, real native editor and cached
+browser/native/HTTP 1/0/0 (55.96s) pass. UX-P4 remaining ergonomics/
+visual review and full isolated gate next. Complete UX-P before public serving/ordinary benchmarks, then
 ordered performance phases.
 General UMA/foreign backing, device-write host read, unqualified model/
 backend/media and other expansion holds remain explicit. Historical

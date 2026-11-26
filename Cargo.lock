@@ -5883,6 +5883,8 @@ dependencies = [
  "serde_yaml",
  "sha2",
  "signal-hook",
+ "unicode-segmentation",
+ "unicode-width 0.2.2",
  "zerogravity",
 ]
 

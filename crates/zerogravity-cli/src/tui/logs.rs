@@ -28,6 +28,18 @@ impl Logs {
             None
         };
     }
+    pub fn level(&self) -> Option<Level> {
+        self.level
+    }
+    pub fn component(&self) -> Option<Component> {
+        self.component
+    }
+    pub fn set_level(&mut self, level: Option<Level>) {
+        self.level = level;
+    }
+    pub fn set_component(&mut self, component: Option<Component>) {
+        self.component = component;
+    }
     pub fn cycle_level(&mut self) {
         self.level = match self.level {
             None => Some(Level::Info),

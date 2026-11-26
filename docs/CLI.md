@@ -140,7 +140,19 @@ expose the original operations; disabled buttons cannot activate,
 and changed observations require choosing again. Form and confirmation
 buttons use the same typed actions as Enter/Ctrl-S and y/n/Esc.
 F9 toggles response following. Existing keyboard shortcuts remain.
-Typed choice/filter and mouse text editing polish is the next slice.
+In Config, the Edit button or **e** opens a finite setting picker when
+available; choose a row and apply explicitly. F2 opens its selected value
+in the original YAML form. Enter retains the existing direct YAML value
+editor; raw document repair remains available. Model search (**/**)
+filters only the current local shelf. In Logs, **l** and **f** open
+level/component pickers (uppercase L/F retain cycling).
+
+Text forms and the raw editor accept click-to-place caret, drag selection,
+Shift+arrow selection, bounded paste/replacement, PageUp/PageDown and
+mouse wheel/scrollbar scrolling. Ctrl-U clears, Ctrl-A/E move to the
+start/end of the value; raw Ctrl-S saves, Esc cancels. An editor scroll
+never changes an underlying model/setting selection or saves the draft.
+Mouse capture does not install a clipboard bridge.
 
 ```sh
 zerogravity web

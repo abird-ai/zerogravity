@@ -1,7 +1,9 @@
 //! Cell-native navigation and rendering. No execution or filesystem effects.
 use super::{
     App,
+    choice::Picker,
     controls::{Bound, Menu, Scope},
+    editor::{self, Editor},
     input::{Hits, Intent, Pointer, Target},
     layout::{Motion, Pane, Scrollbar, SplitKind, Splitter, Workspace},
     library::{Key, Kind, Shelf},
@@ -17,6 +19,7 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph, Wrap},
 };
+use unicode_segmentation::UnicodeSegmentation;
 use zerogravity::{configuration::ThemeMode, control::ServeSummary};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -150,50 +153,6 @@ impl Form {
             _ => 32 * 1024,
         }
     }
-    fn insert(&mut self, cursor: &mut usize, c: char) {
-        if self.value.len().saturating_add(c.len_utf8()) <= self.limit() {
-            self.value.insert(*cursor, c);
-            *cursor += c.len_utf8();
-        }
-    }
-}
-fn previous_char(value: &str, cursor: usize) -> usize {
-    value[..cursor]
-        .char_indices()
-        .next_back()
-        .map_or(0, |(i, _)| i)
-}
-fn next_char(value: &str, cursor: usize) -> usize {
-    cursor + value[cursor..].chars().next().map_or(0, char::len_utf8)
-}
-fn line_start(value: &str, cursor: usize) -> usize {
-    value[..cursor].rfind('\n').map_or(0, |i| i + 1)
-}
-fn line_end(value: &str, cursor: usize) -> usize {
-    value[cursor..]
-        .find('\n')
-        .map_or(value.len(), |i| cursor + i)
-}
-fn vertical(value: &str, cursor: usize, down: bool) -> usize {
-    let start = line_start(value, cursor);
-    let column = value[start..cursor].chars().count();
-    let target = if down {
-        let end = line_end(value, cursor);
-        if end == value.len() {
-            return cursor;
-        }
-        end + 1
-    } else {
-        if start == 0 {
-            return cursor;
-        }
-        line_start(value, start - 1)
-    };
-    let end = line_end(value, target);
-    value[target..end]
-        .char_indices()
-        .nth(column)
-        .map_or(end, |(i, _)| target + i)
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -208,6 +167,7 @@ enum Modal {
     Palette(Palette),
     Help,
     Menu(Menu),
+    Choice(Picker),
     Theme {
         file: Snapshot,
         choice: ThemeMode,
@@ -216,7 +176,7 @@ enum Modal {
     WebUrl(String),
     Form {
         form: Form,
-        cursor: usize,
+        editor: Editor,
     },
     Confirm {
         question: String,
@@ -247,6 +207,7 @@ pub(super) enum LibraryAction {
     Run,
     Pull,
     Fit,
+    Search,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum DownloadAction {
@@ -259,6 +220,7 @@ pub(super) enum DownloadAction {
 pub(super) enum SettingsAction {
     Move(i8),
     Open,
+    Choose,
     Create,
     Copy,
     Remove,
@@ -274,6 +236,10 @@ pub(super) enum LogAction {
     Follow,
     Level,
     Component,
+    PickLevel,
+    PickComponent,
+    SetLevel(Option<crate::control_host::logs::Level>),
+    SetComponent(Option<crate::control_host::logs::Component>),
     Search,
 }
 
@@ -326,6 +292,7 @@ impl Navigation {
         self.pointer.cancel();
         match std::mem::take(&mut self.modal) {
             Modal::Form { form, .. } => Some(Action::Submit(form)),
+            Modal::Choice(picker) => Some(picker.apply()),
             Modal::Theme { file, choice } => Some(Action::Submit(Form {
                 kind: FormKind::ConfigValue {
                     file,
@@ -356,8 +323,8 @@ impl Navigation {
         };
         self.pointer.cancel();
         self.modal = Modal::Form {
+            editor: Editor::new(&value, cursor),
             form: Form { kind, value },
-            cursor,
         };
     }
     pub fn restore_form(&mut self, form: Form) {
@@ -374,6 +341,39 @@ impl Navigation {
         } else {
             self.form_value(FormKind::ConfigValue { file, key }, value);
         }
+    }
+    pub fn pick_setting(
+        &mut self,
+        file: Snapshot,
+        key: String,
+        choices: &'static [&'static str],
+        effective: &str,
+        raw: String,
+    ) {
+        if let Some(index) = choices.iter().position(|choice| *choice == effective) {
+            self.pointer.cancel();
+            self.modal = Modal::Choice(Picker::setting(file, key, choices, index));
+        } else {
+            // A custom value (e.g. draft:MODEL) is not coerced into a
+            // finite choice; preserve the existing lossless YAML route.
+            self.edit_setting(file, key, raw);
+        }
+    }
+    pub fn pick_level(&mut self, level: Option<crate::control_host::logs::Level>) {
+        self.pointer.cancel();
+        self.modal = Modal::Choice(Picker::level(level));
+    }
+    pub fn pick_component(&mut self, component: Option<crate::control_host::logs::Component>) {
+        self.pointer.cancel();
+        self.modal = Modal::Choice(Picker::component(component));
+    }
+    fn choice_yaml(&mut self) -> Action {
+        if let Modal::Choice(picker) = std::mem::take(&mut self.modal)
+            && let Some(form) = picker.into_yaml()
+        {
+            self.form_value(form.kind, form.value);
+        }
+        Action::Redraw
     }
     pub fn preview_theme(&self) -> Option<ThemeMode> {
         if let Modal::Theme { choice, .. } = &self.modal {
@@ -449,9 +449,37 @@ impl Navigation {
     }
     pub fn mouse(&mut self, event: MouseEvent) -> Option<Action> {
         match self.pointer.event(event, &self.hits)? {
+            Intent::EditPoint {
+                start,
+                end,
+                column,
+                extend,
+            } => {
+                if let Modal::Form { form, editor } = &mut self.modal {
+                    editor.point(&form.value, start..end, column, extend);
+                    Some(Action::Redraw)
+                } else {
+                    None
+                }
+            }
+            Intent::EditScroll(motion) => {
+                if let Modal::Form { editor, .. } = &mut self.modal {
+                    editor.scroll(motion);
+                    Some(Action::Redraw)
+                } else {
+                    None
+                }
+            }
             Intent::ScrollModal(delta, max) => {
                 if let Modal::Confirm { scroll, .. } = &mut self.modal {
                     *scroll = scroll.saturating_add_signed(delta).min(max);
+                    Some(Action::Redraw)
+                } else if let Modal::Form { editor, .. } = &mut self.modal {
+                    editor.scroll(Motion::Step(delta));
+                    Some(Action::Redraw)
+                } else if let Modal::Choice(picker) = &mut self.modal {
+                    picker.scroll = picker.scroll.saturating_add_signed(delta).min(max);
+                    picker.move_by(delta as isize);
                     Some(Action::Redraw)
                 } else if let Modal::Menu(menu) = &mut self.modal {
                     menu.scroll = menu.scroll.saturating_add_signed(delta).min(max);
@@ -479,6 +507,11 @@ impl Navigation {
                     if target == Target::DismissModal {
                         return Some(self.dismiss_modal());
                     }
+                    if target == Target::ChoiceYaml
+                        && matches!(&self.modal,Modal::Choice(p) if p.is_setting())
+                    {
+                        return Some(self.choice_yaml());
+                    }
                     if let Target::Command(ref bound) = target
                         && matches!(self.modal, Modal::Menu(_))
                     {
@@ -487,6 +520,12 @@ impl Navigation {
                     }
                     return match (&mut self.modal, target) {
                         (Modal::Palette(_), Target::Navigate(view)) => Some(self.open(view)),
+                        (Modal::Choice(picker), Target::Choice(index))
+                            if index < picker.count() =>
+                        {
+                            picker.cursor = index;
+                            Some(Action::Redraw)
+                        }
                         (Modal::Theme { choice, .. }, Target::Theme(mode)) => {
                             *choice = mode;
                             Some(Action::Redraw)
@@ -558,17 +597,14 @@ impl Navigation {
     /// Paste is data only, never a shortcut or submit.
     pub fn paste(&mut self, value: &str) -> bool {
         match &mut self.modal {
-            Modal::Form { form, cursor } => {
-                if form.value.len().saturating_add(value.len()) > form.limit()
-                    || value.chars().any(|c| {
-                        c.is_control() && !(form.multiline() && matches!(c, '\n' | '\r' | '\t'))
-                    })
-                {
+            Modal::Form { form, editor } => {
+                if value.chars().any(|c| {
+                    c.is_control() && !(form.multiline() && matches!(c, '\n' | '\r' | '\t'))
+                }) {
                     return false;
                 }
-                form.value.insert_str(*cursor, value);
-                *cursor += value.len();
-                true
+                let limit = form.limit();
+                editor.replace(&mut form.value, value, limit)
             }
             Modal::Palette(palette) => {
                 if palette.query.len().saturating_add(value.len()) > 128
@@ -690,6 +726,23 @@ impl Navigation {
                 }
                 return Action::Redraw;
             }
+            Modal::Choice(picker) => {
+                match key.code {
+                    Esc => return self.dismiss_modal(),
+                    Enter if key.kind == crossterm::event::KeyEventKind::Press => {
+                        return self.accept_modal().expect("choice submit");
+                    }
+                    F(2) if picker.is_setting() => return self.choice_yaml(),
+                    Up | Left | Char('k') => picker.move_by(-1),
+                    Down | Right | Char('j') => picker.move_by(1),
+                    Home => picker.cursor = 0,
+                    End => picker.cursor = picker.count() - 1,
+                    PageUp => picker.move_by(-8),
+                    PageDown => picker.move_by(8),
+                    _ => {}
+                }
+                return Action::Redraw;
+            }
             Modal::Theme { choice, .. } => {
                 const MODES: [ThemeMode; 3] = [ThemeMode::Auto, ThemeMode::Dark, ThemeMode::Light];
                 let index = MODES
@@ -707,45 +760,43 @@ impl Navigation {
                 }
                 return Action::Redraw;
             }
-            Modal::Form { form, cursor } => {
+            Modal::Form { form, editor } => {
                 let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+                let extend = key.modifiers.contains(KeyModifiers::SHIFT);
                 let raw = matches!(form.kind, FormKind::RawYaml { .. });
                 if (key.code == Enter && !raw) || (ctrl && key.code == Char('s') && raw) {
                     return self.accept_modal().expect("form submit");
                 }
+                let limit = form.limit();
                 match key.code {
-                    Esc => self.modal = Modal::None,
-                    Backspace if *cursor > 0 => {
-                        let previous = previous_char(&form.value, *cursor);
-                        form.value.drain(previous..*cursor);
-                        *cursor = previous;
+                    Esc => return self.dismiss_modal(),
+                    Backspace => editor.delete(&mut form.value, true),
+                    Delete => editor.delete(&mut form.value, false),
+                    Left | Right => editor.move_horizontal(&form.value, key.code == Right, extend),
+                    Home | End => editor.edge(&form.value, key.code == End, ctrl, extend),
+                    Up | Down if form.multiline() => {
+                        editor.move_vertical(&form.value, key.code == Down, extend)
                     }
-                    Delete if *cursor < form.value.len() => {
-                        let next = next_char(&form.value, *cursor);
-                        form.value.drain(*cursor..next);
+                    PageUp | PageDown => {
+                        editor.scroll(Motion::Page(if key.code == PageUp { -1 } else { 1 }))
                     }
-                    Left => *cursor = previous_char(&form.value, *cursor),
-                    Right => *cursor = next_char(&form.value, *cursor),
-                    Home => *cursor = line_start(&form.value, *cursor),
-                    End => *cursor = line_end(&form.value, *cursor),
-                    Up if form.multiline() => *cursor = vertical(&form.value, *cursor, false),
-                    Down if form.multiline() => *cursor = vertical(&form.value, *cursor, true),
-                    Char('u') if ctrl => {
-                        form.value.clear();
-                        *cursor = 0;
+                    Char('u') if ctrl => editor.clear(&mut form.value),
+                    Char('a' | 'e') if ctrl => {
+                        editor.edge(&form.value, key.code == Char('e'), true, extend)
                     }
-                    Char('a') if ctrl => *cursor = 0,
-                    Char('e') if ctrl => *cursor = form.value.len(),
                     Char('r') if ctrl => {
                         if let FormKind::Prompt { chat, .. } = &mut form.kind {
                             *chat = !*chat;
                         }
                     }
-                    Enter if raw => form.insert(cursor, '\n'),
-                    Char('j') if ctrl && form.multiline() => form.insert(cursor, '\n'),
+                    Enter if raw => {
+                        editor.replace(&mut form.value, "\n", limit);
+                    }
+                    Char('j') if ctrl && form.multiline() => {
+                        editor.replace(&mut form.value, "\n", limit);
+                    }
                     Tab if raw => {
-                        form.insert(cursor, ' ');
-                        form.insert(cursor, ' ');
+                        editor.replace(&mut form.value, "  ", limit);
                     }
                     Char(c)
                         if !c.is_control()
@@ -753,7 +804,7 @@ impl Navigation {
                                 .modifiers
                                 .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
                     {
-                        form.insert(cursor, c)
+                        editor.replace(&mut form.value, c.encode_utf8(&mut [0; 4]), limit);
                     }
                     _ => {}
                 }
@@ -864,13 +915,25 @@ impl Navigation {
             Char('w') if !self.rail() && self.view == View::Config => {
                 Action::Settings(SettingsAction::RawEdit)
             }
+            Char('/') if !self.rail() && self.view == View::Models => {
+                Action::Library(LibraryAction::Search)
+            }
+            Char('e') if !self.rail() && self.view == View::Config => {
+                Action::Settings(SettingsAction::Choose)
+            }
             Char('/') if !self.rail() && self.view == View::Config => {
                 Action::Settings(SettingsAction::Search)
             }
             Char('/') if !self.rail() && self.view == View::Logs => Action::Logs(LogAction::Search),
             Char('p') if !self.rail() && self.view == View::Logs => Action::Logs(LogAction::Follow),
-            Char('l') if !self.rail() && self.view == View::Logs => Action::Logs(LogAction::Level),
+            Char('l') if !self.rail() && self.view == View::Logs => {
+                Action::Logs(LogAction::PickLevel)
+            }
             Char('f') if !self.rail() && self.view == View::Logs => {
+                Action::Logs(LogAction::PickComponent)
+            }
+            Char('L') if !self.rail() && self.view == View::Logs => Action::Logs(LogAction::Level),
+            Char('F') if !self.rail() && self.view == View::Logs => {
                 Action::Logs(LogAction::Component)
             }
             Char('b') if !self.rail() && matches!(self.view, View::Home | View::Serve) => {
@@ -1381,8 +1444,8 @@ fn content(app: &App, theme: Theme) -> Content {
     }
 }
 
-fn row_rect(area: Rect, index: usize, offset: u16) -> Option<Rect> {
-    let y = index.checked_sub(offset as usize)?;
+fn row_rect(area: Rect, index: usize, offset: usize) -> Option<Rect> {
+    let y = index.checked_sub(offset)?;
     (y < area.height as usize).then(|| Rect::new(area.x, area.y + y as u16, area.width, 1))
 }
 fn divider(
@@ -1650,21 +1713,26 @@ fn scroll_rows(
     area: Rect,
     paragraph: Paragraph<'_>,
     mode: ScrollMode,
-) -> (Rect, u16) {
+) -> (Rect, usize) {
     if area.is_empty() {
         return (area, 0);
     }
     let body = Rect::new(area.x, area.y, area.width.saturating_sub(1), area.height);
     let track = Rect::new(body.right(), area.y, area.width - body.width, area.height);
     let viewport = nav.workspace.viewport(nav.view.index(), which);
-    viewport.measure(paragraph.line_count(body.width), body.height);
+    viewport.measure(
+        paragraph
+            .line_count(body.width)
+            .min(u16::MAX as usize + body.height as usize),
+        body.height,
+    );
     match mode {
         ScrollMode::Manual => {}
         ScrollMode::Reveal(row) => viewport.reveal(row),
         ScrollMode::Follow => viewport.scroll(Motion::End),
     }
     let viewport = *viewport;
-    frame.render_widget(paragraph.scroll((viewport.offset, 0)), body);
+    frame.render_widget(paragraph.scroll((viewport.offset as u16, 0)), body);
     if let Some(bar) = Scrollbar::new(which, track, viewport) {
         for y in track.y..track.bottom() {
             let thumb = y >= bar.thumb.y && y < bar.thumb.bottom();
@@ -1679,6 +1747,86 @@ fn scroll_rows(
         nav.hits.add(track, Target::Scrollbar(bar));
     }
     (body, viewport.offset)
+}
+
+fn render_editor(
+    frame: &mut Frame<'_>,
+    hits: &mut Hits,
+    theme: Theme,
+    area: Rect,
+    value: &str,
+    editor: &mut Editor,
+) {
+    if area.is_empty() {
+        return;
+    }
+    let body = Rect::new(area.x, area.y, area.width.saturating_sub(1), area.height);
+    if body.width == 0 {
+        return;
+    }
+    let layout = editor.measure(value, body.width, body.height);
+    let viewport = editor.viewport;
+    let selected = editor.selection();
+    hits.add(area, Target::EditorViewport);
+    frame.render_widget(Block::default().style(theme.raised()), area);
+    let mut lines = Vec::new();
+    for (row, range) in layout
+        .rows
+        .iter()
+        .enumerate()
+        .skip(viewport.offset)
+        .take(body.height as usize)
+    {
+        let mut spans = Vec::new();
+        for (offset, g) in value[range.clone()].grapheme_indices(true) {
+            let at = range.start + offset;
+            let style = if selected.contains(&at) {
+                theme.selected()
+            } else {
+                theme.raised()
+            };
+            spans.push(Span::styled(editor::display(g, body.width), style));
+        }
+        lines.push(Line::from(spans));
+        if let Some(rect) = row_rect(body, row, viewport.offset) {
+            hits.add(
+                rect,
+                Target::EditorRow {
+                    start: range.start,
+                    end: range.end,
+                },
+            );
+        }
+    }
+    // Blank space below the draft belongs to its final caret.
+    for y in body.y + lines.len() as u16..body.bottom() {
+        hits.add(
+            Rect::new(body.x, y, body.width, 1),
+            Target::EditorRow {
+                start: value.len(),
+                end: value.len(),
+            },
+        );
+    }
+    frame.render_widget(Paragraph::new(lines).style(theme.raised()), body);
+    let (row, col) = layout.position(value, editor.caret);
+    if let Some(rect) = row_rect(body, row, viewport.offset) {
+        frame.set_cursor_position((rect.x + col.min(body.width - 1), rect.y));
+    }
+    let track = Rect::new(body.right(), body.y, 1, body.height);
+    if let Some(bar) = Scrollbar::new(Pane::Main, track, viewport) {
+        for y in track.y..track.bottom() {
+            let thumb = y >= bar.thumb.y && y < bar.thumb.bottom();
+            frame.buffer_mut()[(track.x, y)]
+                .set_symbol(if thumb { "┃" } else { "│" })
+                .set_style(if thumb {
+                    theme.muted()
+                } else {
+                    theme.border(false)
+                });
+        }
+        hits.add(track, Target::EditorBar(bar));
+    }
 }
 
 pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
@@ -1849,7 +1997,7 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
             close_button(frame, &mut app.navigation.hits, theme, controls);
         }
         Modal::Help => {
-            let popup = center(body, 68, 21);
+            let popup = center(body, 68, 23);
             frame.render_widget(Clear, popup);
             let block = dialog(" Help ", theme);
             let inner = block.inner(popup);
@@ -1871,6 +2019,8 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
                     text(":       Destination palette"),
                     text("r       Refresh observations"),
                     text("T       Appearance setting (Auto / Dark / Light)"),
+                    text("Config: e typed picker · Enter YAML value · F2 YAML"),
+                    text("Editor: click caret · drag/Shift+arrows select · PgUp/PgDn"),
                     text("F4 actions · F6 panes · F7 maximize · F8 mouse"),
                     text("Alt+←/→ rail · Ctrl+arrows split size"),
                     text("Esc     Back / close overlay"),
@@ -1914,7 +2064,7 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
             // event when required to keep keyboard focus in the viewport.
             app.navigation.hits.add(list, Target::ModalScroll(max));
             for (index, item) in menu.buttons.iter().enumerate() {
-                let Some(rect) = row_rect(list, index, menu.scroll) else {
+                let Some(rect) = row_rect(list, index, menu.scroll as usize) else {
                     continue;
                 };
                 let available = current && item.disabled.is_none();
@@ -1961,6 +2111,64 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
             };
             frame.render_widget(Paragraph::new(text(message)).style(theme.muted()), reason);
             close_button(frame, &mut app.navigation.hits, theme, footer);
+        }
+        Modal::Choice(picker) => {
+            let popup = center(body, 64, (picker.count() + 4).max(8) as u16);
+            frame.render_widget(Clear, popup);
+            let title = format!(" {} ", clean(&picker.title()));
+            let block = dialog(&title, theme);
+            let inner = block.inner(popup);
+            frame.render_widget(block, popup);
+            let [list, controls] =
+                Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(inner);
+            let max = picker.count().saturating_sub(list.height as usize) as u16;
+            picker.scroll = picker.scroll.min(max);
+            if picker.cursor < picker.scroll as usize {
+                picker.scroll = picker.cursor as u16;
+            } else if list.height > 0
+                && picker.cursor >= picker.scroll as usize + list.height as usize
+            {
+                picker.scroll = (picker.cursor + 1 - list.height as usize).min(max as usize) as u16;
+            }
+            app.navigation.hits.add(list, Target::ModalScroll(max));
+            for i in 0..picker.count() {
+                let Some(rect) = row_rect(list, i, picker.scroll as usize) else {
+                    continue;
+                };
+                let selected = i == picker.cursor;
+                let label = format!("{} {}", if selected { ">" } else { " " }, picker.label(i));
+                button(
+                    frame,
+                    &mut app.navigation.hits,
+                    rect,
+                    &label,
+                    if selected {
+                        theme.selected()
+                    } else {
+                        theme.surface()
+                    },
+                    Some(Target::Choice(i)),
+                );
+            }
+            let space = modal_buttons(
+                frame,
+                &mut app.navigation.hits,
+                theme,
+                controls,
+                (" Enter apply ", " Esc cancel "),
+                !busy || !picker.is_setting(),
+                false,
+            );
+            if picker.is_setting() && space.width >= 11 {
+                button(
+                    frame,
+                    &mut app.navigation.hits,
+                    Rect::new(space.x, space.y, 11, 1),
+                    " F2 YAML ",
+                    theme.raised(),
+                    Some(Target::ChoiceYaml),
+                );
+            }
         }
         Modal::Theme { file, choice } => {
             let popup = center(body, 54, 11);
@@ -2011,7 +2219,7 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
                 false,
             );
         }
-        Modal::Form { form, cursor } => {
+        Modal::Form { form, editor } => {
             let raw = matches!(form.kind, FormKind::RawYaml { .. });
             let popup = if raw { body } else { center(body, 76, 14) };
             frame.render_widget(Clear, popup);
@@ -2027,7 +2235,7 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
                 ),
                 FormKind::Prompt { target: _, chat } => (
                     " Prompt ",
-                    "Type a prompt. Ctrl-R switches chat/raw; Enter submits.",
+                    "Type a prompt. Ctrl-R switches chat/raw; Enter submits. Shift+arrows select.",
                     if *chat { "Chat" } else { "Raw" },
                 ),
                 FormKind::Listen => (
@@ -2085,7 +2293,22 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
                     "",
                 ),
             };
-            let block = dialog(title, theme);
+            let title = match &form.kind {
+                FormKind::ConfigValue { file, .. } | FormKind::RawYaml { file } => {
+                    format!("{}· {} ", title, clean(&file.target.label()))
+                }
+                FormKind::Prompt {
+                    target: RunTarget::Owner(owner),
+                    ..
+                } => format!(
+                    "{}· {} #{} ",
+                    title,
+                    clean(&owner.alias),
+                    owner.registration
+                ),
+                _ => title.to_owned(),
+            };
+            let block = dialog(&title, theme);
             let inner = block.inner(popup);
             frame.render_widget(block, popup);
             let header = match &form.kind {
@@ -2094,7 +2317,9 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
                 _ => hint.to_owned(),
             };
             let [head, input, controls] = Layout::vertical([
-                Constraint::Length(if inner.width < 60 { 3 } else { 2 }),
+                Constraint::Length(
+                    (if inner.width < 60 { 3 } else { 2 }).min(inner.height.saturating_sub(2)),
+                ),
                 Constraint::Min(1),
                 Constraint::Length(1),
             ])
@@ -2103,31 +2328,14 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
                 Paragraph::new(text(header)).wrap(Wrap { trim: false }),
                 head,
             );
-            let before = &form.value[..*cursor];
-            let after = &form.value[*cursor..];
-            let mut prefix = before.rsplit('\n');
-            let current = prefix.next().unwrap_or("");
-            let keep = (input.height.saturating_sub(2) as usize / 2).max(1);
-            let previous: Vec<_> = prefix.take(keep).collect();
-            let mut rows: Vec<Line<'static>> = previous.into_iter().rev().map(text).collect();
-            let left: String = current
-                .chars()
-                .rev()
-                .take(input.width.saturating_sub(2) as usize)
-                .collect::<Vec<_>>()
-                .into_iter()
-                .rev()
-                .collect();
-            let mut suffix = after.split('\n');
-            let right: String = suffix
-                .next()
-                .unwrap_or("")
-                .chars()
-                .take(input.width as usize)
-                .collect();
-            rows.push(label(format!("{left}▏{right}"), theme));
-            rows.extend(suffix.take(input.height as usize).map(text));
-            frame.render_widget(Paragraph::new(rows).wrap(Wrap { trim: false }), input);
+            render_editor(
+                frame,
+                &mut app.navigation.hits,
+                theme,
+                input,
+                &form.value,
+                editor,
+            );
             let accept = match form.kind {
                 FormKind::RawYaml { .. } => " Ctrl-S save ",
                 FormKind::Prompt { .. } => " Enter send ",
@@ -2297,7 +2505,14 @@ fn render_library(frame: &mut Frame<'_>, area: Rect, app: &mut App, kind: Kind, 
             } else {
                 "m shelf · j/k select"
             }),
-            text("Select a cached source or catalog target"),
+            text(format!(
+                "Search: {} · / filter",
+                if collection.query().is_empty() {
+                    "all"
+                } else {
+                    collection.query()
+                }
+            )),
             text("Acquisition and execution are explicit"),
         ],
         Kind::Devices => vec![
@@ -2349,7 +2564,7 @@ fn render_library(frame: &mut Frame<'_>, area: Rect, app: &mut App, kind: Kind, 
     let status = app.library.notice(kind).unwrap_or("Owner observations");
     header.push(text(format!(
         "{} entries · {status}",
-        collection.rows.len()
+        collection.visible().len()
     )));
     let reserved = if inner.height >= 17 { 13 } else { 3 };
     let height = (header.len() as u16).min(inner.height.saturating_sub(reserved));
@@ -2386,7 +2601,7 @@ fn render_library(frame: &mut Frame<'_>, area: Rect, app: &mut App, kind: Kind, 
     let mut group = "";
     let mut selected_line = 0;
     let mut keys = Vec::new();
-    for row in &collection.rows {
+    for row in collection.visible() {
         if let Key::Setting(key) = &row.key {
             let next = super::settings::group(key);
             if next != group {

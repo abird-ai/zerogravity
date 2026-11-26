@@ -52,28 +52,58 @@ pub(super) struct Row {
 
 #[derive(Default)]
 pub(super) struct Rows {
-    pub rows: Vec<Row>,
+    rows: Vec<Row>,
+    visible: Vec<usize>,
+    query: String,
     pub selected: Option<Key>,
 }
 impl Rows {
     fn replace(&mut self, rows: Vec<Row>) {
         self.rows = rows;
+        self.filter();
+    }
+    fn invalidate(&mut self) {
+        self.rows.clear();
+        self.visible.clear();
+        // Keep the preferred key until the next observation reconciles it.
+    }
+    pub fn query(&self) -> &str {
+        &self.query
+    }
+    pub fn set_query(&mut self, query: String) {
+        self.query = query;
+        self.filter();
+    }
+    fn filter(&mut self) {
+        let query = self.query.to_ascii_lowercase();
+        self.visible.clear();
+        self.visible
+            .extend(self.rows.iter().enumerate().filter_map(|(i, row)| {
+                (query.is_empty()
+                    || row.title.to_ascii_lowercase().contains(&query)
+                    || row
+                        .details
+                        .iter()
+                        .any(|detail| detail.to_ascii_lowercase().contains(&query)))
+                .then_some(i)
+            }));
         if !self
-            .rows
+            .visible
             .iter()
-            .any(|row| self.selected.as_ref() == Some(&row.key))
+            .any(|&i| self.selected.as_ref() == Some(&self.rows[i].key))
         {
-            self.selected = self.rows.first().map(|row| row.key.clone());
+            self.selected = self.visible.first().map(|&i| self.rows[i].key.clone());
         }
     }
+    pub fn visible(&self) -> impl ExactSizeIterator<Item = &Row> {
+        self.visible.iter().map(|&i| &self.rows[i])
+    }
     pub fn selected(&self) -> Option<&Row> {
-        self.rows
-            .iter()
+        self.visible()
             .find(|row| self.selected.as_ref() == Some(&row.key))
     }
     pub fn index(&self) -> usize {
-        self.rows
-            .iter()
+        self.visible()
             .position(|row| self.selected.as_ref() == Some(&row.key))
             .unwrap_or(0)
     }
@@ -82,13 +112,12 @@ impl Rows {
         let next = if delta < 0 {
             index.saturating_sub(1)
         } else {
-            (index + 1).min(self.rows.len().saturating_sub(1))
+            (index + 1).min(self.visible.len().saturating_sub(1))
         };
-        self.selected = self.rows.get(next).map(|row| row.key.clone());
+        self.selected = self.visible.get(next).map(|&i| self.rows[i].key.clone());
         next
     }
 }
-
 #[derive(Default)]
 struct Models {
     cached: Vec<Row>,
@@ -230,7 +259,7 @@ impl Library {
     }
     pub fn invalidate_config(&mut self) {
         self.observed = None;
-        self.config.rows.clear();
+        self.config.invalidate();
         self.config_notice = None;
     }
     pub fn snapshot(&self) -> Option<Snapshot> {
@@ -243,6 +272,13 @@ impl Library {
     }
     pub fn value(&self, key: &str) -> Option<&str> {
         self.observed.as_ref()?.values.get(key).map(String::as_str)
+    }
+    pub fn effective_choice(&self, key: &str) -> Option<&str> {
+        self.observed
+            .as_ref()?
+            .effective_choices
+            .get(key)
+            .map(String::as_str)
     }
     pub fn filter_config(&mut self) {
         let query = self.query.to_ascii_lowercase();
@@ -470,6 +506,22 @@ fn devices(control: ControlPlane<'_>) -> Result<Vec<Row>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn local_search_keeps_exact_visible_selection_without_losing_inventory() {
+        let mut library = Library::new(super::super::work::Document::test_default().target);
+        library.shelf = Shelf::Catalog;
+        let rows = library.rows_mut(Kind::Models);
+        let count = rows.visible().len();
+        rows.set_query("gemma4".into());
+        assert!(rows.visible().len() > 0 && rows.visible().len() < count);
+        assert!(rows.selected().unwrap().title.contains("gemma4"));
+        rows.set_query("no such source".into());
+        assert!(rows.selected().is_none());
+        assert_eq!(rows.visible().len(), 0);
+        rows.set_query(String::new());
+        assert_eq!(rows.visible().len(), count);
+        assert!(rows.selected().is_some());
+    }
     #[test]
     fn exact_selection_survives_reordering_and_stale_rows_clear() {
         let row = |id: &str| Row {

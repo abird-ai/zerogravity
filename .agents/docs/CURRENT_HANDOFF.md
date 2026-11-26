@@ -27,7 +27,51 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — UX-P3A native action controls (26 Nov)
+### Current checkpoint — UX-P3B settings/filter and editor interaction (26 Nov)
+
+- New choice.rs finite setting and log picker; initialized from the
+  actual observed effective choice. Edit/e uses typed picker, Enter
+  retains direct YAML value editing, F2 edits chosen value as YAML,
+  nonlisted/custom values retain lossless original form. Exact
+  ConfigFile snapshot and existing Submit/Set owner; Apply explicit.
+  Stale choice refuses, draft retained via existing retry path.
+  Local Logs l/f pickers, uppercase L/F original cycles.
+- Rows now retains original inventory and visible indices; local
+  per-shelf search, no network/acquisition or second catalog. Selection
+  only visible exact keys, refresh reconciles, clearing restores
+  inventory. Original config observation/filter ownership preserved.
+- editor.rs one draft caret/anchor/visual viewport; full grapheme
+  boundary handling (wide/combining/CRLF), rendered row-range hit
+  translation, mouse click/drag, Shift+arrows, selection replacement
+  and bounded paste, wheel/drag scrollbar/PageUp/Down. Display sanitizes
+  controls, tab has visible four-cell representation; raw bytes remain
+  unmodified except explicit edit. Resize preserves visual byte anchor
+  for manual scroll; actual cursor hidden off viewport. Shared
+  Viewport usize offsets support >65k editor rows; ordinary Paragraph
+  u16 bound explicit. Existing locked unicode-segmentation 1.13.3 and
+  unicode-width 0.2.2 become direct optional TUI deps only; lock edges
+  changed, no package/version/download. No clipboard or new authority.
+- Strict feature lint, optimized Rust 86/0/3 (58/0/3 CLI units), actual
+  typed picker Apply/Cancel, stale finite draft refusal, log/mouse local
+  model search, long raw scroll, wide+combining drag/caret exact saved
+  bytes; original controls/mouse/shell/settings/appearance PTY pass.
+  Actual cached Qwen CPU/browser/native/HTTP 1/0/0 (55.96s, five filtered)
+  with original admission and exact output/stale identities/shared
+  settings retained. Actual controlled transfer mouse pause/resume/
+  durable/cancel and default CPU/model/text/TUI/Web release plus all
+  native PTY fixtures passed. New editor fixture integrated in full
+  default release gate; target/ux-p3b-default-release.log. Initial fixture assertions corrected for differential
+  rendering and the expected ERROR log after deliberate stale refusal.
+  Logs target/ux-p3b-final.log and target/ux-p3b-final-rerun.log.
+- **Next UX-P4A:** final ergonomic/visual review, stable item/log/output
+  scroll anchors, distinct Running selected detail/response affordance,
+  safe log-row detail, small/modal/keyboard focus and editor drag edge
+  cases; finish remaining view actions. P4B final real simultaneous
+  resident/transfer/config and full isolated gate (separate coherent
+  turn if needed). No accepted UX-P exit or public serving yet.
+  Native Auto probe remains deferred; no performance/GPU claims.
+
+### Previous checkpoint — UX-P3A native action controls (26 Nov; 5da96251)
 
 - New presentation-only controls.rs: all nine views have width-stable
   action strips, F4/More overflow with disabled reasons. One Rc scope
@@ -61,11 +105,7 @@ reusable work and measured history, not precedence over this order.
   actual selected/control labels with exact file/outcome assertions.
   Final focused tests pass; full workspace acceptance at P4.
 
-**Next:** UX-P3B typed settings and log filter pickers, model shelf search,
-mouse caret/text selection and editor scrolling, remaining compact/modal
-and keyboard focus affordances. P4 stable scroll anchors, final visual/
-ergonomic review, original real owner regressions and full gate before
-public serving. Native Auto active probe still deferred.
+UX-P3B landed above. Continue final UX-P4A/B before public serving.
 
 ### Previous checkpoint — UX-P2 mouse and pane foundation (26 Nov; ab3cf974)
 

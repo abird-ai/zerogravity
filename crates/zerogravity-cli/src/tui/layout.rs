@@ -26,36 +26,36 @@ pub(super) enum Motion {
     Page(i16),
     Start,
     End,
-    At(u16),
+    At(usize),
 }
 
 #[derive(Clone, Copy, Debug, Default)]
 pub(super) struct Viewport {
-    pub offset: u16,
-    pub max: u16,
+    pub offset: usize,
+    pub max: usize,
     pub page: u16,
 }
 impl Viewport {
     pub fn measure(&mut self, rows: usize, height: u16) {
         self.page = height;
-        self.max = rows.saturating_sub(height as usize).min(u16::MAX as usize) as u16;
+        self.max = rows.saturating_sub(height as usize);
         self.offset = self.offset.min(self.max);
     }
     pub fn reveal(&mut self, row: usize) {
-        let row = row.min(u16::MAX as usize) as u16;
         if row < self.offset {
             self.offset = row;
-        } else if row >= self.offset.saturating_add(self.page) {
-            self.offset = row.saturating_add(1).saturating_sub(self.page.max(1));
+        } else if row >= self.offset.saturating_add(self.page as usize) {
+            self.offset = row
+                .saturating_add(1)
+                .saturating_sub(self.page.max(1) as usize);
         }
         self.offset = self.offset.min(self.max);
     }
     pub fn scroll(&mut self, motion: Motion) {
         self.offset = match motion {
-            Motion::Step(delta) => self.offset.saturating_add_signed(delta),
+            Motion::Step(delta) => self.offset.saturating_add_signed(delta as isize),
             Motion::Page(delta) => self.offset.saturating_add_signed(
-                delta
-                    .saturating_mul(self.page.saturating_sub(1).max(1).min(i16::MAX as u16) as i16),
+                isize::from(delta).saturating_mul(self.page.saturating_sub(1).max(1) as isize),
             ),
             Motion::Start => 0,
             Motion::End => self.max,
@@ -69,18 +69,18 @@ pub(super) struct Scrollbar {
     pub pane: Pane,
     pub track: Rect,
     pub thumb: Rect,
-    pub max: u16,
+    pub max: usize,
 }
 impl Scrollbar {
     pub fn new(pane: Pane, track: Rect, viewport: Viewport) -> Option<Self> {
         if track.height < 2 || viewport.max == 0 {
             return None;
         }
-        let total = u32::from(viewport.max) + u32::from(viewport.page);
-        let height = ((u32::from(track.height) * u32::from(viewport.page) / total) as u16)
+        let total = viewport.max.saturating_add(viewport.page as usize);
+        let height = ((usize::from(track.height) * usize::from(viewport.page) / total) as u16)
             .clamp(1, track.height - 1);
-        let top = (u32::from(track.height - height) * u32::from(viewport.offset)
-            / u32::from(viewport.max)) as u16;
+        let top = (usize::from(track.height - height).saturating_mul(viewport.offset)
+            / viewport.max) as u16;
         Some(Self {
             pane,
             track,
@@ -88,13 +88,13 @@ impl Scrollbar {
             max: viewport.max,
         })
     }
-    pub fn offset(self, row: u16, grab: u16) -> u16 {
+    pub fn offset(self, row: u16, grab: u16) -> usize {
         let range = self.track.height - self.thumb.height;
         let position = row
             .saturating_sub(self.track.y)
             .saturating_sub(grab)
             .min(range);
-        (u32::from(position) * u32::from(self.max) / u32::from(range)) as u16
+        usize::from(position).saturating_mul(self.max) / usize::from(range)
     }
 }
 

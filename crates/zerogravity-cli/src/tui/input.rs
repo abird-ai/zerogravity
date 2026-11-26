@@ -31,6 +31,11 @@ pub(super) enum Target {
     AcceptModal,
     DismissModal,
     PromptMode,
+    Choice(usize),
+    ChoiceYaml,
+    EditorRow { start: usize, end: usize },
+    EditorBar(Scrollbar),
+    EditorViewport,
     ModalScroll(u16),
 }
 #[derive(Debug, Default)]
@@ -51,6 +56,22 @@ impl Hits {
             .find(|(rect, _)| rect.contains(pos))
             .map(|(_, target)| target)
     }
+    fn editor_point(&self, pos: Position, extend: bool) -> Option<Intent> {
+        self.0.iter().rev().find_map(|(rect, target)| {
+            if let Target::EditorRow { start, end } = target
+                && rect.contains(pos)
+            {
+                Some(Intent::EditPoint {
+                    start: *start,
+                    end: *end,
+                    column: pos.x - rect.x,
+                    extend,
+                })
+            } else {
+                None
+            }
+        })
+    }
     fn pane(&self, pos: Position) -> Option<Pane> {
         self.0.iter().rev().find_map(|(rect, target)| {
             if let Target::Pane(pane) = target
@@ -68,6 +89,8 @@ enum Capture {
     Press(Target),
     Split(Splitter),
     Scroll(Scrollbar, u16),
+    Editor,
+    EditorBar(Scrollbar, u16),
 }
 #[derive(Debug, Default)]
 pub(super) struct Pointer(Option<Capture>);
@@ -76,6 +99,13 @@ pub(super) enum Intent {
     Resize(Splitter, u16, u16),
     Scroll(Pane, Motion),
     ScrollModal(i16, u16),
+    EditPoint {
+        start: usize,
+        end: usize,
+        column: u16,
+        extend: bool,
+    },
+    EditScroll(Motion),
 }
 impl Pointer {
     pub fn cancel(&mut self) {
@@ -98,6 +128,19 @@ impl Pointer {
                 self.cancel();
                 match hits.at(pos)?.clone() {
                     Target::Split(split) => self.0 = Some(Capture::Split(split)),
+                    Target::EditorRow { .. } => {
+                        self.0 = Some(Capture::Editor);
+                        return hits.editor_point(pos, false);
+                    }
+                    Target::EditorBar(bar) => {
+                        let grab = if bar.thumb.contains(pos) {
+                            event.row - bar.thumb.y
+                        } else {
+                            bar.thumb.height / 2
+                        };
+                        self.0 = Some(Capture::EditorBar(bar, grab));
+                        return Some(Intent::EditScroll(Motion::At(bar.offset(event.row, grab))));
+                    }
                     Target::Scrollbar(bar) => {
                         let grab = if bar.thumb.contains(pos) {
                             event.row - bar.thumb.y
@@ -122,6 +165,10 @@ impl Pointer {
                     bar.pane,
                     Motion::At(bar.offset(event.row, *grab)),
                 )),
+                Some(Capture::Editor) => hits.editor_point(pos, true),
+                Some(Capture::EditorBar(bar, grab)) => {
+                    Some(Intent::EditScroll(Motion::At(bar.offset(event.row, *grab))))
+                }
                 _ => {
                     self.cancel();
                     None
@@ -140,6 +187,13 @@ impl Pointer {
                 } else {
                     3
                 };
+                if hits
+                    .0
+                    .iter()
+                    .any(|(rect, target)| *target == Target::EditorViewport && rect.contains(pos))
+                {
+                    return Some(Intent::EditScroll(Motion::Step(delta)));
+                }
                 if let Some(max) = hits.0.iter().rev().find_map(|(rect, target)| {
                     if let Target::ModalScroll(max) = target
                         && rect.contains(pos)

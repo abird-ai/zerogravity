@@ -1,6 +1,8 @@
 //! Native client shell. Runtime lifetime belongs to the outer host; view
 //! selection owns no model, task, listener or download.
+mod choice;
 mod controls;
+mod editor;
 mod input;
 mod layout;
 pub(crate) mod library;
@@ -489,6 +491,7 @@ impl App {
                         self.library.raw = false;
                         self.library.filter_config();
                     }
+                    View::Models => self.library.rows_mut(Kind::Models).set_query(value),
                     View::Logs => self.logs.query = value,
                     _ => {}
                 }
@@ -511,7 +514,7 @@ impl App {
                     View::Config => Some(Kind::Config),
                     _ => None,
                 };
-                if expected == Some(kind) && self.library.rows(kind).rows.iter().any(|row| row.key == key) {
+                if expected == Some(kind) && self.library.rows(kind).visible().any(|row| row.key == key) {
                     self.library.rows_mut(kind).selected = Some(key);
                     self.navigation.reveal_library(0);
                 }
@@ -635,6 +638,15 @@ impl App {
             Kind::Models
         };
         match action {
+            LibraryAction::Search => {
+                if self.navigation.view() == View::Models {
+                    self.navigation.form_value(
+                        FormKind::Search { view: View::Models },
+                        self.library.rows(kind).query().to_owned(),
+                    );
+                }
+                return;
+            }
             LibraryAction::Cycle | LibraryAction::SelectShelf(_) => {
                 if self.navigation.view() != View::Models {
                     return;
@@ -918,10 +930,18 @@ impl App {
             return;
         };
         match action {
-            SettingsAction::Open => {
+            SettingsAction::Open | SettingsAction::Choose => {
                 if let Some(Key::Setting(key)) = self.library.rows(kind).selected.as_ref() {
                     let value = self.library.value(key).unwrap_or("").to_owned();
-                    self.navigation.edit_setting(file, key.clone(), value);
+                    if action == SettingsAction::Choose
+                        && let Some(choices) = settings::choices(key)
+                        && let Some(effective) = self.library.effective_choice(key)
+                    {
+                        self.navigation
+                            .pick_setting(file, key.clone(), choices, effective, value);
+                    } else {
+                        self.navigation.edit_setting(file, key.clone(), value);
+                    }
                 }
             }
             SettingsAction::RawEdit => match file.raw() {
@@ -1029,6 +1049,10 @@ impl App {
             LogAction::Follow => self.logs.toggle_follow(),
             LogAction::Level => self.logs.cycle_level(),
             LogAction::Component => self.logs.cycle_component(),
+            LogAction::PickLevel => self.navigation.pick_level(self.logs.level()),
+            LogAction::PickComponent => self.navigation.pick_component(self.logs.component()),
+            LogAction::SetLevel(level) => self.logs.set_level(level),
+            LogAction::SetComponent(component) => self.logs.set_component(component),
             LogAction::Search => self.navigation.form_value(
                 FormKind::Search { view: View::Logs },
                 self.logs.query.clone(),
