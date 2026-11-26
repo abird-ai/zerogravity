@@ -13,29 +13,29 @@ Repository naming follows the short canonical vocabulary in
 concept rather than historical qualification shorthand.
 
 Cross-window continuation starts at [the canonical current handoff](../docs/CURRENT_HANDOFF.md).
-The latest [comprehensive takeover through UX-P-M1](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-26_UX_PM1.md)
-§§0–13 describes current architecture, accepted UX-1–10 and focused
-UX-P1/P2/P3/P4A, full default/error follow-up and live model metrics.
-UX-P and the model-local execution selector are accepted. The
-[standalone P4B prompt](../docs/NEXT_AGENT_2026-11-26_UX_P4B.md) is historical.
-OA-1 public serving transport, OA-2 semantic request/model-template boundary and OA-3 Models/stateless Responses text are accepted.
-Current unit: [OA-4 response/conversation resources](serving-and-speculation/NEXT_ITERATION_OPENAI_COMPATIBLE_SERVING.md#oa-4--responseconversation-resources).
-Read the live handoff for assembled acceptance and ordered OA-4 work;
-deeper M2 inspection stays optional and capability-bound. The comprehensive handoff §10.2 records known full-default
-link/gate/packaging and physical qualification caveats.
-Its Appendices A–E preserve the engineering index, unresolved snapshot,
-complete reachable Git ledger, every post-UX-9B landing narrative and
-the complete previous takeover main body. The retained
+The latest [comprehensive takeover through OA-4B](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-27_OA4B.md)
+§§0–13 describes original architecture, accepted Phase 1/UX-P and serving
+OA-1–3/OA-4A/B, actual evidence, limitations and next coherent work.
+Use the [standalone OA-4 continuation prompt](../docs/NEXT_AGENT_2026-11-27_OA4C.md).
+Current unit: [remaining OA-4 response/conversation resources](serving-and-speculation/NEXT_ITERATION_OPENAI_COMPATIBLE_SERVING.md#oa-4--responseconversation-resources):
+conversations/items and atomic context append, exact input-token count,
+bounded background stream/replay/resumption. OA-4B nonstream background
+polling/cancel is accepted; deeper M2 inspection stays optional and
+capability-bound. §10.2 records remaining packaging and physical
+qualification caveats (old P4B blockers resolved).
+Appendices A–E preserve the engineering index, unresolved checklist,
+complete reachable Git ledger, every post-M1 landing and plan delta,
+and the complete previous main body. The retained
+[UX-P-M1 pack](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-26_UX_PM1.md),
 [UX-9B pack](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-26_UX9B_EXIT.md),
 [Phase 1 exit pack](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-25_PHASE1_EXIT.md),
 [25 Nov foundations](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-25_FOUNDATIONS.md)
 and [24 Nov foundations](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-24_FOUNDATIONS.md)
-link all earlier original architecture, exact chronology and accepted/rejected
-experiments going back to the beginning. Earlier next-agent prompts are
-historical. Read the main body first, then the relevant appendices.
-The live ordered [full implementation plan](FULL_IMPLEMENTATION_PLAN.md),
-source, executed tests and owner TODOs remain authoritative; the handoff
-is a requested navigation snapshot, not a separate tracking system.
+link the original October design, exact chronology and accepted/rejected
+experiments. Old prompts are historical. Read the new main body first,
+then relevant appendices. The [full ordered plan](FULL_IMPLEMENTATION_PLAN.md),
+live source, executed tests and owning TODOs remain authoritative.
+The handoff is a requested navigation snapshot, not a separate tracking system.
 
 ## Layout
 

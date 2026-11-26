@@ -1,22 +1,24 @@
-# ZeroGravity current comprehensive handoff — 26 Nov 2026
+# ZeroGravity current comprehensive handoff — 27 Nov 2026
 
 Canonical cross-window entry point for `/home/pvl/spaces/abird/src/zerogravity`.
 
-**Latest complete takeover (26 Nov, through UX-P-M1):**
-[FULL_COMPREHENSIVE_HANDOFF_2026-11-26_UX_PM1.md](FULL_COMPREHENSIVE_HANDOFF_2026-11-26_UX_PM1.md).
-Read §§0–13 for historical design and gate context. The
-[standalone P4B takeover prompt](NEXT_AGENT_2026-11-26_UX_P4B.md)
-is historical; the active public serving checkpoint below owns continuation.
-Appendix D preserves all fifteen post-UX-9B landing narratives and
-changed paths; Appendix B records the literal pending-marker snapshot.
-The complete [UX-9B pack](FULL_COMPREHENSIVE_HANDOFF_2026-11-26_UX9B_EXIT.md),
+**Latest complete takeover (27 Nov, through OA-4B):**
+[FULL_COMPREHENSIVE_HANDOFF_2026-11-27_OA4B.md](FULL_COMPREHENSIVE_HANDOFF_2026-11-27_OA4B.md).
+Read §§0–13 first for current architecture, acceptance, limitations and next
+work. Use [the standalone OA-4 continuation prompt](NEXT_AGENT_2026-11-27_OA4C.md).
+OA-4B already committed at 89822f40 and the interrupted turn's accepted
+evidence was recovered; no production rework required. Remaining OA-4:
+conversations/items, exact input-token counting, bounded background replay.
+Appendix D preserves every post-M1 landing narrative, changed paths and
+exact engineering prose delta; Appendix B records unresolved markers.
+The preceding [UX-P-M1 pack](FULL_COMPREHENSIVE_HANDOFF_2026-11-26_UX_PM1.md),
+[UX-9B pack](FULL_COMPREHENSIVE_HANDOFF_2026-11-26_UX9B_EXIT.md),
 [Phase 1 exit pack](FULL_COMPREHENSIVE_HANDOFF_2026-11-25_PHASE1_EXIT.md)
-and preceding historical handoffs retain original design, exact
-implementation chronology, experiments, rejected choices, reusable
-primitives and all historical work items. Their old continuation
-prompts are historical. This is a one-time requested navigation
-snapshot; live source, tests, owning TODOs and ordered plan remain
-authoritative. Resume from the live checkpoint below.
+and earlier linked handoffs preserve the original design, chronology,
+experiments, rejected choices, reusable primitives and historical work items.
+Their earlier continuation prompts are historical. These requested snapshots
+are navigation, not a second task ledger. Live source, executed tests,
+owning TODOs and the ordered plan remain authoritative.
 
 **24 Nov priority decision:** start with the
 [full implementation plan](../plans/FULL_IMPLEMENTATION_PLAN.md). Complete
