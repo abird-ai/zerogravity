@@ -420,8 +420,8 @@ pub fn advance_single<A: Executor>(
     }
 }
 
-pub(super) struct ActiveEmbedding {
-    job: Box<crate::embedding::EmbeddingJob>,
+pub(super) struct ActiveFinite {
+    job: super::FiniteJob,
     _active: ActiveCharge,
 }
 
@@ -447,7 +447,7 @@ fn run<A: Executor>(
     config: WorkerConfig,
 ) {
     let mut active = VecDeque::<Active<A>>::with_capacity(config.active);
-    let mut encoders = VecDeque::<ActiveEmbedding>::with_capacity(if models.has_encoders() {
+    let mut finite = VecDeque::<ActiveFinite>::with_capacity(if models.has_finite_tasks() {
         config.active
     } else {
         0
@@ -474,8 +474,8 @@ fn run<A: Executor>(
             });
         }
         if !closing {
-            while active.len() + encoders.len() < config.active {
-                let next = if active.is_empty() && encoders.is_empty() {
+            while active.len() + finite.len() < config.active {
+                let next = if active.is_empty() && finite.is_empty() {
                     let wait = if matches!(config.policy, WorkPolicy::Sequential) {
                         30
                     } else {
@@ -495,8 +495,8 @@ fn run<A: Executor>(
                 };
                 let job = match job {
                     Work::Text(job) => job,
-                    Work::Encoder(job) => {
-                        encoders.push_back(ActiveEmbedding {
+                    Work::Finite(job) => {
+                        finite.push_back(ActiveFinite {
                             job,
                             _active: stats.enter(),
                         });
@@ -540,7 +540,7 @@ fn run<A: Executor>(
                 }
             }
         }
-        if active.is_empty() && encoders.is_empty() {
+        if active.is_empty() && finite.is_empty() {
             if closing {
                 if let Err(error) = models.retire_all() {
                     stats.failed.fetch_add(1, Ordering::Relaxed);
@@ -551,10 +551,10 @@ fn run<A: Executor>(
             }
             continue;
         }
-        if let Some(mut encoder) = encoders.pop_front()
-            && encoder.job.step(&stats)
+        if let Some(mut task) = finite.pop_front()
+            && task.job.step(&stats)
         {
-            encoders.push_back(encoder);
+            finite.push_back(task);
         }
         if active.is_empty() {
             continue;

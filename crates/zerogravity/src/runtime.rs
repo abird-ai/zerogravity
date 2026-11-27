@@ -67,6 +67,14 @@ impl Runtime {
     }
 
     /// Native encoder batch through the same engine and model registry.
+    /// Native bounded speech task through the existing registry and workers.
+    pub fn request_transcription(
+        &self,
+        request: crate::transcription::TranscriptionRequest,
+    ) -> std::result::Result<crate::transcription::TranscriptionReceipt, text::ServiceError> {
+        self.engine.request_transcription(request)
+    }
+
     pub fn request_embeddings(
         &self,
         request: crate::embedding::EmbeddingRequest,

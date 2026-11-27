@@ -373,6 +373,25 @@ impl<'a> ModelCatalog<'a> {
         })
     }
 
+    /// Trusted prepared speech owners on the original cold runtime slot.
+    /// No implicit model acquisition or public endpoint eligibility.
+    pub fn load_transcribers(
+        &self,
+        config: crate::transcription::TranscriptionConfig,
+        load: impl FnOnce(
+            &crate::embedding::ServingHost,
+        ) -> std::result::Result<
+            crate::transcription::SpeechModels,
+            crate::runtime::text::ServiceError,
+        >,
+    ) -> std::result::Result<(), crate::runtime::text::ServiceError> {
+        self.runtime.engine.configure_text(|| {
+            let worker = config.worker(self.runtime.engine.limits())?;
+            let host = crate::embedding::ServingHost::new(config.host_mib)?;
+            zerogravity_engine::router::Router::with_transcription(load(&host)?, host, worker)
+        })
+    }
+
     /// Exact observed registration, for any task kind in the catalog.
     pub fn unload_registration(&self, alias: &str, registration_id: u64) -> crate::Result<()> {
         self.runtime

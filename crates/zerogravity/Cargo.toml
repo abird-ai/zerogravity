@@ -21,6 +21,7 @@ model-gemma4 = ["dep:zerogravity-model-gemma4"]
 # Explicit unqualified source-bound encoder reference. Not part of all-models.
 model-bert-cpu-candidate = ["cpu", "cache", "dep:zerogravity-model-bert", "zerogravity-model-bert/source-binding"]
 # Analytic source/text reference; no tokenizer, trained model or native permit.
+model-gemma4-audio-candidate = ["cpu", "cache", "model-gemma4", "zerogravity-model-gemma4/audio-transcription"]
 model-gemma4-text-reference = ["model-gemma4", "zerogravity-model-gemma4/text-reference"]
 model-gemma4-cpu-candidate = ["cpu", "cache", "model-gemma4", "zerogravity-model-gemma4/execution"]
 # Explicit full-source HIP diagnostic; no default inference eligibility.

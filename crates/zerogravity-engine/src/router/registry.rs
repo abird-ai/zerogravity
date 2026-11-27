@@ -10,6 +10,7 @@ use crate::model_instance::{
     execution::{Executor, ModelHandle, ModelRetirement},
 };
 use crate::state_cache::{PrefixCacheEviction, PrefixSharingScope};
+use crate::transcription::SpeechRecognizer;
 use crate::{
     Error, Result,
     diagnostics::{ModelCapabilities, ModelLifecycle, ModelSnapshot},
@@ -44,12 +45,14 @@ static NEXT_REGISTRATION: AtomicU64 = AtomicU64::new(1);
 enum RouteModel<M> {
     Text(M),
     Encoder(Arc<dyn EmbeddingEncoder>),
+    Speech(Arc<dyn SpeechRecognizer>),
 }
 impl<M: ModelHandle> RouteModel<M> {
     fn source(&self) -> SourceIdentity {
         match self {
             Self::Text(model) => model.model().source(),
             Self::Encoder(model) => model.source(),
+            Self::Speech(model) => model.source(),
         }
     }
 }
@@ -66,7 +69,7 @@ pub(super) struct Route<A: Executor> {
 impl<A: Executor> Route<A> {
     fn new(model: RouteModel<A::Model>) -> Result<Self> {
         let retire = A::selective_retirement();
-        let independent_retirement = matches!(&model, RouteModel::Encoder(_)) || retire.is_some();
+        let independent_retirement = !matches!(&model, RouteModel::Text(_)) || retire.is_some();
         let public_embeddings =
             matches!(&model, RouteModel::Encoder(encoder) if encoder.public_embeddings());
         let id = NEXT_REGISTRATION
@@ -191,7 +194,7 @@ impl<A: Executor> RouteControl for Route<A> {
                 .map_err(ServiceError::into_core),
             // Synchronous stateless encoder; the last admitted call has
             // completed. Original source/scratch owners drop normally.
-            RouteModel::Encoder(_) => Ok(()),
+            RouteModel::Encoder(_) | RouteModel::Speech(_) => Ok(()),
         };
         drop(model);
         self.state().lifecycle = if result.is_ok() {
@@ -244,12 +247,13 @@ impl Drop for SelectiveRetirement {
 
 pub(crate) struct Registry<A: Executor> {
     routes: BTreeMap<String, Arc<Route<A>>>,
-    has_encoders: bool,
+    has_finite_tasks: bool,
 }
 impl<A: Executor> Registry<A> {
     pub(super) fn new(
         models: BTreeMap<String, A::Model>,
         encoders: BTreeMap<String, Arc<dyn EmbeddingEncoder>>,
+        speech: BTreeMap<String, Arc<dyn SpeechRecognizer>>,
     ) -> Result<Self> {
         let mut routes = BTreeMap::<String, Arc<Route<A>>>::new();
         for (alias, model) in models {
@@ -260,7 +264,7 @@ impl<A: Executor> Registry<A> {
             };
             routes.insert(alias, route);
         }
-        let has_encoders = !encoders.is_empty();
+        let has_finite_tasks = !encoders.is_empty() || !speech.is_empty();
         for (alias, model) in encoders {
             let route = match routes.values().find(|route| route.matches_encoder(&model)) {
                 Some(route) => route.clone(),
@@ -268,14 +272,21 @@ impl<A: Executor> Registry<A> {
             };
             routes.insert(alias, route);
         }
+        for (alias, model) in speech {
+            let route=match routes.values().find(|route|matches!(route.model(),Some(RouteModel::Speech(current)) if Arc::ptr_eq(&current,&model))){
+                Some(route)=>route.clone(),
+                None=>Arc::new(Route::new(RouteModel::Speech(model))?),
+            };
+            routes.insert(alias, route);
+        }
         Ok(Self {
             routes,
-            has_encoders,
+            has_finite_tasks,
         })
     }
 
-    pub(super) fn has_encoders(&self) -> bool {
-        self.has_encoders
+    pub(super) fn has_finite_tasks(&self) -> bool {
+        self.has_finite_tasks
     }
 
     fn retire_route(&self, route: &Arc<Route<A>>) -> Result<Option<SelectiveRetirement>> {
@@ -347,6 +358,10 @@ pub(crate) trait Models: Send + Sync {
         alias: &str,
         public: bool,
     ) -> std::result::Result<(Arc<dyn EmbeddingEncoder>, ModelRead), ServiceError>;
+    fn acquire_speech(
+        &self,
+        alias: &str,
+    ) -> std::result::Result<(Arc<dyn SpeechRecognizer>, ModelRead), ServiceError>;
     fn begin_unload_registration(
         &self,
         alias: &str,
@@ -371,7 +386,7 @@ impl<A: Executor> Models for Registry<A> {
     fn model(&self, alias: &str) -> Option<Arc<dyn PreparedModel>> {
         match self.routes.get(alias)?.model()? {
             RouteModel::Text(model) => Some(model.erased()),
-            RouteModel::Encoder(_) => None,
+            RouteModel::Encoder(_) | RouteModel::Speech(_) => None,
         }
     }
     fn registration(&self, alias: &str) -> Option<RegisteredOwner> {
@@ -392,10 +407,10 @@ impl<A: Executor> Models for Registry<A> {
         let model = model;
         match model {
             RouteModel::Text(model) => Ok((model.erased(), reader)),
-            RouteModel::Encoder(_) => Err(ServiceError::new(
+            RouteModel::Encoder(_) | RouteModel::Speech(_) => Err(ServiceError::new(
                 400,
                 "unsupported_task",
-                "model is an encoder, not a text generator",
+                "model is not a text generator",
             )),
         }
     }
@@ -415,10 +430,30 @@ impl<A: Executor> Models for Registry<A> {
                 "not_found",
                 "encoder is not qualified for public serving",
             )),
-            RouteModel::Text(_) => Err(ServiceError::new(
+            RouteModel::Text(_) | RouteModel::Speech(_) => Err(ServiceError::new(
                 400,
                 "unsupported_task",
-                "model is a text generator, not an encoder",
+                "model is not an encoder",
+            )),
+        }
+    }
+    fn acquire_speech(
+        &self,
+        alias: &str,
+    ) -> std::result::Result<(Arc<dyn SpeechRecognizer>, ModelRead), ServiceError> {
+        let (model, reader) = self
+            .routes
+            .get(alias)
+            .ok_or_else(missing_model)?
+            .acquire()?;
+        let reader = reader;
+        let model = model;
+        match model {
+            RouteModel::Speech(model) => Ok((model, reader)),
+            _ => Err(ServiceError::new(
+                400,
+                "unsupported_task",
+                "model is not a speech recognizer",
             )),
         }
     }
@@ -490,6 +525,7 @@ impl<A: Executor> Models for Registry<A> {
                                 max_token_bytes: Some(prepared.max_token_bytes()),
                                 prefill: Some(A::prefill(&model)),
                                 embedding_dimensions: None,
+                                transcription: false,
                                 chat_allowed: prepared.validate_chat().is_ok(),
                                 details: A::describe_model(&model)?,
                             }
@@ -500,6 +536,17 @@ impl<A: Executor> Models for Registry<A> {
                             max_token_bytes: None,
                             prefill: None,
                             embedding_dimensions: Some(model.dimensions()),
+                            transcription: false,
+                            chat_allowed: false,
+                            details: model.describe()?,
+                        },
+                        RouteModel::Speech(model) => ModelCapabilities {
+                            max_context: model.max_context(),
+                            vocabulary_size: model.vocabulary_size(),
+                            max_token_bytes: None,
+                            prefill: None,
+                            embedding_dimensions: None,
+                            transcription: true,
                             chat_allowed: false,
                             details: model.describe()?,
                         },

@@ -140,6 +140,7 @@ pub struct ModelCapabilities {
     pub prefill: Option<Prefill>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub embedding_dimensions: Option<usize>,
+    pub transcription: bool,
     /// Endpoint policy only; exact input/shape validation still applies.
     pub chat_allowed: bool,
     pub details: ModelDetails,

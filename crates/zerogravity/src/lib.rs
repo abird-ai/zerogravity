@@ -26,6 +26,7 @@ pub mod runtime;
 #[cfg(feature = "serve")]
 pub mod serving;
 pub mod smart_config;
+pub mod transcription;
 pub use runtime::{Runtime, RuntimeBuilder};
 pub use zerogravity_core::context_filter;
 pub use zerogravity_core::context_snapshot;

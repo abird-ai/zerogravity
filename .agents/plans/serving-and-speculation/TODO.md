@@ -234,11 +234,19 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   74,392,844 bytes, existing two learned audio cases and cancellation/
   result retirement passed. Focused222/0/14 strict lint; no ASR claim.
 - [x] OA-7B assembled workspace gate: 2,591/0/111 (322 Rust suites, 679s), complete isolated gate passed.
-- [ ] OA-7C: original model-owned audio prompt/template, genuine speech,
-  actual native transcription parity through shared Runtime/registry/
-  scheduler/receipt, joined lifecycle. OA-7D bounded multipart public
-  transcription after qualification; translation/synthesis/streaming
-  only actual supported capability. No second source/runtime or fake text.
+- [x] OA-7C implementation: original source-bound audio prompt/tokenizer,
+  native typed transcript/usage/finish and cooperative finite speech
+  steps in original Runtime/registry/FIFO/worker/receipt; mixed task
+  admission, cancellation and joined retirement. Actual local synthesized
+  speech independent reference "Hello world"; native prompt exact match.
+  Focused247/0/2, strict lint. No new download or public eligibility.
+- [x] OA-7C native learned consumer: actual native SDK "Hello world", input=41, output=3 including stop, finish=Stop; 263.484s completion, full real test passed 292.62s (including cancellation/retirement).
+- [x] OA-7C assembled workspace gate: 2,593/0/112 (324 Rust suites, 617s), complete isolated gate passed.
+- [ ] OA-7D bounded multipart public transcription through original
+  receipt with explicit actual adapter eligibility; natural speech/general
+  quality qualification before built-in production model promotion.
+  Translation/synthesis/streaming only actual supported capability.
+  No second source/runtime or fake text.
 
 ### Current continuation — 22 Nov 2026
 

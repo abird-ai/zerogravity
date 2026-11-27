@@ -1487,3 +1487,251 @@ fn encoder_cancel_and_domain_refusal_never_publish_a_partial_batch() {
     drop((router, encoder));
     assert_eq!(host.serving_bytes(), baseline);
 }
+
+use crate::transcription::{
+    SpeechRecognizer, SpeechSession, TranscriptionFinish, TranscriptionRequest, TranscriptionUsage,
+};
+
+struct SpeechProbe {
+    source: SourceIdentity,
+    memory: GlobalResourceLease,
+    start: Arc<Gate>,
+    terminal: Arc<Gate>,
+}
+impl SpeechProbe {
+    fn new(host: &HostPool, start: Arc<Gate>, terminal: Arc<Gate>) -> Arc<Self> {
+        Arc::new(Self {
+            source: SourceIdentity::for_new_allocation().unwrap(),
+            memory: host
+                .admit("speech", "source", AllocationClass::ImmutableWeights, 64)
+                .unwrap(),
+            start,
+            terminal,
+        })
+    }
+}
+impl SpeechRecognizer for SpeechProbe {
+    fn source(&self) -> SourceIdentity {
+        self.source
+    }
+    fn max_samples(&self) -> usize {
+        16000
+    }
+    fn max_context(&self) -> usize {
+        128
+    }
+    fn vocabulary_size(&self) -> u64 {
+        4
+    }
+    fn max_output_tokens(&self) -> usize {
+        8
+    }
+    fn max_output_bytes(&self) -> usize {
+        128
+    }
+    fn validate_admission(
+        &self,
+        a: &zerogravity_core::resource_arbiter::TransferAdmission,
+    ) -> crate::Result<()> {
+        self.memory
+            .bytes_in_domain(&a.arbiter, &a.resource)
+            .map(|_| ())
+    }
+    fn start(
+        self: Arc<Self>,
+        _: &[f32],
+        _: u32,
+        _: usize,
+        _: usize,
+        _: &AtomicBool,
+    ) -> crate::Result<Box<dyn SpeechSession>> {
+        self.start.worker();
+        Ok(Box::new(SpeechProbeSession {
+            model: self,
+            steps: 0,
+        }))
+    }
+}
+struct SpeechProbeSession {
+    model: Arc<SpeechProbe>,
+    steps: usize,
+}
+impl SpeechSession for SpeechProbeSession {
+    fn step(
+        &mut self,
+        out: &mut String,
+        _: &AtomicBool,
+    ) -> crate::Result<Option<TranscriptionUsage>> {
+        self.steps += 1;
+        if self.steps < 2 {
+            return Ok(None);
+        }
+        self.model.terminal.worker();
+        out.push_str("probe");
+        Ok(Some(TranscriptionUsage {
+            input_tokens: 5,
+            output_tokens: 2,
+            finish: TranscriptionFinish::Stop,
+        }))
+    }
+}
+fn speech_request() -> TranscriptionRequest {
+    TranscriptionRequest {
+        model: "speech-alias".into(),
+        samples: vec![0.; 320],
+        sample_rate: 16000,
+        max_tokens: 2,
+    }
+}
+
+#[test]
+fn speech_uses_original_mixed_worker_fifo_and_retirement() {
+    let host = HostPool::isolated(256).unwrap();
+    let baseline = host.serving_bytes();
+    let first = Arc::new(Gate::default());
+    let terminal = Arc::new(Gate::default());
+    let speech: Arc<dyn SpeechRecognizer> =
+        SpeechProbe::new(&host, first.clone(), terminal.clone());
+    let text = MockModel::new(&host, None);
+    let encoder: Arc<dyn EmbeddingEncoder> = EncoderProbe::new(&host, None, None);
+    let mut router = Router::with_executor_and_finite_tasks::<HostLogits>(
+        BTreeMap::from([("model".into(), text.clone() as Arc<dyn LogitModel>)]),
+        BTreeMap::from([("embed".into(), encoder)]),
+        BTreeMap::from([
+            ("speech".into(), speech.clone()),
+            ("speech-alias".into(), speech),
+        ]),
+        host.clone(),
+        mixed_config(),
+    )
+    .unwrap();
+    assert_eq!(router.serving_model_ids().collect::<Vec<_>>(), ["model"]);
+    let speech_snapshot = router
+        .catalog_snapshot()
+        .unwrap()
+        .into_iter()
+        .find(|s| s.aliases.contains(&"speech".to_owned()))
+        .unwrap();
+    assert!(speech_snapshot.capabilities.as_ref().unwrap().transcription);
+    let mut wrong = speech_request();
+    wrong.model = "embed".into();
+    assert_eq!(
+        router.request_transcription(wrong).err().unwrap().code,
+        "unsupported_task"
+    );
+    let mut wrong = speech_request();
+    wrong.sample_rate = 48000;
+    assert_eq!(
+        router.request_transcription(wrong).err().unwrap().code,
+        "invalid_input"
+    );
+    let speech = router.request_transcription(speech_request()).unwrap();
+    first.entered();
+    let generation = router.request(request("a")).unwrap();
+    assert_eq!(generation.id, speech.id + 1);
+    assert_eq!(router.queue_snapshot().pending, 1);
+    assert_eq!(
+        router
+            .request_embeddings(embedding_request("embed", &[1]))
+            .err()
+            .unwrap()
+            .code,
+        "queue_full"
+    );
+    first.release();
+    terminal.entered();
+    assert!(
+        text.log
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(_, stage, _)| *stage == "last")
+    );
+    let embedding = router
+        .request_embeddings(embedding_request("embed", &[2]))
+        .unwrap();
+    terminal.release();
+    let result = speech
+        .events
+        .recv_timeout(Duration::from_secs(5))
+        .unwrap()
+        .unwrap();
+    assert_eq!(result.text(), "probe");
+    assert_eq!(
+        result.usage(),
+        TranscriptionUsage {
+            input_tokens: 5,
+            output_tokens: 2,
+            finish: TranscriptionFinish::Stop
+        }
+    );
+    assert_eq!(done(&generation), "AB");
+    let vectors = embedding
+        .events
+        .recv_timeout(Duration::from_secs(5))
+        .unwrap()
+        .unwrap();
+    assert_eq!(vectors.values(), [2., 1.]);
+    drop((speech, generation, embedding, vectors));
+    let stats = router.scheduler_snapshot().counters;
+    assert_eq!(stats.transcription_requests, 1);
+    assert_eq!(stats.transcription_input_tokens, 5);
+    assert_eq!(stats.transcription_output_tokens, 2);
+    assert_eq!(stats.embedding_requests, 1);
+    assert_eq!(stats.peak, 2);
+    router
+        .begin_unload_registration("speech-alias", speech_snapshot.registration_id)
+        .unwrap()
+        .unwrap()
+        .finish()
+        .unwrap();
+    assert!(router.registration("speech").is_none());
+    router.shutdown().unwrap();
+    drop((router, text));
+    assert!(host.serving_bytes() > baseline);
+    drop(result);
+    assert_eq!(host.serving_bytes(), baseline);
+}
+
+#[test]
+fn speech_cancelled_terminal_and_foreign_domain_refuse() {
+    let host = HostPool::isolated(256).unwrap();
+    let foreign = HostPool::isolated(256).unwrap();
+    let baseline = host.serving_bytes();
+    let start = Arc::new(Gate::default());
+    let terminal = Arc::new(Gate::default());
+    let wrong: Arc<dyn SpeechRecognizer> =
+        SpeechProbe::new(&foreign, start.clone(), terminal.clone());
+    assert!(
+        Router::with_transcription(
+            BTreeMap::from([("wrong".into(), wrong)]),
+            host.clone(),
+            mixed_config()
+        )
+        .is_err()
+    );
+    assert_eq!(host.serving_bytes(), baseline);
+    let speech: Arc<dyn SpeechRecognizer> =
+        SpeechProbe::new(&host, start.clone(), terminal.clone());
+    let mut router = Router::with_transcription(
+        BTreeMap::from([("speech-alias".into(), speech)]),
+        host.clone(),
+        mixed_config(),
+    )
+    .unwrap();
+    let reply = router.request_transcription(speech_request()).unwrap();
+    start.entered();
+    start.release();
+    terminal.entered();
+    reply.cancel();
+    terminal.release();
+    assert!(reply.events.recv_timeout(Duration::from_secs(5)).is_err());
+    assert_eq!(
+        router.scheduler_snapshot().counters.transcription_requests,
+        0
+    );
+    drop(reply);
+    router.shutdown().unwrap();
+    drop(router);
+    assert_eq!(host.serving_bytes(), baseline);
+}

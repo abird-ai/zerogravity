@@ -413,6 +413,9 @@ pub(super) fn details(model: &ModelSnapshot) -> Vec<String> {
         if let Some(prefill) = cap.prefill {
             lines.push(format!("Prefill: {prefill:?}"));
         }
+        if cap.transcription {
+            lines.push("Transcription: native".into());
+        }
         if let Some(dimensions) = cap.embedding_dimensions {
             lines.push(format!("Embedding dimensions: {dimensions}"));
         }

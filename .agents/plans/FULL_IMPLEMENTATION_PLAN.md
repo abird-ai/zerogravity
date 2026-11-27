@@ -834,8 +834,11 @@ parity (4/16 x1536 rows), cancellation and ownership pass. Focused
 conditioned prefill and cached decode, actual independent full vocabulary
 logit parity (524288 values, max abs0.000320435), cancellation and
 retirement pass; focused222/0/14 strict lint. Assembled:
-2,591/0/111 (322 Rust suites, 679s), complete isolated gate passed. OA-7C actual model template/genuine speech and
-shared Runtime transcription; no public endpoint or ASR claim yet.
+2,591/0/111 (322 Rust suites, 679s), complete isolated gate passed. OA-7C original model prompt/tokenizer and bounded native speech task
+through existing Runtime; independent local synthesized speech transcript
+and exact native prompt. Native learned: actual native SDK "Hello world", input=41, output=3 including stop, finish=Stop; 263.484s completion, full real test passed 292.62s (including cancellation/retirement).
+Focused247/0/2 strict lint. Assembled: 2,593/0/112 (324 Rust suites, 617s), complete isolated gate passed.
+OA-7D public wire remains open; no natural-speech quality claim.
 Preserve the original runtime, admission and listener owner.
 
 - [ ] Close the [OpenAI-compatible serving iteration](serving-and-speculation/NEXT_ITERATION_OPENAI_COMPATIBLE_SERVING.md):

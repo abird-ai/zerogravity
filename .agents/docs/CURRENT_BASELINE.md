@@ -5,6 +5,17 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 27 Nov — OA-7C native transcription
+
+Actual source-authenticated audio prompt, deterministic greedy native
+transcription in original Runtime/registry/worker/receipt; same audio/
+language source and actual model state. Independent local synthesized
+speech reference "Hello world" (12186 mono16k samples,19 audio rows,
+41 prompt IDs,3 output IDs including stop). Native prompt exact match.
+Native learned consumer: actual native SDK "Hello world", input=41, output=3 including stop, finish=Stop; 263.484s completion, full real test passed 292.62s (including cancellation/retirement). Focused247/0/2, strict
+Clippy. Assembled: 2,593/0/112 (324 Rust suites, 617s), complete isolated gate passed. No public speech, natural-speech
+accuracy, production throughput, TTS/translation or GPU claim.
+
 ## 27 Nov — OA-7B shared original audio/language execution
 
 One authenticated original window source for Gemma4 E2B audio+text;

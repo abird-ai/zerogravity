@@ -1686,13 +1686,23 @@ cancellation and independent retirement, existing two audio cases
 passed. Focused 222/0/14 strict lint. Assembled: 2,591/0/111 (322 Rust suites, 679s), complete isolated gate passed.
 No trained speech accuracy, GPU parity or public eligibility.
 
-**OA-7C:** original model-owned audio prompt/template, genuine speech
-sample and independent transcript/decoder qualification. Integrate
-prepared audio-language model through existing Runtime/registry/
-scheduler/receipt; real admission, cancellation and joined retirement.
-No second source, state, scheduler or fake decoder. **OA-7D:** only
-then public bounded multipart transcription and supported controls.
-Translation/speech/streaming only with actual capability.
+**OA-7C (27 Nov): native transcription.** Explicit original source/
+template/tokenizer, fixed supported instruction-first non-thinking
+ASR turn, actual audio row count and BOA/EOA expansion. Bounded mono
+16kHz PCM; deterministic greedy original stop IDs, complete private
+prefill then one decode quantum per round. Same registry and finite
+active queue as embeddings, shared generation FIFO/IDs/limits,
+typed transcript receipt, usage/stop/length, charged input/output and
+actual original decoder lifecycle/cancellation. Native-only speech
+catalog; explicit Gemma4 CPU candidate, no default or public grant.
+Independent original HF on local synthesized "Hello world" (12186
+samples,19 audio rows,41 prompt IDs,3 generated incl stop); actual
+native prompt exact match. Native learned: actual native SDK "Hello world", input=41, output=3 including stop, finish=Stop; 263.484s completion, full real test passed 292.62s (including cancellation/retirement).
+Focused247/0/2 strict lint; assembled: 2,593/0/112 (324 Rust suites, 617s), complete isolated gate passed.
+**OA-7D:** bounded multipart transcription and supported controls
+through same native receipt with explicit eligibility, never fake
+transcript. Natural speech/general quality qualification before built-in
+production capability; translation/synthesis/streaming only real support.
 
 ### OA-8 — Images
 

@@ -9,6 +9,7 @@ license = "MIT"
 [features]
 default = []
 audio-reference = ["text-reference", "dep:serde"]
+audio-transcription = ["audio-reference", "text-tokenizer"]
 text-reference = ["dep:zerogravity-cpu", "dep:zerogravity-artifacts", "dep:sha2", "zerogravity-cpu/cache", "zerogravity-artifacts/cache"]
 text-tokenizer = ["text-reference", "dep:tokenizers", "dep:serde"]
 

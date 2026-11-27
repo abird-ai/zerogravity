@@ -23,7 +23,10 @@ no ASR/TTS/public audio eligibility.
 OA-7B shares one original authenticated window source between audio and
 language; actual learned F32 audio-conditioned prefill and cached decode
 match the independent original text model; full workspace gate passed.
-No transcript/Runtime/public audio eligibility yet.
+OA-7C native transcription task, model-owned audio prompt and tokenizer
+through original Runtime implemented; focused checks pass. Actual
+speech reference and native learned SDK transcription/cancellation pass;
+complete assembled gate passed. No public audio eligibility.
 Appendix D preserves every post-M1 landing narrative, changed paths and
 exact engineering prose delta; Appendix B records unresolved markers.
 The preceding [UX-P-M1 pack](FULL_COMPREHENSIVE_HANDOFF_2026-11-26_UX_PM1.md),
@@ -51,7 +54,88 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — OA-7B shared original audio/language execution (27 Nov)
+### Current checkpoint — OA-7C native transcription through Runtime (27 Nov)
+
+Started clean signed 642b72f3 on sole L5 main. Reused cached original
+Gemma4 E2B and OA-7A/B learned encoder/decoder evidence. No new model,
+SDK or reference weights downloaded. MiniLM OA-6 remains open.
+
+Family audio-transcription feature authenticates original snapshot,
+chat_template.jinja, tokenizer/config/generation files, shares original
+audio/language source and tokenizer with a Mutex only around tokenization.
+Fixed supported single-user non-thinking audio turn: "Transcribe the
+following speech segment in its original language." then original audio
+placeholder expanded to actual encoder rows with BOA/EOA, original BOS/
+turn/model markers. Original source-owned tokenizer; no generic Jinja
+engine, arbitrary prompt, silent truncation or second state owner.
+Count actual prompt before audio forward; context<=1024, output<=64,
+original mono normalized 16kHz PCM, actual model sample limit 480000,
+additional Runtime aggregate input byte cap (default 1MiB). Greedy
+first-max selection explicitly chosen, original stop IDs1/106/50,
+one private native prefill and one selected/decode step per subsequent
+scheduler quantum, bounded output and decoded source text. Stop token
+included in actual output usage, excluded from transcript. Length
+completion distinct from stop. Retain actual source/decoder state and
+resource credits through cancellation. This is F32 reference execution,
+not optimized ASR speed or natural-speech quality qualification.
+
+Native TranscriptionRequest/Transcript/TranscriptionReceipt, model
+SpeechRecognizer/SpeechSession and typed usage/finish. Original registry
+adds speech owners, alias dedup/retirement, model snapshot transcription
+capability; no public model visibility. Existing finite worker active
+queue (embedding + speech) and common FIFO/active limit/request IDs/
+cancellation/charged typed terminal. Atomic finite prefill, then one
+bounded output step per round; no new worker, scheduler or HTTP math.
+Validate input rate/range/finiteness/bytes/output bounds before enqueue,
+same admitted physical resource domain at registration, retained input
+capacity and output credit before allocation. Reject adapter partial
+terminal/usage/extent or excess steps. No new state publication protocol.
+Native Rust facade load_transcribers, request_transcription, explicit
+model-gemma4-audio-candidate feature, not default/all-models. TUI/Web
+cold capability metadata. No wire audio, translation/TTS/streaming.
+
+Local speech fixture: installed eSpeak NG (no acquisition), "Hello world."
+en-us, speed190, existing ffmpeg PCM mono16k conversion, active amplitude
+>200 trim with 640/1280 sample leading/trailing margins. 12186 samples
+(~0.762s),19 real audio rows, 41 prompt IDs. Independent
+tools/gemma4-audio-reference/speech.py: actual source-bound original HF
+feature extraction/audio tower/projector + Jinja template + original
+text model F32 greedy continuation. Cached Jinja2 closure added to
+already available Transformers/PyTorch environment. Original initial
+0.342s "Hi." audio-first prompt produced refusal/length; changed to
+model-card instruction-first structure and clearer spoken phrase,
+reference yields "Hello world", IDs [9259,1902,106], stop. Do not
+claim broad speech recognition from one synthesized utterance.
+Native prompt IDs exactly match actual original template rendering;
+native Runtime loaded, 149,899,750 bytes retained at preparation.
+Actual native learned consumer: actual native SDK "Hello world", input=41, output=3 including stop, finish=Stop; 263.484s completion, full real test passed 292.62s (including cancellation/retirement).
+
+Focused 247/0/2 (26 suites), original mixed generation/embedding/speech
+FIFO/active slots, IDs, alias/visibility, foreign domain, cancellation
+and retirement passed. Initial strict lint collapsible if corrected,
+strict Clippy passed. Assembled gate: 2,593/0/112 (324 Rust suites, 617s), complete isolated gate passed.
+Logs target/oa7c-reference-asr.log, target/oa7c-learned.log,
+target/oa7c-focused.log, target/oa7c-clippy.log, target/oa7c-assembled.log.
+Native real SDK test feature model-gemma4-audio-candidate, release
+locked/offline --test transcription_candidate -- --ignored --exact
+actual_spoken_transcription_through_runtime --nocapture --test-threads=1.
+Existing env ZG_GEMMA4_AUDIO_SNAPSHOT, ZG_GEMMA4_AUDIO_CACHE_BYTES,
+optional cache root and ZG_GEMMA4_SPEECH_REFERENCE actual independent
+JSON. Ref script takes local original snapshot files dir, mono16k
+PCM16 WAV and JSON output; no download.
+
+Next OA-7D: bounded multipart PCM/WAV ingestion and supported public
+transcription control projection through original typed receipt, actual
+qualified adapter eligibility only. Qualify natural speech/general
+quality before promoting a built-in production model; currently
+explicit finite F32 candidate only. Translation, TTS, streaming remain
+separate actual capability requirements. No second execution owner.
+L5 disk availability recovered to approximately 23 GiB during the run;
+no cleanup was performed by this agent. Continue monitoring and preserve
+unrelated artifacts and existing cache policy. OA-6 actual MiniLM remains
+blocked on explicit acquisition authorization.
+
+### Prior checkpoint — OA-7B shared original audio/language execution (27 Nov)
 
 Started from clean signed cec65c4f on sole L5 main. Reused OA-7A original
 cached E2B source and independent audio reference. No model/SDK acquisition.

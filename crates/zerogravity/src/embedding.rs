@@ -39,12 +39,19 @@ impl Default for EncoderConfig {
 }
 impl EncoderConfig {
     pub(crate) fn worker(self, limits: SchedulerLimits) -> Result<WorkerConfig, ServiceError> {
+        self.worker_with_output(limits, 1)
+    }
+    pub(crate) fn worker_with_output(
+        self,
+        limits: SchedulerLimits,
+        output: usize,
+    ) -> Result<WorkerConfig, ServiceError> {
         validate_config(
             1,
             self.workers,
             self.active_per_worker,
             self.max_context,
-            1,
+            output,
             self.max_pending,
         )?;
         if self
@@ -63,7 +70,7 @@ impl EncoderConfig {
             workers: self.workers,
             active: self.active_per_worker,
             context: self.max_context,
-            output: 1,
+            output,
             max_pending: self.max_pending,
             policy: WorkPolicy::Sequential,
         })

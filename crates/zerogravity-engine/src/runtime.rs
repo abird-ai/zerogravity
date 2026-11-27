@@ -389,6 +389,14 @@ impl Runtime {
         })
     }
     /// Native finite encoder batch on the same admitted runtime/router.
+    pub fn request_transcription(
+        &self,
+        request: crate::transcription::TranscriptionRequest,
+    ) -> std::result::Result<crate::transcription::TranscriptionReceipt, ServiceError> {
+        self.with_text_router(|router| {
+            router.request_transcription_with(request, self.inner.limits.max_input_bytes)
+        })
+    }
     pub fn request_embeddings(
         &self,
         request: crate::embedding::EmbeddingRequest,

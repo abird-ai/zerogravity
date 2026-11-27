@@ -335,6 +335,43 @@ impl Gemma4TextTokenizer {
             _admission: admission,
         })
     }
+    /// Exact supported single-user, non-thinking audio turn from the
+    /// authenticated E2B chat template. The processor's one audio marker
+    /// is expanded to the actual number of completed soft-token rows.
+    #[cfg(feature = "audio-transcription")]
+    pub(crate) fn transcription_prompt(
+        &self,
+        rows: usize,
+        limit: usize,
+        cancelled: Option<&AtomicBool>,
+    ) -> Result<Gemma4EncodedText> {
+        let _operation = operation(&self.busy)?;
+        cancel(cancelled)?;
+        if !(1..=750).contains(&rows) || limit == 0 || limit > 8192 {
+            return Err(Error::Limit("Gemma audio prompt extent".into()));
+        }
+        let admission = admit(&self.host, OUTPUT_BYTES, AllocationClass::Output)?;
+        let rendered = format!(
+            "<bos><|turn>user\nTranscribe the following speech segment in its original language.<|audio>{}<audio|><turn|>\n<|turn>model\n",
+            "<|audio|>".repeat(rows)
+        );
+        let encoded = self
+            .inner
+            .encode(rendered, false)
+            .map_err(|e| Error::Malformed(format!("Gemma transcription tokenizer: {e}")))?;
+        if encoded.len() > limit || encoded.get_ids().iter().any(|&id| id >= 262144) {
+            return Err(Error::Limit(
+                "Gemma transcription prompt exceeds context".into(),
+            ));
+        }
+        let ids = encoded.get_ids().to_vec();
+        cancel(cancelled)?;
+        Ok(Gemma4EncodedText {
+            ids,
+            _admission: admission,
+        })
+    }
+
     /// Source vocabulary lookup; no expected IDs or parsed owner escape.
     pub fn token_id(&self, piece: &str) -> Result<u32> {
         if piece.len() > 93 {

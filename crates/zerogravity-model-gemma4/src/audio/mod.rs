@@ -5,6 +5,12 @@
 mod config;
 mod frontend;
 mod language;
+#[cfg(feature = "audio-transcription")]
+mod transcription;
+#[cfg(feature = "audio-transcription")]
+pub use transcription::{
+    Gemma4Transcriber, Gemma4Transcript, Gemma4Transcription, TranscriptFinish,
+};
 mod layer;
 pub use language::{AudioLanguageSession, Gemma4AudioLanguage};
 mod source;
@@ -189,6 +195,19 @@ impl Gemma4AudioEncoder {
     }
     pub(crate) fn verified_source(&self) -> &VerifiedTensorSource {
         &self.source
+    }
+    #[cfg(feature = "audio-transcription")]
+    pub(crate) fn validate_admission(&self, admission: &TransferAdmission) -> Result<()> {
+        self._parameters
+            .bytes_in_domain(&admission.arbiter, &admission.resource)?;
+        Ok(())
+    }
+    #[cfg(feature = "audio-transcription")]
+    pub(crate) fn token_count(&self, samples: usize) -> Result<usize> {
+        if samples > self.max_samples() {
+            return Err(Error::Limit("Gemma audio sample extent".into()));
+        }
+        Ok(MelFrontend::frames(&self.config.frontend, samples)?.div_ceil(4))
     }
     pub fn max_samples(&self) -> usize {
         self.config.max_samples

@@ -18,5 +18,6 @@ pub mod scheduler;
 pub mod session;
 pub mod state_cache;
 pub mod task;
+pub mod transcription;
 pub use request::{TaskInput, TaskRequest, TaskTarget, TextControls, TextTask};
 pub use runtime::{Runtime, RuntimeBuilder};

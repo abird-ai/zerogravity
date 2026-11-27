@@ -15,6 +15,9 @@ use crate::model_instance::execution::*;
 use crate::model_instance::{EmbeddingEncoder, LogitModel, ModelInstance};
 #[cfg(test)]
 use crate::model_instance::{PreparedModel, TextSession};
+use crate::transcription::{
+    MAX_TRANSCRIPT_BYTES, SpeechJob, SpeechRecognizer, TranscriptionReceipt, TranscriptionRequest,
+};
 use std::collections::{BTreeMap, VecDeque};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
@@ -603,13 +606,31 @@ pub struct Scheduled {
 #[allow(clippy::large_enum_variant)]
 pub(crate) enum Work {
     Text(Scheduled),
+    Finite(FiniteJob),
+}
+pub(crate) enum FiniteJob {
     Encoder(Box<EmbeddingJob>),
+    Speech(Box<SpeechJob>),
+}
+impl FiniteJob {
+    fn is_cancelled(&self) -> bool {
+        match self {
+            Self::Encoder(j) => j.is_cancelled(),
+            Self::Speech(j) => j.is_cancelled(),
+        }
+    }
+    pub(super) fn step(&mut self, stats: &WorkStats) -> bool {
+        match self {
+            Self::Encoder(j) => j.step(stats),
+            Self::Speech(j) => j.step(stats),
+        }
+    }
 }
 impl Work {
     pub(crate) fn is_cancelled(&self) -> bool {
         match self {
             Self::Text(job) => job.cancel.is_cancelled(),
-            Self::Encoder(job) => job.is_cancelled(),
+            Self::Finite(job) => job.is_cancelled(),
         }
     }
 }
@@ -636,6 +657,7 @@ impl Router {
         let router = Self::start::<HostLogits>(
             BTreeMap::new(),
             BTreeMap::new(),
+            BTreeMap::new(),
             host.clone(),
             WorkerConfig {
                 workers: 1,
@@ -652,6 +674,7 @@ impl Router {
     #[cfg(test)]
     pub(crate) fn retirement_test<A: Executor>(host: HostPool) -> Self {
         Self::start::<A>(
+            BTreeMap::new(),
             BTreeMap::new(),
             BTreeMap::new(),
             host,
@@ -730,15 +753,65 @@ impl Router {
         host: HostPool,
         config: WorkerConfig,
     ) -> Result<Self, ServiceError> {
+        Self::with_executor_and_finite_tasks::<A>(models, encoders, BTreeMap::new(), host, config)
+    }
+    pub fn with_transcription(
+        speech: BTreeMap<String, Arc<dyn SpeechRecognizer>>,
+        host: HostPool,
+        config: WorkerConfig,
+    ) -> Result<Self, ServiceError> {
+        Self::with_executor_and_finite_tasks::<HostLogits>(
+            BTreeMap::new(),
+            BTreeMap::new(),
+            speech,
+            host,
+            config,
+        )
+    }
+    /// One alias registry and worker budget across decoder, embedding and speech tasks.
+    pub fn with_executor_and_finite_tasks<A: Executor>(
+        models: BTreeMap<String, A::Model>,
+        encoders: BTreeMap<String, Arc<dyn EmbeddingEncoder>>,
+        speech: BTreeMap<String, Arc<dyn SpeechRecognizer>>,
+        host: HostPool,
+        config: WorkerConfig,
+    ) -> Result<Self, ServiceError> {
         validate_config(
-            models.len().saturating_add(encoders.len()),
+            models
+                .len()
+                .saturating_add(encoders.len())
+                .saturating_add(speech.len()),
             config.workers,
             config.active,
             config.context,
             config.output,
             config.max_pending,
         )?;
-        validate_aliases(models.keys().chain(encoders.keys()).map(String::as_str))?;
+        validate_aliases(
+            models
+                .keys()
+                .chain(encoders.keys())
+                .chain(speech.keys())
+                .map(String::as_str),
+        )?;
+        for (alias, model) in &speech {
+            if !model.source().is_bound()
+                || model.max_context() == 0
+                || model.max_samples() == 0
+                || model.max_output_tokens() == 0
+                || model.vocabulary_size() == 0
+                || !(1..=MAX_TRANSCRIPT_BYTES).contains(&model.max_output_bytes())
+            {
+                return Err(ServiceError::new(
+                    400,
+                    "invalid_model",
+                    "unbound or unbounded speech recognizer",
+                ));
+            }
+            model
+                .validate_admission(&host.transfer_admission(alias, "speech")?)
+                .map_err(ServiceError::inference)?;
+        }
         for (alias, model) in &encoders {
             if !model.source().is_bound()
                 || model.max_context() == 0
@@ -832,11 +905,12 @@ impl Router {
                 _ => {}
             }
         }
-        Self::start::<A>(models, encoders, host, config)
+        Self::start::<A>(models, encoders, speech, host, config)
     }
     fn start<A: Executor>(
         models: BTreeMap<String, A::Model>,
         encoders: BTreeMap<String, Arc<dyn EmbeddingEncoder>>,
+        speech: BTreeMap<String, Arc<dyn SpeechRecognizer>>,
         host: HostPool,
         config: WorkerConfig,
     ) -> Result<Self, ServiceError> {
@@ -853,13 +927,13 @@ impl Router {
                 // One owner per distinct prepared model (at most alias count).
                 // Covers the additional route Arc/state and stable slot.
                 (arc_bytes::<registry::Route<A>>()? + fixed_size::<Arc<registry::Route<A>>>()?)
-                    .checked_mul((models.len() + encoders.len()) as u64)
+                    .checked_mul((models.len() + encoders.len() + speech.len()) as u64)
                     .ok_or_else(|| {
                         ServiceError::new(400, "size_overflow", "route owner inventory overflow")
                     })?,
             ])?,
         )?;
-        let models = Arc::new(registry::Registry::<A>::new(models, encoders)?);
+        let models = Arc::new(registry::Registry::<A>::new(models, encoders, speech)?);
         let stats = Arc::new(WorkStats::default());
         let queue = PendingQueue::new(host.clone(), config.max_pending)?;
         let rows = vecdeque_backing_bytes::<worker::Active<A>>(config.active)?;
@@ -889,10 +963,10 @@ impl Router {
         } else {
             rows
         };
-        let extra = if models.has_encoders() {
+        let extra = if models.has_finite_tasks() {
             pending::checked_sum(&[
                 extra,
-                vecdeque_backing_bytes::<worker::ActiveEmbedding>(config.active)?,
+                vecdeque_backing_bytes::<worker::ActiveFinite>(config.active)?,
             ])?
         } else {
             extra
@@ -1218,6 +1292,36 @@ impl Router {
             .map_err(|_| ServiceError::new(503, "id_exhausted", "request IDs exhausted"))
     }
 
+    pub fn request_transcription(
+        &self,
+        request: TranscriptionRequest,
+    ) -> Result<TranscriptionReceipt, ServiceError> {
+        self.request_transcription_with(request, MAX_INPUT_BYTES)
+    }
+    pub(crate) fn request_transcription_with(
+        &self,
+        request: TranscriptionRequest,
+        input_limit: usize,
+    ) -> Result<TranscriptionReceipt, ServiceError> {
+        let (model, reader) = self.models.acquire_speech(&request.model)?;
+        let reader = reader;
+        let model = model;
+        let context = self.config.context.min(model.max_context());
+        request.validate(
+            model.as_ref(),
+            input_limit.min(MAX_INPUT_BYTES),
+            context,
+            self.config.output,
+        )?;
+        let id = self.next_request_id()?;
+        let ticket = self.queue.reserve()?;
+        let (job, receipt) =
+            SpeechJob::prepare(request, model, reader, &self.host, &self.queue, id, context)?;
+        self.queue
+            .enqueue(ticket, Work::Finite(FiniteJob::Speech(job)))
+            .map_err(|(error, _)| error)?;
+        Ok(receipt)
+    }
     pub fn request_embeddings(
         &self,
         request: EmbeddingRequest,
@@ -1264,7 +1368,7 @@ impl Router {
         let (job, receipt) =
             EmbeddingJob::prepare(request, model, reader, &self.host, &self.queue, id, context)?;
         self.queue
-            .enqueue(ticket, Work::Encoder(job))
+            .enqueue(ticket, Work::Finite(FiniteJob::Encoder(job)))
             .map_err(|(error, _)| error)?;
         Ok(receipt)
     }
