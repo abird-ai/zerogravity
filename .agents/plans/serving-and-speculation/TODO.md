@@ -310,8 +310,12 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
 - [x] Require complete input/output/total usage for comparable matched
   result, preserve distinct wire/provider clocks and independent
   numerical/source requirements.
-- [ ] Actual current physical ordinary ROCm route and complete
-  workspace gate; approved pinned vLLM restore remains blocked.
+- [x] Actual current physical ordinary ROCm route and complete
+  workspace gate at 50f6e276: 2,603/0/112, 326 suites, 519s.
+  All tested 0.8B/2B C1/C8 and 27B C1 native cells exact IDs/usage,
+  actual cohort and envelope, explicit sequential control and
+  joined retirement. See handoff for measurement scope.
+- [ ] Approved pinned vLLM restore and paired baseline remain blocked.
   Device feedback/state/paged/prefix work belongs to measured Phase3.
 
 ### Ordinary serving benchmark / bounded Phase 2 exit — 27 Nov

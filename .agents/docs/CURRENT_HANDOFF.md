@@ -85,8 +85,13 @@ Legacy explicit local grammar unchanged. All policy resolves cold.
 Comparator requires complete input/total usage before exact matched
 usage/attested ratio; independent source/state/numerical proof still
 separate. Updated user docs. Focused policy, budget, configuration,
-comparison and owned-lifecycle checks passed on initial assembled
-source; final focused/physical/complete gate pending below.
+comparison and owned-lifecycle checks passed; final typed CLI/config
+checks and full isolated assembled gate pass at signed 50f6e276
+(2,603 passed/0 failed/112 ignored, 326 Rust suites, 519s), including
+portable release, TUI/Web, installer and benchmark/comparator checks.
+The initial fixtures exposed CPU-device override and v2's deliberate
+null refusal; final checks use the existing explicit-device contract
+and literal auto, not a schema relaxation.
 
 X2 locked vLLM0.33.0+rocm72 environment is absent: cached venv
 python points to missing pinned Python3.12.14 Nix path. Offline
@@ -100,13 +105,32 @@ locked Linux CLI/SDK graph and local cache provided 22 required
 crate archives (each SHA256 checked against Cargo.lock) plus 37
 missing index entries, copied via verified2.23MB archive to a
 private X2 execution Cargo home target/p3a-cargo-home. Original
-shared cache unchanged; no dependency acquisition. X2 build retry
-and native physical acceptance pending. Logs target/p3a-phase2-build*
-(X2), target/p3a-focused* (L5).
+shared cache unchanged; no dependency acquisition. Phase2 build retry
+passed. Verified incremental bundle then fast-forwarded X2 to exact
+50f6e276 and the incremental offline release build passed. Both hosts
+clean at execution checkpoint; documentation-only acceptance follows.
 
-Review follow-through: establish physical current ordinary HIP
-47+3 C1/C8 route with effective width, exact envelope, actual token
-IDs and retirement; then restore pinned optimized vLLM and paired
+Actual public native ROCm on X2, original BF16, HipRocBlasBf16MixedV2,
+1024 context, 47-token raw Completions prompt + 3 output, private
+loopback, one warmup per load, active limit8, real token metrics.
+24GiB envelope on 0.8B/2B, 75GiB on 27B. Automatic width8:
+0.8B C1 23.2614/C8 41.2765 tok/s, 2B C1 10.5900/C8 29.4667,
+27B C1 2.2217. Explicit width0 0.8B C8 23.8878 tok/s.
+Each cell has exact 47/3/50 usage per request and expected IDs
+[248068,198,90700] (0.8B/2B), [248068,198,760] (27B). Both auto
+C8 cells reached native peak8 and published three actual width8
+cohorts; explicit sequential C8 published zero cohorts. All request
+owners retired, SIGTERM joined listener/workers, socket refused after
+exit. Final device VRAM returned to starting 270815232 bytes,
+GPU idle and no KFD process owners. Rates are short offered-window
+canaries, not a fresh vLLM comparison or sustained/long-context claim.
+Logs: X2 target/p3a-phase2-build*, p3a-policy-build.log,
+p3a-public-08-auto.log, p3a-public-rest.log and their per-load JSON;
+L5 target/p3a-focused*, p3a-final-focused-2.log, p3a-assembled.log.
+No additional product benchmark or scratch driver committed.
+
+Review follow-through: native public readiness accepted for these
+cells; restore exact pinned optimized vLLM and establish fresh paired
 original-source 0.8B/2B/27B baseline. Remaining HIP device-greedy
 feedback, native larger regions, ragged/paged/prefix state and
 continuous refill are substantive measured Phase3 work, not

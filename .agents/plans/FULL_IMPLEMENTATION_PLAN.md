@@ -911,9 +911,15 @@ cohort and original ROCm exact device-envelope policy now implemented
 through existing config/CLI/control/SDK preparation; comparison
 requires full input/output/total usage. X2 exact Phase2 bundle
 synchronized; missing local Cargo graph restored offline from
-verified L5 cache. Final assembled and actual ordinary physical
-qualification still pending; pinned vLLM closure absent/offline
-restore blocked. Retain source/numerical/ownership rules. Device
+verified L5 cache. Signed 50f6e276 passes full isolated assembled
+gate (2,603/0/112; 326 suites; 519s) and actual public native
+47+3 canaries: 0.8B C1/C8 23.26/41.28, 2B 10.59/29.47,
+27B C1 2.22 tok/s; exact IDs/usage/envelopes, actual width8
+publications on both small C8 cells and explicit sequential0
+control (0.8B C8 23.89 tok/s), joined retirement. See current
+handoff for scope. Pinned vLLM closure absent/offline restore
+blocked, no fresh parity claim. Retain source/numerical/ownership
+rules. Device
 feedback and prefix/paged/ragged/region improvements remain ordered
 measured work, not inferred from configuration.
 

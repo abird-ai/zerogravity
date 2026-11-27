@@ -40,14 +40,20 @@ Architecture: [Astra high shared/family/model boundary review](../pipeline-compo
   shared existing profile; explicit device envelope within live
   headroom. Typed CLI/config and original SDK semantics; no extra
   engine. Strict comparison input/output/total usage completeness.
-  Final focused/assembled and actual physical public verification pending.
+  Signed 50f6e276; focused and full isolated assembled gate passed
+  (2,603/0/112, 326 suites, 519s). Exact implementation synchronized
+  to X2 and offline release build passed.
 - [ ] Recover exact approved vLLM0.33.0+rocm72 closure. Offline
   realization blocked on absent pinned rust-overlay and CA path;
   previous venv interpreter missing, no alternate local closure.
   No model/SDK acquisition or pin/TLS/host change.
-- [ ] Actual public native 47+3 C1/C8 (0.8B/2B), 27B C1 feasible
-  envelope, original token IDs and joined retirement; then fresh
-  paired optimized vLLM baseline. No historical ratio as acceptance.
+- [x] Actual public native 47+3 C1/C8 (0.8B/2B), 27B C1; exact
+  24/24/75GiB envelopes, original IDs and full usage, joined
+  retirement. Width8 actual publications at both small C8 cells;
+  width0 explicit control. Rates 23.26/41.28, 10.59/29.47, 2.22
+  tok/s respectively, sequential 0.8B C8 23.89. Scope/logs in handoff.
+- [ ] Fresh paired optimized vLLM baseline after exact pinned restore.
+  No historical ratio as acceptance.
 - [ ] Measure and close largest real native costs, including device
   feedback/greedy, row-wise and attention regions, ragged/stateful
   cohort work, paged/prefix reuse and sustained refill. Reuse existing

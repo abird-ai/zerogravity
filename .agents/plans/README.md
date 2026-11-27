@@ -20,8 +20,11 @@ work and the recovered OA-7E work. The
 OA-7E landed at signed 1585b579, actual learned SDK and assembled gate passed.
 Current unit: [Phase 3 ROCm readiness](FULL_IMPLEMENTATION_PLAN.md#3-rocm--match-vllm-first) on X2 after bounded Phase 2 acceptance and [OA-10 closeout](serving-and-speculation/NEXT_ITERATION_OPENAI_COMPATIBLE_SERVING.md#oa-10--compatibility-closeout).
 P3A ordinary cold cohort/exact device envelope and comparator usage
-completeness implemented; X2 Phase2 sync and local locked Cargo restore
-complete. Physical/assembled gate and pinned vLLM restore outstanding.
+completeness implemented at 50f6e276; X2 exact commit sync and locked
+offline Cargo restore complete. Full gate 2,603/0/112 (326 suites,
+519s) and real 0.8B/2B C1/C8, 27B C1 native public cells pass;
+explicit sequential control passed. Pinned vLLM restore remains
+blocked; next fresh paired baseline and measured native optimization.
 OA-9A bounded native text Realtime accepted at 4735621b. OA-10 corrected
 cold endpoint markers/help, documented actual supported routes and
 capability limits, and focused-qualified safe error/refusal behavior.
