@@ -26,6 +26,7 @@ stream_one = BENCH["stream_one"]
 strict_json = BENCH["strict_json"]
 workload_records = BENCH["workload_records"]
 load_workload = BENCH["load_workload"]
+request_kind_valid = BENCH["request_kind_valid"]
 MAX_PROMPT_BYTES = BENCH["MAX_PROMPT_BYTES"]
 MAX_WORKLOAD_PROMPT_BYTES = BENCH["MAX_WORKLOAD_PROMPT_BYTES"]
 LIFECYCLE = runpy.run_path(str(Path(__file__).with_name("serve-lifecycle.py")))
@@ -73,10 +74,11 @@ def comparison(
     snapshot_urls: tuple[str | None, str | None] = (None, None),
     token_trace_paths: tuple[str | None, str | None] = (None, None),
     max_pending: int | None = None, launch_deadline_seconds: float | None = None,
-    return_token_ids: bool = False,
+    return_token_ids: bool = False, request_kind: str = "chat",
     provider_lifecycle: dict | None = None,
     lifecycle_output_dir: str | None = None,
 ) -> dict:
+    request_kind_valid(request_kind, return_token_ids)
     if zg.rstrip("/") == vllm.rstrip("/"):
         raise ValueError("comparator needs two distinct endpoints")
     if (not 1 <= repetitions <= 4 or not 1 <= len(concurrencies) <= 8
@@ -109,7 +111,8 @@ def comparison(
             preflight(url, model, key)
             warm = stream_one(url, model, workload[0]["prompt"] if workload else prompt,
                               workload[0]["max_tokens"] if workload else max_tokens, timeout, key,
-                              request_id="serve-compare-warmup", return_token_ids=return_token_ids)
+                              request_id="serve-compare-warmup", return_token_ids=return_token_ids,
+                              request_kind=request_kind)
             if not warm.completed:
                 raise ValueError(f"warmup failed for {model}: {warm.error}")
 
@@ -140,7 +143,7 @@ def comparison(
                         itl_slo_seconds=itl_slo_seconds, snapshot_url=snapshot_urls[provider_index],
                         token_trace_path=token_trace_paths[provider_index], max_pending=max_pending,
                         launch_deadline_seconds=launch_deadline_seconds,
-                        return_token_ids=return_token_ids,
+                        return_token_ids=return_token_ids, request_kind=request_kind,
                     )
                     measured.update(provider=label,repetition=rep,order_position=position,
                         paired_order="BAAB" if rep % 2 else "ABBA")
@@ -152,7 +155,8 @@ def comparison(
                         if lifecycle.spec["policy"] == "warmed_process":
                             warm = stream_one(url, model, workload[0]["prompt"] if workload else prompt,
                                 workload[0]["max_tokens"] if workload else max_tokens, timeout, key,
-                                request_id="serve-compare-warmup", return_token_ids=return_token_ids)
+                                request_id="serve-compare-warmup", return_token_ids=return_token_ids,
+                                request_kind=request_kind)
                             owned.record_warmup(asdict(warm))
                             if not warm.completed:
                                 raise ValueError(f"owned provider warmup failed; inspect {owned.receipt_path}")
@@ -179,12 +183,16 @@ def comparison(
         # different correct outputs. Usage/finish equality is a separate gate.
         def signature(sample, include_usage=False):
             return {r["request_id"]: (r["prompt_sha256"], r["max_tokens"], r["output_sha256"])
-                    + ((r["usage_reported_completion_tokens"], r["finish_reason"]) if include_usage else ())
+                    + ((r["usage_reported_input_tokens"], r["usage_reported_completion_tokens"],
+                        r["usage_reported_total_tokens"], r["finish_reason"]) if include_usage else ())
                     for r in sample["requests"]}
         baseline = signature(per["zerogravity"][0])
         baseline_usage = signature(per["zerogravity"][0], True)
         exact_text = successful and all(signature(r) == baseline for r in group)
         exact_usage = successful and all(signature(r, True) == baseline_usage for r in group)
+        input_usage_complete = successful and all(
+            row["usage_reported_input_tokens"] is not None and row["usage_reported_total_tokens"] is not None
+            for sample in group for row in sample["requests"])
         trace_complete = all(r["provider_token_trace"]["status"] == "provider_bound_complete" for r in group)
         def token_signature(sample):
             return {identity: evidence["token_ids"] for identity, evidence in
@@ -213,6 +221,7 @@ def comparison(
             "completed_all_requests": successful,
             "exact_output_text_sha256_matched": bool(exact_text),
             "exact_usage_and_finish_matched": bool(exact_usage),
+            "input_and_total_usage_complete": bool(input_usage_complete),
             "provider_bound_output_token_ids_matched": bool(exact_tokens) if trace_complete else None,
             "response_bound_output_token_ids_matched": bool(wire_ids_match) if wire_ids_complete else None,
             "response_token_ids_complete": wire_ids_complete,
@@ -239,6 +248,7 @@ def comparison(
         })
     report = {
         "schema": "zerogravity.serving.vllm-comparison.v2",
+        "request_kind": request_kind,
         "benchmark_input_sha256": hashlib.sha256(
             json.dumps(workload, sort_keys=True, separators=(",", ":")).encode()
             if workload is not None else prompt.encode()).hexdigest(),
@@ -294,7 +304,11 @@ def self_test() -> None:
                 actual_calls.append(self.server.provider_label)
             body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
             assert body["model"] == "fixture"
-            prompt = body["messages"][0]["content"]
+            if self.path == "/v1/completions":
+                prompt = body["prompt"]
+            else:
+                assert self.path == "/v1/chat/completions"
+                prompt = body["messages"][0]["content"]
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
             self.end_headers()
@@ -303,6 +317,10 @@ def self_test() -> None:
                 {"choices": [{"index": 0, "delta": {}, "finish_reason": "length"}]},
                 {"choices": [], "usage": {"completion_tokens": 1}},
             ]
+            if self.path == "/v1/completions":
+                for doc in docs:
+                    for choice in doc["choices"]:
+                        choice["text"] = choice.pop("delta").get("content", "")
             if body.get("return_token_ids"):
                 provider_id = "chatcmpl-" + self.headers["X-Request-ID"]
                 for doc in docs:
@@ -352,6 +370,11 @@ def self_test() -> None:
         assert observed["summaries"][0]["response_bound_output_token_ids_matched"] is True
         assert observed["summaries"][0]["independent_source_numeric_state_equivalence"] == "NOT_ESTABLISHED"
         assert all(sample["wire_token_metrics"]["completed_requests_with_provider_commit_observations"] == 0 for sample in observed["runs"])
+        raw = comparison(a,b,"fixture","fixture","Hi.",1,[1],1,None,None,
+            ("a"*64,"a"*64),("b"*64,"b"*64),1,10,request_kind="completions")
+        assert raw["request_kind"] == "completions"
+        assert all(row["request_kind"] == "completions" for row in raw["runs"])
+        assert raw["summaries"][0]["exact_usage_and_finish_matched"]
         validate_comparison_bounds(1024,[1,4,8,16,32,64],1,10,"x",object())
         for population,concurrency in [(1025,1),(64,65),(63,64)]:
             try:
@@ -405,6 +428,8 @@ def main() -> None:
     parser.add_argument("--vllm-provider-snapshot-url")
     parser.add_argument("--zg-token-events")
     parser.add_argument("--vllm-token-events")
+    parser.add_argument("--request-kind", choices=BENCH["REQUEST_KINDS"], default="chat",
+                        help="same text request route for both providers and warmups")
     parser.add_argument("--return-token-ids", action="store_true", help="request and validate actual token IDs from both endpoints; coalesced ID groups do not establish individual delivery ITL")
     parser.add_argument("--max-pending", type=int)
     parser.add_argument("--launch-deadline", type=float)
@@ -443,7 +468,7 @@ def main() -> None:
             snapshot_urls=(args.zg_provider_snapshot_url, args.vllm_provider_snapshot_url),
             token_trace_paths=(args.zg_token_events, args.vllm_token_events),
             max_pending=args.max_pending, launch_deadline_seconds=args.launch_deadline,
-            return_token_ids=args.return_token_ids,
+            return_token_ids=args.return_token_ids, request_kind=args.request_kind,
             provider_lifecycle=strict_json(args.provider_lifecycle) if args.provider_lifecycle else None,
             lifecycle_output_dir=args.lifecycle_output_dir,
         )

@@ -221,7 +221,7 @@ def run_matrix(value: object, output: Path, base: Path, invoke=None, *,
             if summary.get("completed_all_requests") is not True:
                 raise CellFailure("comparison returned a partial or mismatched cell")
             compact = {key:report[key] for key in ["schema", "benchmark_input_sha256", "model_routes",
-                       "run_order", "order_balance_complete"] if key in report}
+                       "request_kind", "run_order", "order_balance_complete"] if key in report}
             compact["summaries"] = summaries
             compact["run_count"] = len(report.get("runs", [])) if isinstance(report.get("runs", []), list) else None
             row.update(status="completed", comparison=compact)

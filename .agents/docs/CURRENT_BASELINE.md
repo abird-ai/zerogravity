@@ -5,6 +5,22 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 27 Nov — ordinary serving benchmark (functional CPU acceptance)
+
+Public tools/serve-bench.py over the ordinary canonical CPU listener
+on existing Qwen0.8B GGUF: 2 workers x1 active, context128/output8,
+pending8/host8192MiB, 4 distinct open-loop t0 prompts per cell.
+Chat C1/C2, Responses C2 and exact preframed Completions C2: each
+4/4, 58/32/90 input/output/total, all length-limited, exact per-item
+output digest/usage/finish. Wall12.81240/9.78989/9.85002/9.86047s;
+reported output tok/s2.4976/3.2687/3.2487/3.2453. Native peak1/2,
+16 registration completions,128 scheduler output tokens and full
+request/listener retirement. This is functional CPU interface evidence,
+not optimized GPU/vLLM performance or independent numerical parity.
+First harness corrected step-counter vs request-counter interpretation.
+Source-free benchmark/comparison/lifecycle/matrix pass; final
+2,603/0/112 (326 Rust suites, 235s), complete isolated gate passed.
+
 ## 27 Nov — OA-10 supported-capability compatibility closeout
 
 Cold protocol family markers, CLI help and canonical endpoint matrix

@@ -18,12 +18,15 @@ The latest [comprehensive takeover through OA-7D](../docs/FULL_COMPREHENSIVE_HAN
 work and the recovered OA-7E work. The
 [OA-7E takeover prompt](../docs/NEXT_AGENT_2026-11-27_OA7E.md) is historical;
 OA-7E landed at signed 1585b579, actual learned SDK and assembled gate passed.
-Current unit: ordinary public serving/benchmark acceptance after [OA-10 compatibility closeout](serving-and-speculation/NEXT_ITERATION_OPENAI_COMPATIBLE_SERVING.md#oa-10--compatibility-closeout).
+Current unit: [Phase 3 ROCm parity](FULL_IMPLEMENTATION_PLAN.md#3-rocm--match-vllm-first) on X2 after bounded Phase 2 acceptance and [OA-10 closeout](serving-and-speculation/NEXT_ITERATION_OPENAI_COMPATIBLE_SERVING.md#oa-10--compatibility-closeout).
 OA-9A bounded native text Realtime accepted at 4735621b. OA-10 corrected
 cold endpoint markers/help, documented actual supported routes and
 capability limits, and focused-qualified safe error/refusal behavior.
 SDK audit: passed (installed SDK2.33.0, cached CLI/native/attached-Web 125.30s, Realtime 20.05s). Assembled: 2,603/0/112 (326 Rust suites, 463s), complete isolated gate passed.
-Next ordinary public serving/benchmark acceptance.
+Ordinary public benchmark: actual CPU Qwen0.8B canonical listener,
+all three routes exact native output/usage/finish,16/16 and native
+peak2; source-free benchmark/comparator/lifecycle/matrix pass.
+Final 2,603/0/112 (326 Rust suites, 235s), complete isolated gate passed. Next ordered ROCm on X2.
 OA-6 trained MiniLM, OA-7 synthesis/streaming and OA-8 image generation
 require actual authorized source and capability acceptance. No new model download.
 OA-4 fully accepted after the serial resident lifecycle retry; OA-5

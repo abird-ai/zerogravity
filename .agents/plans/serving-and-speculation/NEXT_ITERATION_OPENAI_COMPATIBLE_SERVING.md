@@ -1778,8 +1778,14 @@ remain opt-in; normal SDK objects do not require extensions.
 The original HTTP transport remains the sole listener; no duplicate
 bootstrap server to retire.
 
-Next: ordinary public serving/benchmark acceptance through existing
-CLI/SDK, then ordered ROCm, CUDA and Vulkan performance campaigns.
+Ordinary public serving benchmark now uses the existing CLI and tools
+with a common Responses/Chat/raw Completions route selection, bounded
+SSE terminal checks and normalized actual usage. Actual Qwen0.8B
+CPU same owner/two aliases,16/16 over C1/C2 matched text routes,
+exact output/usage/finish and native peak2/retirement; functional
+acceptance only. Final 2,603/0/112 (326 Rust suites, 235s), complete isolated gate passed.
+See [ordinary benchmark instructions](../../../docs/OPENAI.md#ordinary-serving-benchmarks).
+Next ordered ROCm, CUDA and Vulkan performance campaigns.
 
 ---
 

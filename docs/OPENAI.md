@@ -106,6 +106,65 @@ settings and output are text-only; this is not voice, VAD, session
 resumption or a latency guarantee. See the SDK's `realtime.connect`
 with the same local base URL and a qualified model alias.
 
+### Ordinary serving benchmarks
+
+Benchmark the same public listener rather than a separate execution
+binary. With the already running server above:
+
+~~~sh
+python3 -B tools/serve-bench.py --endpoint http://127.0.0.1:8000 \
+    --model local --request-kind responses --prompt "Say hello." \
+    --requests 4 --concurrency 2 --max-tokens 8 \
+    --provider-snapshot-url http://127.0.0.1:8000/health
+~~~
+
+Run from the repository root. The endpoint is the server origin (without
+/v1). The existing ZEROGRAVITY_API_KEY environment variable is used when
+set; --api-key-env selects another variable. The default request kind
+remains chat. Choose responses for stateless single-assistant text
+SSE, or completions for an explicitly supplied raw
+prompt. Chat and Responses use the selected model's template. The
+benchmark does not render a model-family template for raw Completions.
+
+Use --workload FILE for an open-loop schedule rather than repeated
+closed-loop prompts. For example:
+
+~~~json
+{"schema":"zerogravity.serving.workload.v1","requests":[
+  {"request_id":"a","prompt":"Say hello.","arrival_seconds":0,"tenant":"group-a","max_tokens":8},
+  {"request_id":"b","prompt":"Name a color.","arrival_seconds":0,"tenant":"group-b","max_tokens":8}
+]}
+~~~
+
+The JSON report records the actual request kind, offered/dispatched/
+completed requests, failure classification, output digest, finish reason,
+and actual reported input, output, total and cached-input usage (unknown
+counts remain null). A successful length-limited terminal counts as a
+finished transport request, also reported separately; it is not a complete
+semantic answer. Responses validates sequence, selected model, item and
+response identities, terminal output and usage. Unsupported outputs such as
+reasoning/tool/media items do not masquerade as a supported text sample.
+
+Latency and throughput are end-to-end client observations. TTFT measures
+time to first nonempty text delta (offered time, including open-loop client
+backlog; service TTFT is also retained). SSE chunk intervals are not
+individual token intervals. The optional health snapshots preserve actual
+effective scheduler config, catalog and counters; they are raw provider
+observations, not independent physical proof. In ZeroGravity, scheduler
+attempted/completed count execution steps; use registration
+performance.completed_requests for completed model requests. Workload
+tenant labels are not authenticated server tenants.
+
+The existing --return-token-ids extension is available only for explicitly
+enabled legacy Chat/Completions diagnostics; Responses refuses that option.
+Absent individual token observations do not create token ITL or qualified
+goodput. The paired tools/serve-compare.py accepts the same --request-kind
+for both providers, including warmups, and preserves that kind in its
+report and workload-matrix summaries. It does not imply the other provider
+implements that route or that a measured ratio establishes source/math/
+hardware equivalence. Compare exact output/usage/finish and verify source,
+tokenizer and execution separately. See --help on each tool.
+
 ### Compatibility and diagnostics
 
 The existing listener bounds HTTP/1.1 bodies, headers, connections,

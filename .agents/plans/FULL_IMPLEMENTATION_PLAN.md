@@ -857,21 +857,30 @@ found; keep missing-media holds. OA-10 supported-capability closeout
 corrects cold markers, help, standard safe errors and actual refusal
 behavior; canonical [endpoint matrix](../../docs/OPENAI.md), focused63/0/0
 strict lint. SDK audit passed (installed SDK2.33.0, cached CLI/native/attached-Web 125.30s, Realtime 20.05s); assembled 2,603/0/112 (326 Rust suites, 463s), complete isolated gate passed.
-Next ordinary public serving/benchmark acceptance. No natural-speech
-quality, voice, low-latency or physical GPU claim.
+Ordinary benchmark acceptance: existing serve-bench/compare/matrix
+support Responses/Chat/raw Completions, same workloads and normalized
+actual usage, strict terminal SSE validation. Actual cached ordinary CPU
+Qwen0.8B canonical listener,2x1 workers,128 context/8 output,
+4 varied t0 arrivals per cell, Chat C1/C2, Responses C2, matched raw
+Completions C2 all4/4 exact output/usage/finish; 16 total completed,
+native peak2, request/listener retirement. Functional CPU only;
+no natural-speech, voice, true token ITL or physical GPU parity claim.
+Final 2,603/0/112 (326 Rust suites, 235s), complete isolated gate passed.
 
 - [x] Close the [OpenAI-compatible serving iteration](serving-and-speculation/NEXT_ITERATION_OPENAI_COMPATIBLE_SERVING.md) for actually qualified capabilities:
   model catalog/router, OpenAI Chat/Responses and supported completion/
   embedding/tool/structured-output contracts, usage, errors, JSON/SSE,
   streaming/cancellation/timeout/backpressure and real concurrent requests.
   Unsupported tasks/options must refuse rather than simulate compatibility.
-- [ ] Preserve a separate control surface and inference API with typed
-  configuration, explicit route/tenant scope, model lifecycle and shared
-  scheduling. Add future WebSocket/WebRTC/media endpoints through the
-  existing task contracts; do not wait on unimplemented media models.
-- [ ] Establish ordinary public CLI/SDK/server benchmark invocation,
+- [x] Preserve the separate control surface and inference API with typed
+  configuration, explicit route/trusted sharing scope, model lifecycle and
+  shared scheduling for the qualified scope. Future WebRTC/media/hosted
+  tenancy remain capability-gated expansion through existing task contracts.
+- [x] Establish ordinary public CLI/SDK/server benchmark invocation,
   effective config and end-to-end metrics, not a qualification-only serving
-  process. Retain one process/multiple model instances and pipeline routing.
+  process. Retain one process/multiple model instances and qualified
+  pipeline routing. Actual native/SDK lifecycle and benchmark pass;
+  final assembled gate passed.
 
 **Exit:** ordinary one-line run/serve; coherent model/device/config lifecycle;
 both TUI and Web use one control model and real owner events; public serving
@@ -881,6 +890,14 @@ Owners: [CLI/device routing](cli-device-routing/TODO.md),
 [UX design](cli-ux/NEXT_ITERATION_CLI_UX_AND_MODEL_LIFECYCLE.md),
 [serving](serving-and-speculation/TODO.md),
 [platform](platform-and-release/TODO.md).
+
+**Bounded Phase 2 accepted (27 Nov).** Ordinary qualified CLI/TUI/Web,
+control/serving, SDK and public benchmark paths passed. The actual
+benchmark recheck and complete isolated gate establish the supported
+interface/lifecycle exit. Future model/media, hosted tenancy and general
+pipeline/backend expansion remain in their owning plans, not implicit
+acceptance. Proceed to Phase 3; no optimized GPU/vLLM result inferred
+from functional CPU benchmark evidence.
 
 ## 3. ROCm — match vLLM first
 

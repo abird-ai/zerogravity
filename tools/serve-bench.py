@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import concurrent.futures
 import hashlib
+import http.client
 import ipaddress
 import json
 import math
@@ -29,6 +30,8 @@ MAX_PROMPT_BYTES = 256 * 1024
 MAX_WORKLOAD_PROMPT_BYTES = 32 * MIB
 MAX_WORKLOAD_FILE_BYTES = 256 * MIB
 WORKLOAD_SCHEMA = "zerogravity.serving.workload.v1"
+REQUEST_KINDS = ("chat", "completions", "responses")
+MAX_SSE_BYTES = 16 * MIB
 
 
 @dataclass
@@ -48,6 +51,9 @@ class Outcome:
     chunk_times: list[float] = field(default_factory=list)
     provider_error_code: str | None = None
     token_observation: dict | None = None
+    input_tokens: int | None = None
+    total_tokens: int | None = None
+    cached_input_tokens: int | None = None
 
 
 def percentile(values: list[float], percentage: float) -> float | None:
@@ -224,17 +230,223 @@ def wire_token_observation(groups: list[dict], extension: object, aggregate: obj
         "semantics": "client parsed actual token-ID events; coalesced multi-ID groups have unresolved individual delivery; provider commit observations and mean ITL are distinct clocks/scopes; no independent physical/numerical proof"}
 
 
+def request_kind_valid(kind: str, return_token_ids: bool) -> None:
+    if kind not in REQUEST_KINDS:
+        raise ValueError("unknown OpenAI request kind")
+    if kind == "responses" and return_token_ids:
+        raise ValueError("Responses does not expose the legacy return_token_ids extension")
+
+
+def sse_events(response, started: float, timeout: float):
+    """Bound both each assembled event and the complete received stream."""
+    if response.headers.get_content_type() != "text/event-stream":
+        raise ValueError("expected SSE content type")
+    name, data, size, total = None, [], 0, 0
+    while True:
+        line = response.readline(MIB + 1)
+        if time.monotonic() - started > timeout:
+            raise TimeoutError("request deadline")
+        total += len(line)
+        if len(line) > MIB or total > MAX_SSE_BYTES:
+            raise ValueError("SSE byte limit")
+        if not line:
+            if data:
+                raise ValueError("truncated SSE event")
+            return
+        line = line.rstrip(b"\r\n")
+        if not line:
+            if data:
+                yield name, b"\n".join(data)
+            name, data, size = None, [], 0
+        elif not line.startswith(b":"):
+            field, _, value = line.partition(b":")
+            if value.startswith(b" "):
+                value = value[1:]
+            if field == b"event":
+                name = value.decode("utf-8")
+            elif field == b"data":
+                size += len(value) + 1
+                if size > MIB:
+                    raise ValueError("SSE event exceeds 1 MiB")
+                data.append(value)
+
+
+def usage_counts(usage: object, maximum: int, *, responses: bool = False):
+    """Normalize only actual usage; absent optional legacy counts stay unknown."""
+    if not isinstance(usage, dict):
+        raise ValueError("invalid terminal usage")
+    input_key, output_key = ("input_tokens", "output_tokens") if responses else ("prompt_tokens", "completion_tokens")
+    output, inputs, total = usage.get(output_key), usage.get(input_key), usage.get("total_tokens")
+    if type(output) is not int or not 0 <= output <= maximum:
+        raise ValueError("invalid completion usage")
+    for key, value in [(input_key, inputs), ("total_tokens", total)]:
+        if (responses or key in usage) and (type(value) is not int or value < 0):
+            raise ValueError("invalid input/total usage")
+    if total is not None and (total < output or inputs is not None and total != inputs + output):
+        raise ValueError("terminal token usage does not add up")
+    details = usage.get(f"{input_key}_details")
+    cached = None
+    if details is not None:
+        if not isinstance(details, dict):
+            raise ValueError("invalid input usage details")
+        cached = details.get("cached_tokens")
+        if cached is not None and (type(cached) is not int or cached < 0 or inputs is None or cached > inputs):
+            raise ValueError("invalid cached input usage")
+    return output, inputs, total, cached
+
+
+def provider_failure(code: str) -> str:
+    if code in {"cancelled", "canceled", "client_closed"}:
+        return "cancelled"
+    if code in {"timeout", "deadline_exceeded", "request_timeout"}:
+        return "timed_out"
+    return "provider_error"
+
+
+class ResponsesText:
+    """One stateless, single assistant text output on the standard Responses wire.
+
+    Do not silently skip reasoning, tools, images, other items or malformed
+    lifecycle events. Terminal text must equal the actual observed deltas.
+    """
+    def __init__(self, model: str, maximum: int):
+        self.model, self.maximum = model, maximum
+        self.sequence, self.stage = 0, "new"
+        self.response_id, self.item_id, self.item_status = None, None, None
+        self.reason, self.failure = None, None
+        self.usage = (None,) * 4
+
+    def message(self, item, *, initial=False):
+        if (not isinstance(item, dict) or item.get("type") != "message"
+                or item.get("role") != "assistant" or not isinstance(item.get("id"), str)
+                or not 1 <= len(item["id"]) <= 256):
+            raise ValueError("expected a single assistant text item")
+        if initial:
+            if item.get("content") != [] or item.get("status") != "in_progress":
+                raise ValueError("expected initially empty assistant item")
+            self.item_id = item["id"]
+        elif item["id"] != self.item_id:
+            raise ValueError("Responses item identity changed")
+        return item
+
+    def check_text(self, text, digest):
+        if not isinstance(text, str) or hashlib.sha256(text.encode()).digest() != digest.digest():
+            raise ValueError("Responses terminal text differs from streamed deltas")
+
+    def part(self, part, digest):
+        if not isinstance(part, dict) or part.get("type") != "output_text":
+            raise ValueError("unsupported Responses output part")
+        self.check_text(part.get("text"), digest)
+
+    def final_item(self, item, digest, status=None):
+        item = self.message(item)
+        if item.get("status") not in {"completed", "incomplete"} or (
+                status is not None and item["status"] != status):
+            raise ValueError("invalid Responses terminal item status")
+        parts = item.get("content")
+        if not isinstance(parts, list) or len(parts) != 1:
+            raise ValueError("expected one terminal text part")
+        self.part(parts[0], digest)
+
+    def feed(self, event, name, digest):
+        kind = event.get("type")
+        if (not isinstance(kind, str) or name is not None and name != kind
+                or self.stage == "terminal"
+                or type(event.get("sequence_number")) is not int
+                or event["sequence_number"] != self.sequence):
+            raise ValueError("invalid Responses event type/order")
+        self.sequence += 1
+        if kind in {"response.created", "response.in_progress", "response.completed",
+                    "response.incomplete", "response.failed", "response.cancelled"}:
+            view = event.get("response")
+            if (not isinstance(view, dict) or view.get("object") != "response"
+                    or view.get("model") != self.model or not isinstance(view.get("id"), str)
+                    or not 1 <= len(view["id"]) <= 256):
+                raise ValueError("invalid Responses identity/model")
+            status = view.get("status")
+            if kind == "response.created":
+                if self.stage != "new" or status != "in_progress":
+                    raise ValueError("unexpected Responses creation")
+                self.response_id, self.stage = view["id"], "created"
+                return None
+            if self.response_id != view["id"]:
+                raise ValueError("Responses identity changed")
+            if kind == "response.in_progress":
+                if self.stage != "created" or status != "in_progress":
+                    raise ValueError("unexpected Responses in-progress event")
+                self.stage = "progress"
+                return None
+            if status != kind.removeprefix("response."):
+                raise ValueError("Responses terminal status mismatch")
+            if kind in {"response.failed", "response.cancelled"}:
+                error = view.get("error")
+                self.failure = ("cancelled" if status == "cancelled" else
+                                str(error.get("code", "response_failed")) if isinstance(error, dict) else "response_failed")
+                self.stage = "terminal"
+                return None
+            if self.stage != "item_done" or status != self.item_status:
+                raise ValueError("Responses terminal before matching complete text item")
+            items = view.get("output")
+            if not isinstance(items, list) or len(items) != 1:
+                raise ValueError("expected one terminal Responses output item")
+            self.final_item(items[0], digest, status)
+            if status == "completed":
+                self.reason = "stop"
+            else:
+                details = view.get("incomplete_details")
+                if not isinstance(details, dict) or details.get("reason") != "max_output_tokens":
+                    self.failure = "response_incomplete"
+                else:
+                    self.reason = "length"
+            self.usage = usage_counts(view.get("usage"), self.maximum, responses=True)
+            self.stage = "terminal"
+            return None
+        if type(event.get("output_index")) is not int or event["output_index"] != 0:
+            raise ValueError("unsupported Responses output index")
+        if kind == "response.output_item.added" and self.stage in {"created", "progress"}:
+            self.message(event.get("item"), initial=True)
+            self.stage = "item"
+            return None
+        if kind == "response.output_item.done" and self.stage == "part_done":
+            self.final_item(event.get("item"), digest)
+            self.item_status = event["item"]["status"]
+            self.stage = "item_done"
+            return None
+        if (event.get("item_id") != self.item_id
+                or type(event.get("content_index")) is not int or event["content_index"] != 0):
+            raise ValueError("invalid Responses item/content identity")
+        if kind == "response.content_part.added" and self.stage == "item":
+            self.part(event.get("part"), digest)
+            self.stage = "text"
+        elif kind == "response.output_text.delta" and self.stage == "text":
+            delta = event.get("delta")
+            if not isinstance(delta, str):
+                raise ValueError("Responses delta is not text")
+            return delta
+        elif kind == "response.output_text.done" and self.stage == "text":
+            self.check_text(event.get("text"), digest)
+            self.stage = "text_done"
+        elif kind == "response.content_part.done" and self.stage == "text_done":
+            self.part(event.get("part"), digest)
+            self.stage = "part_done"
+        else:
+            raise ValueError("unsupported or out-of-order Responses event")
+        return None
+
+
 def stream_one(url: str, model: str, prompt: str, max_tokens: int,
                timeout: float, key: str | None, *, request_id: str | None = None,
                return_token_ids: bool = False, request_kind: str = "chat") -> Outcome:
-    if request_kind not in {"chat", "completions"}:
-        raise ValueError("request kind must be chat or completions")
+    request_kind_valid(request_kind, return_token_ids)
     payload = {
         "model": model,
         "temperature": 0, "top_p": 1, "n": 1, "stream": True,
         "stream_options": {"include_usage": True}, "max_tokens": max_tokens,
     }
-    if request_kind == "chat":
+    if request_kind == "responses":
+        payload = dict(model=model, input=prompt, stream=True, store=False,
+                       temperature=0, top_p=1, max_output_tokens=max_tokens)
+    elif request_kind == "chat":
         payload["messages"] = [{"role": "user", "content": prompt}]
     else:
         payload["prompt"] = prompt
@@ -246,12 +458,14 @@ def stream_one(url: str, model: str, prompt: str, max_tokens: int,
         headers["Authorization"] = f"Bearer {key}"
     if request_id:
         headers["X-Request-ID"] = request_id
-    route = "/v1/chat/completions" if request_kind == "chat" else "/v1/completions"
+    route = {"chat": "/v1/chat/completions", "completions": "/v1/completions", "responses": "/v1/responses"}[request_kind]
     request = urllib.request.Request(url.rstrip("/") + route,
                                      data=body, headers=headers, method="POST")
     started = time.monotonic()
     ttft, previous, count, reason, status, provider_id, provider_code = (None,) * 7
     intervals, chunk_times = [], []
+    input_tokens, total_tokens, cached_input_tokens = None, None, None
+    responses = ResponsesText(model, max_tokens) if request_kind == "responses" else None
     ended, accepted, terminals, usages = False, False, 0, 0
     groups, extension, aggregate, observation = [], None, None, None
     data_events = 0
@@ -265,21 +479,31 @@ def stream_one(url: str, model: str, prompt: str, max_tokens: int,
                 "provider_commit_observation_status":"not_established"}
         return Outcome(completed, reason, time.monotonic() - started, ttft,
                        intervals, count, error, output_hash.hexdigest() if completed else None,
-                       classification, status, accepted, provider_id, chunk_times, provider_code, observed)
+                       classification, status, accepted, provider_id, chunk_times, provider_code, observed,
+                       input_tokens, total_tokens, cached_input_tokens)
+
+    def observe_text(content, now):
+        nonlocal ttft, previous
+        if not isinstance(content, str):
+            raise ValueError("SSE content is not text")
+        if content:
+            output_hash.update(content.encode())
+            if ttft is None:
+                ttft = now
+            if previous is not None:
+                intervals.append(now - previous)
+            previous = now
+            chunk_times.append(now)
+
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             status, accepted = response.status, response.status == 200
             if not accepted:
                 raise ValueError(f"HTTP {status}")
-            for line in response:
-                if len(line) > 1024 * 1024:
-                    raise ValueError("SSE line exceeds 1 MiB")
-                if time.monotonic() - started > timeout:
-                    raise TimeoutError("request deadline")
-                if not line.startswith(b"data: "):
-                    continue
-                text = line[6:].strip()
-                if text == b"[DONE]":
+            for name, text in sse_events(response, started, timeout):
+                if text.strip() == b"[DONE]":
+                    if responses is not None and responses.stage != "terminal":
+                        raise ValueError("DONE before Responses terminal")
                     ended = True
                     break
                 data_events += 1
@@ -288,12 +512,20 @@ def stream_one(url: str, model: str, prompt: str, max_tokens: int,
                 parsed = json.loads(text)
                 if not isinstance(parsed, dict):
                     raise ValueError("SSE event is not an object")
-                if "error" in parsed:
-                    error = parsed["error"]
+                if "error" in parsed or responses is not None and parsed.get("type") == "error":
+                    error = parsed.get("error", parsed)
                     provider_code = str(error.get("code", "unknown")) if isinstance(error, dict) else "unknown"
-                    kind = ("cancelled" if provider_code in {"cancelled", "canceled", "client_closed"} else
-                            "timed_out" if provider_code in {"timeout", "deadline_exceeded", "request_timeout"} else "provider_error")
-                    return outcome(False, kind, f"provider:{provider_code}")
+                    return outcome(False, provider_failure(provider_code), f"provider:{provider_code}")
+                if responses is not None:
+                    content = responses.feed(parsed, name, output_hash)
+                    provider_id = responses.response_id
+                    if content is not None:
+                        observe_text(content, time.monotonic() - started)
+                    if responses.stage == "terminal":
+                        reason = responses.reason
+                        count, input_tokens, total_tokens, cached_input_tokens = responses.usage
+                        provider_code = responses.failure
+                    continue
                 current = parsed.get("id")
                 if current is not None:
                     if not isinstance(current, str) or not current or len(current) > 256:
@@ -328,15 +560,7 @@ def stream_one(url: str, model: str, prompt: str, max_tokens: int,
                     delta = choice.get("delta")
                     content = delta.get("content", "") if isinstance(delta, dict) else choice.get("text", "")
                     if content:
-                        if not isinstance(content, str):
-                            raise ValueError("SSE content is not text")
-                        output_hash.update(content.encode())
-                        if ttft is None:
-                            ttft = now
-                        if previous is not None:
-                            intervals.append(now - previous)
-                        previous = now
-                        chunk_times.append(now)
+                        observe_text(content, now)
                     if choice.get("finish_reason") is not None:
                         reason = choice["finish_reason"]
                         if not isinstance(reason, str) or not reason or len(reason) > 64:
@@ -344,14 +568,16 @@ def stream_one(url: str, model: str, prompt: str, max_tokens: int,
                         terminals += 1
                 usage = parsed.get("usage")
                 if usage is not None:
-                    value = usage.get("completion_tokens") if isinstance(usage, dict) else None
-                    if not isinstance(value, int) or isinstance(value, bool) or not 0 <= value <= max_tokens:
-                        raise ValueError("invalid completion usage")
                     usages += 1
                     if usages > 1:
                         raise ValueError("duplicate terminal usage")
-                    count = value
-        if not ended or terminals != 1:
+                    count, input_tokens, total_tokens, cached_input_tokens = usage_counts(usage, max_tokens)
+        if responses is not None:
+            if responses.stage != "terminal":
+                raise ValueError("missing Responses terminal")
+            if provider_code is not None:
+                return outcome(False, provider_failure(provider_code), f"provider:{provider_code}")
+        elif not ended or terminals != 1:
             raise ValueError("missing/duplicate SSE terminal choice or DONE")
         if return_token_ids:
             observation = wire_token_observation(groups, extension, aggregate, request_id, provider_id, count, max_tokens)
@@ -361,7 +587,7 @@ def stream_one(url: str, model: str, prompt: str, max_tokens: int,
         kind = ("rejected_429" if status == 429 else "rejected_503" if status == 503 else
                 "cancelled" if status == 499 else "timed_out" if status in {408, 504} else "http_error")
         return outcome(False, kind, f"HTTP{status}")
-    except (urllib.error.URLError, OSError, ValueError, TypeError, KeyError) as exc:
+    except (urllib.error.URLError, OSError, http.client.HTTPException, ValueError, TypeError, KeyError) as exc:
         cause = getattr(exc, "reason", exc)
         kind = "timed_out" if isinstance(cause, TimeoutError) else (
             "protocol_error" if isinstance(exc, (ValueError, TypeError, KeyError)) else "transport_error")
@@ -470,8 +696,7 @@ def bench(url: str, model: str, prompt: str, count: int, concurrency: int,
         raise ValueError("bounded requests/concurrency required (1..1024, 1..64)")
     if not 1 <= max_tokens <= 512 or not number(timeout, 1, 600):
         raise ValueError("bounded token/deadline limits")
-    if request_kind not in {"chat", "completions"}:
-        raise ValueError("request kind must be chat or completions")
+    request_kind_valid(request_kind, return_token_ids)
     for bound in [ttft_slo_seconds, chunk_slo_seconds, itl_slo_seconds, launch_deadline_seconds]:
         if bound is not None and not number(bound, .000001, 600):
             raise ValueError("positive SLO/deadline <=600 seconds required")
@@ -518,6 +743,8 @@ def bench(url: str, model: str, prompt: str, count: int, concurrency: int,
                     http_attempted=out.classification not in {"client_overload", "launch_deadline"},
                     finish_reason=out.finish_reason, provider_response_id=out.provider_response_id,
                     provider_error_code=out.provider_error_code, usage_reported_completion_tokens=out.tokens,
+                    usage_reported_input_tokens=out.input_tokens, usage_reported_total_tokens=out.total_tokens,
+                    usage_reported_cached_input_tokens=out.cached_input_tokens,
                     error=out.error, output_sha256=out.output_sha256,
                     wire_token_observation=out.token_observation)
 
@@ -570,6 +797,11 @@ def bench(url: str, model: str, prompt: str, count: int, concurrency: int,
     completed = [r for r in records if r["completed"]]
     known = sum(r["usage_reported_completion_tokens"] for r in completed if r["usage_reported_completion_tokens"] is not None)
     unknown = sum(r["usage_reported_completion_tokens"] is None for r in completed)
+
+    def usage_total(field):
+        values = [r[field] for r in completed]
+        return sum(values) if values and all(v is not None for v in values) else None
+
     errors, classes = {}, {}
     for row in records:
         classes[row["classification"]] = classes.get(row["classification"], 0) + 1
@@ -619,7 +851,7 @@ def bench(url: str, model: str, prompt: str, count: int, concurrency: int,
             interpretation="workload_labels_not_authenticated_server_tenants"))
     return {
         "schema": "zerogravity.serving.benchmark.v2", "run_id": run_id, "endpoint": url.rstrip("/"),
-        "model": model, "concurrency": concurrency, "arrival_mode": mode, "max_pending": pending_limit,
+        "model": model, "request_kind": request_kind, "concurrency": concurrency, "arrival_mode": mode, "max_pending": pending_limit,
         "launch_deadline_seconds": launch_deadline_seconds, "offered_requests": count,
         "completed_requests": len(completed), "http_accepted_requests": sum(r["http_accepted"] for r in records),
         "http_429_requests": sum(r["http_status"] == 429 for r in records),
@@ -638,6 +870,10 @@ def bench(url: str, model: str, prompt: str, count: int, concurrency: int,
         "ttft_p95_seconds": percentile([r["ttft_seconds"] for r in completed if r["ttft_seconds"] is not None], .95),
         "sse_chunk_interval_p95_seconds": percentile([x for r in completed for x in r["sse_chunk_intervals_seconds"]], .95),
         "usage_reported_completion_tokens": known, "completions_without_usage": unknown,
+        "usage_reported_input_tokens": usage_total("usage_reported_input_tokens"),
+        "usage_reported_total_tokens": usage_total("usage_reported_total_tokens"),
+        "usage_reported_cached_input_tokens": usage_total("usage_reported_cached_input_tokens"),
+        "length_limited_requests": sum(r["finish_reason"] == "length" for r in completed),
         "reported_tokens_per_offered_second": round(known / elapsed, 4) if elapsed > 0 and not unknown else None,
         "proxy_slo": {"semantics": "TTFT_and_SSE_chunks_not_token_ITL_or_qualified_goodput",
                       "ttft_limit_seconds": ttft_slo_seconds, "chunk_limit_seconds": chunk_slo_seconds,
@@ -666,7 +902,7 @@ def bench(url: str, model: str, prompt: str, count: int, concurrency: int,
         "provider_snapshots": {"before": before, "after": after,
             "interpretation": "raw_provider_JSON_not_independent_physical_memory_or_dispatch_proof"},
         "requests": records, "numerical_source_equivalence": "not_verified", "fused_kernels_or_vllm_parity": "not_inferred",
-        "note": "SSE chunks do not establish token ITL. Provider traces require independent commit/source qualification.",
+        "note": "TTFT is first nonempty text delta; SSE chunks do not establish token ITL. Completed includes valid length-limited terminals. Provider traces require independent commit/source qualification.",
     }
 
 
@@ -738,11 +974,73 @@ def self_test() -> None:
         except ValueError:
             pass
 
+    def response_events(prompt, identity):
+        output = dict(type="output_text", text="hello!", annotations=[])
+        item = dict(type="message", role="assistant", id="msg_" + identity, status="incomplete",
+                    content=[output])
+        view = dict(object="response", model="fixture", id="resp_" + identity,
+                    status="in_progress", output=[], usage=None)
+        part = dict(item_id=item["id"], output_index=0, content_index=0)
+        events = [
+            dict(type="response.created", response=view),
+            dict(type="response.in_progress", response=view),
+            dict(type="response.output_item.added", output_index=0,
+                 item=dict(item, status="in_progress", content=[])),
+            dict(type="response.content_part.added", part=dict(output, text=""), **part),
+            dict(type="response.output_text.delta", delta="hello", **part),
+            dict(type="response.output_text.delta", delta="!", **part),
+            dict(type="response.output_text.done", text="hello!", **part),
+            dict(type="response.content_part.done", part=output, **part),
+            dict(type="response.output_item.done", output_index=0, item=item),
+            dict(type="response.incomplete", response=dict(view, status="incomplete", output=[item],
+                incomplete_details=dict(reason="max_output_tokens"),
+                usage=dict(input_tokens=5, output_tokens=2, total_tokens=7,
+                           input_tokens_details=dict(cached_tokens=1)))),
+        ]
+        events = copy.deepcopy(events)
+        if prompt == "stop":
+            events[-1]["type"] = "response.completed"
+            events[-1]["response"].update(status="completed", incomplete_details=None)
+            events[-1]["response"]["output"][0]["status"] = "completed"
+            events[8]["item"]["status"] = "completed"
+        elif prompt == "missing-terminal":
+            events.pop()
+        elif prompt == "wrong-id":
+            events[-1]["response"]["id"] = "foreign"
+        elif prompt == "wrong-text":
+            events[-1]["response"]["output"][0]["content"][0]["text"] = "different"
+        elif prompt == "wrong-usage":
+            events[-1]["response"]["usage"]["total_tokens"] = 1
+        elif prompt == "wrong-item-status":
+            events[8]["item"] = dict(events[8]["item"], status="completed")
+        elif prompt == "wrong-item":
+            events[5]["item_id"] = "foreign"
+        elif prompt == "post-terminal":
+            events.append(events[-1].copy())
+        elif prompt == "tool":
+            events[2]["item"]["type"] = "function_call"
+        elif prompt in {"failed", "cancelled"}:
+            events = events[:5] + [dict(type="response." + prompt,
+                response=dict(view, status=prompt, error=dict(code="server_error") if prompt == "failed" else None))]
+        for sequence, event in enumerate(events):
+            event["sequence_number"] = sequence
+        if prompt == "wrong-sequence":
+            events[5]["sequence_number"] += 1
+        return events
+
     class Provider(BaseHTTPRequestHandler):
         def do_POST(self):
             body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
             assert body["model"] == "fixture"
-            prompt = body["messages"][0]["content"]
+            if self.path == "/v1/responses":
+                assert body == dict(model="fixture", input=body["input"], stream=True, store=False,
+                                    temperature=0, top_p=1, max_output_tokens=2)
+                prompt = body["input"]
+            elif self.path == "/v1/completions":
+                prompt = body["prompt"]
+            else:
+                assert self.path == "/v1/chat/completions"
+                prompt = body["messages"][0]["content"]
             if prompt in {"reject429", "reject503", "cancel499"}:
                 self.send_error(int(prompt[-3:]))
                 return
@@ -752,12 +1050,33 @@ def self_test() -> None:
             self.send_header("Content-Type", "text/event-stream")
             self.send_header("Connection", "close")
             self.end_headers()
+            if self.path == "/v1/responses":
+                try:
+                    for event in response_events(prompt, self.headers.get("X-Request-ID", "fixture")):
+                        # Named events and multiline data use the same
+                        # bounded SSE reader as legacy.
+                        name = "wrong" if prompt == "wrong-event" else event["type"]
+                        self.wfile.write(f"event: {name}\n".encode())
+                        if prompt == "stop":
+                            for line in json.dumps(event, indent=2).splitlines():
+                                self.wfile.write(b"data: " + line.encode() + b"\n")
+                            self.wfile.write(b"\n")
+                        else:
+                            self.wfile.write(b"data: " + json.dumps(event).encode() + b"\n\n")
+                except (BrokenPipeError, ConnectionResetError):
+                    pass  # Invalid-event cases deliberately stop reading.
+                self.close_connection = True
+                return
             chunks = [
                 {"id": self.headers.get("X-Request-ID"), "choices": [{"index": 0, "delta": {"content": "hello"}, "finish_reason": None}]},
                 {"choices": [{"index": 0, "delta": {"content": "!"}, "finish_reason": None}]},
                 {"choices": [{"index": 0, "delta": {}, "finish_reason": "length"}]},
                 {"choices": [], "usage": {"completion_tokens": 2}},
             ]
+            if self.path == "/v1/completions":
+                for chunk in chunks:
+                    for choice in chunk["choices"]:
+                        choice["text"] = choice.pop("delta").get("content", "")
             if body.get("return_token_ids"):
                 wire = self.headers["X-Request-ID"]
                 provider = f"chatcmpl-{wire}"
@@ -795,6 +1114,31 @@ def self_test() -> None:
         assert result["proxy_slo"]["requests_meeting_both"] == 4
         assert result["provider_trace_slo"]["status"] == "not_established"
         assert result["provider_reported_true_token_itl_p95_seconds"] is None
+        assert result["usage_reported_input_tokens"] is None
+        for kind in ["completions", "responses"]:
+            other = bench(endpoint, "fixture", "hello", 4, 2, 2, 8, None, request_kind=kind)
+            assert other["request_kind"] == kind
+            assert other["completed_requests"] == other["length_limited_requests"] == 4, other
+            assert other["output_sha256_by_request"] == result["output_sha256_by_request"]
+            assert other["usage_reported_completion_tokens"] == 8
+            assert other["wire_token_metrics"]["completed_requests_with_individual_token_delivery"] == 0
+            if kind == "responses":
+                assert other["usage_reported_input_tokens"] == 20
+                assert other["usage_reported_total_tokens"] == 28
+                assert other["usage_reported_cached_input_tokens"] == 4
+        stopped = stream_one(endpoint, "fixture", "stop", 2, 8, None, request_kind="responses")
+        assert stopped.completed and stopped.finish_reason == "stop" and stopped.tokens == 2
+        for prompt in ["missing-terminal", "wrong-id", "wrong-text", "wrong-usage", "wrong-item",
+                       "post-terminal", "tool", "wrong-sequence", "wrong-event", "wrong-item-status", "failed", "cancelled"]:
+            out = stream_one(endpoint, "fixture", prompt, 2, 8, None, request_kind="responses")
+            expected = {"failed": "provider_error", "cancelled": "cancelled"}.get(prompt, "protocol_error")
+            assert not out.completed and out.output_sha256 is None and out.classification == expected, (prompt, out)
+        try:
+            bench(endpoint, "fixture", "hello", 1, 1, 2, 8, None,
+                  request_kind="responses", return_token_ids=True)
+            raise AssertionError("Responses legacy diagnostic extension accepted")
+        except ValueError:
+            pass
         actual_ids = bench(endpoint,"fixture","wire",1,1,2,8,None,return_token_ids=True,
             ttft_slo_seconds=8,itl_slo_seconds=8)
         assert actual_ids["wire_token_metrics"]["completed_requests_with_individual_token_delivery"] == 1
@@ -896,8 +1240,8 @@ def main() -> None:
     parser.add_argument("--itl-slo", type=float, help="requires complete provider token trace")
     parser.add_argument("--token-events", help="provider token-trace.v1 JSON; read after requests complete")
     parser.add_argument("--return-token-ids", action="store_true", help="request actual token IDs; validate individual delivery and optional provider commit observations")
-    parser.add_argument("--request-kind", choices=["chat", "completions"], default="chat",
-                        help="OpenAI request route; completions preserves a pre-framed raw prompt")
+    parser.add_argument("--request-kind", choices=REQUEST_KINDS, default="chat",
+                        help="OpenAI request route; responses is stateless text, completions preserves a pre-framed raw prompt")
     parser.add_argument("--provider-snapshot-url", help="raw before/after literal loopback HTTP JSON")
     parser.add_argument("--run-id", help="trace binding; default unique random run")
     parser.add_argument("--max-pending", type=int)

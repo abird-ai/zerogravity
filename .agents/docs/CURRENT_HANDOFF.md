@@ -59,7 +59,73 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — OA-10 supported-capability compatibility closeout (27 Nov)
+### Current checkpoint — ordinary serving benchmark / bounded Phase 2 exit (27 Nov)
+
+Started at clean signed 3ce1d39b (OA-10). Extended existing
+tools/serve-bench.py, not a new benchmark runtime. One bounded SSE
+reader (event/line 1 MiB, stream 16 MiB, existing 2048-event limit),
+explicit Responses stateless single assistant text request, sequence,
+model/response/item identity and terminal text/usage validation.
+Length-limited terminal counted as successful transport completion,
+separately reported. Failure/cancel/unsupported or truncated streams
+never yield successful output digests. All routes normalize actual
+input/output/total/cached usage; missing legacy input fields stay null.
+Existing client clocks, offered-work accounting, token trace and
+optional legacy token-ID metrics remain distinct; Responses refuses
+legacy token-ID extension. Comparator applies same request kind to
+both providers/warmups and compares normalized input/output/total
+and finish. Report notes input/total completeness; cached counts are
+not required equal. Matrix carries route metadata; default chat
+unchanged. Source-free benchmark/comparator/owned-lifecycle/matrix
+self-tests pass.
+
+Actual ordinary CLI release CPU Qwen3.5-0.8B cached GGUF on L5,
+canonical serve --offline, --backend cpu --device cpu:0, two workers,
+active_per_worker1, context128/output8, pending8/host8192MiB,
+one prepared owner aliases primary/alias. Private loopback and bearer.
+Existing public tool CLI drives four varied prompts, open-loop burst
+at t0, same max_tokens8. Raw Completions uses explicitly supplied
+previously accepted one-user Qwen template for a matched fixture;
+the generic benchmark never renders templates. Chat C1/C2,
+Responses C2, preframed Completions C2 all 4/4, exact per-request
+output SHA256, input/output/total usage and finish parity. Each cell
+58 input/32 output/90 total, all length-limited, 16 successful
+requests, 128 output tokens. Offered-window output tok/s:
+2.4976/3.2687/3.2487/3.2453; wall12.81240/9.78989/9.85002/9.86047s,
+respectively. Native peak1 then2, registration completed_requests
+4/8/12/16, scheduler actual output counter deltas32 each; all
+request readers, active/pending/in-progress retired, owned SIGTERM
+joined HTTP/worker and socket refused after exit. No performance
+comparison or token ITL from SSE; only functional CPU qualification.
+First real harness mistakenly asserted scheduler attempted/completed
+steps as request counts (36 steps for 4 requests); corrected to
+registration performance completed_requests, retained failure log
+and repeated without changing production inference.
+
+Evidence: target/ordinary-bench-focused.log, target/ordinary-bench-live.py
+(run-local driver, not a second product benchmark), target/ordinary-bench-live-1.log
+(initial harness assertion), target/ordinary-bench-live-2.log and
+target/ordinary-bench-live-2/{invocation,initial-health,workload,raw,
+chat-c1,chat-c2,responses-c2,completions-c2,*-settled}.json.
+Final source-free and native recheck passed (61.022s), again all
+16/16 exact per-item output/usage/finish with native peak2 and joined
+retirement. Logs target/ordinary-bench-final-live.log and
+target/ordinary-bench-live-final/ (same reports). Full assembled
+2,603/0/112 (326 Rust suites, 235s), complete isolated gate passed.
+User-facing instructions in docs/OPENAI.md. Root README unchanged.
+
+Bounded Phase 2 scope: shared CLI/TUI/Web/control/serving and actual
+public benchmark path. Previous accepted lifecycle, multiple admitted
+models/aliases, qualified pipeline routes and trusted prefix-sharing
+scope remain authoritative. No hosted multi-tenant, arbitrary pipeline
+execution, new trained-model/media or provider claim. Those expansion
+holds remain in owning plans. Next Phase 3 ROCm on X2 (gfx1151), fresh
+matched vLLM original-source 0.8B/2B/27B baseline and native gap;
+L5 only source authoring, exact commit bundle to X2 for execution.
+Reuse current correctness/resource/ownership contracts and the
+optimized vLLM recipe; do not revive superseded baselines.
+
+### Prior checkpoint — OA-10 supported-capability compatibility closeout (27 Nov)
 
 Started at clean signed 4735621b (OA-9A); previous assembled gate
 2,597/0/112 and actual learned/SDK receipts retained. Remaining native

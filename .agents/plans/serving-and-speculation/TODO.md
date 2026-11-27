@@ -301,6 +301,24 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   queues; do not block ordinary supported text serving benchmarks on
   unauthorized acquisition or unimplemented capabilities.
 
+### Ordinary serving benchmark / bounded Phase 2 exit — 27 Nov
+
+- [x] Extend existing ordinary benchmark, comparator and matrix to
+  Responses single-text SSE with exact terminal validation; normalize
+  usage for all three routes, keep absent legacy counts unknown and
+  preserve the original metrics/clock distinctions. Document user CLI.
+  Source-free benchmark/comparator/owned-lifecycle/matrix pass.
+- [x] Actual canonical CPU listener with existing Qwen0.8B GGUF,
+  two aliases/one owner,2 workers x1 active, context128/output8.
+  Four varied t0 requests per cell; Chat C1/C2, Responses C2 and
+  explicitly preframed Completions C2 exact output/usage/finish;
+ 16/16,128 output tokens, native peak2, joined retirement. Initial
+ harness corrected scheduler-step versus registration request counts.
+- [x] Final assembled gate: 2,603/0/112 (326 Rust suites, 235s), complete isolated gate passed.
+- [ ] Phase 3 fresh matched optimized ROCm/vLLM original-source
+  0.8B/2B/27B campaigns; L5 authoring, X2 execution only. Missing
+  media/encoder qualification remains separate, no acquisition.
+
 ### Current continuation — 22 Nov 2026
 
 - [x] Fresh baseline capture is complete and canonicalized in
