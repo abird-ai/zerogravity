@@ -91,7 +91,7 @@ impl FailureDetails {
             "invalid_prompt" => "A text prompt is required.",
             "invalid_config" | "config_invalid" => "Invalid configuration.",
             "unsupported_chat" => "The requested model does not support this chat route.",
-            "unsupported_media_type" => "JSON Content-Type required.",
+            "unsupported_media_type" => "Unsupported Content-Type for this endpoint.",
             "not_found" => "Endpoint not found.",
             "queue_full" | "connections_full" | "backpressure" => {
                 "Service capacity is exhausted; retry later."

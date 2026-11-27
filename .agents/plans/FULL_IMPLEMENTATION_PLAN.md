@@ -853,11 +853,14 @@ Actual installed SDK2.33.0/websockets16.0 cached Qwen0.8B GGUF two turns exact
 native text/usage, both length-limited; focused62/0/0 strict lint,
 final assembled 2,597/0/112 (326 Rust suites, 546s), complete isolated gate passed. Corrected malformed generated AST
 terminal classification. No approved TTS/image generator/MiniLM source
-found; keep missing-media holds, advance genuinely qualified Realtime
-capabilities and OA-10 closeout. No natural-speech quality, voice,
-low-latency or physical GPU claim.
+found; keep missing-media holds. OA-10 supported-capability closeout
+corrects cold markers, help, standard safe errors and actual refusal
+behavior; canonical [endpoint matrix](../../docs/OPENAI.md), focused63/0/0
+strict lint. SDK audit passed (installed SDK2.33.0, cached CLI/native/attached-Web 125.30s, Realtime 20.05s); assembled 2,603/0/112 (326 Rust suites, 463s), complete isolated gate passed.
+Next ordinary public serving/benchmark acceptance. No natural-speech
+quality, voice, low-latency or physical GPU claim.
 
-- [ ] Close the [OpenAI-compatible serving iteration](serving-and-speculation/NEXT_ITERATION_OPENAI_COMPATIBLE_SERVING.md):
+- [x] Close the [OpenAI-compatible serving iteration](serving-and-speculation/NEXT_ITERATION_OPENAI_COMPATIBLE_SERVING.md) for actually qualified capabilities:
   model catalog/router, OpenAI Chat/Responses and supported completion/
   embedding/tool/structured-output contracts, usage, errors, JSON/SSE,
   streaming/cancellation/timeout/backpressure and real concurrent requests.

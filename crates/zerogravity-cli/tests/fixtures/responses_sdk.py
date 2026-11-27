@@ -5,6 +5,27 @@ import time
 
 import httpx
 import openai
+from pydantic import BaseModel
+
+
+def standard(value):
+    """The installed SDK permits extra fields even under strict validation."""
+    if isinstance(value, BaseModel):
+        # _request_id is an SDK-local annotation, not part of the wire object.
+        extras = set(value.model_extra or {}) - {"_request_id"}
+        # The official Responses wire examples include the boolean store
+        # field, although SDK 2.33.0's generated Response class omits it.
+        # Keep the established resource semantics, not an SDK schema quirk.
+        if type(value).__name__ == "Response" and "store" in extras:
+            assert isinstance(value.store, bool)
+            extras.remove("store")
+        assert not extras, (type(value).__name__, extras)
+        for name in type(value).model_fields:
+            standard(getattr(value, name, None))
+    elif isinstance(value, (list, tuple)):
+        for child in value:
+            standard(child)
+
 
 address = sys.argv[1]
 host, port = address.rsplit(":", 1)
@@ -21,12 +42,26 @@ with openai.OpenAI(
 ) as client:
     models = {model.id: model for model in client.models.list().data}
     assert set(models) == {"fast", "served-fixture"}, models
+    standard(list(models.values()))
     assert client.models.retrieve("fast").model_dump() == models["fast"].model_dump()
     try:
         client.models.retrieve("missing")
         raise AssertionError("unserved model was retrieved")
     except openai.NotFoundError as error:
         assert error.body["param"] == "model" and error.request_id
+
+    # The actual installed SDK must receive a canonical refusal, not an
+    # apparently successful dummy audio/image response.
+    for call in (
+        lambda: client.audio.speech.create(model="fast", input="Hello", voice="alloy"),
+        lambda: client.images.generate(model="fast", prompt="Hello"),
+    ):
+        try:
+            call()
+            raise AssertionError("unavailable media capability accepted")
+        except openai.NotFoundError as error:
+            assert error.request_id and error.body["code"] == "not_found"
+            assert set(error.body) == {"code", "type", "message", "param"}
 
     # Responses instructions and text parts must yield the exact same
     # selected-model input as the existing typed Chat request.
@@ -68,6 +103,7 @@ with openai.OpenAI(
     assert plain.choices[0].message.content == chat.choices[0].message.content
     assert plain.choices[0].finish_reason == chat.choices[0].finish_reason
     assert plain.usage.model_dump() == chat.usage.model_dump()
+    standard([chat, plain])
     with client.chat.completions.create(
         **chat_kwargs, stream=True,
         stream_options={"include_usage": True, "include_obfuscation": False},
@@ -80,6 +116,7 @@ with openai.OpenAI(
     assert chunks[-1].usage.model_dump() == chat.usage.model_dump()
     assert "".join(chunk.choices[0].delta.content or "" for chunk in chunks[:-1]) == chat.choices[0].message.content
     assert chunks[-2].choices[0].finish_reason == chat.choices[0].finish_reason
+    standard(chunks)
     assert chat.usage.prompt_tokens_details.cached_tokens == 0
     assert chat.usage.completion_tokens_details.reasoning_tokens == 0
     raw_kwargs = dict(model="fast", prompt=prompt, max_tokens=2,
@@ -103,6 +140,7 @@ with openai.OpenAI(
     assert "".join(chunk.choices[0].text for chunk in raw_chunks if chunk.choices) == raw.choices[0].text
     assert raw_chunks[-1].choices == []
     assert raw_chunks[-1].usage.model_dump() == raw.usage.model_dump()
+    standard([raw, *raw_chunks])
     for parameter, value in [
         ("response_format", {"type": "json_object"}),
         ("tools", [{"type": "function", "function": {"name": "lookup"}}]),
@@ -129,6 +167,7 @@ with openai.OpenAI(
         input=kwargs["input"], truncation="disabled",
     )
     assert counted.object == "response.input_tokens"
+    standard(counted)
     response = client.responses.create(**kwargs)
     assert counted.input_tokens == response.usage.input_tokens
     assert response.output_text == chat.choices[0].message.content
@@ -140,6 +179,7 @@ with openai.OpenAI(
     assert response.store is False and response.metadata == kwargs["metadata"]
     assert response.id == response._request_id.replace("req_", "resp_", 1)
     assert response.output[0].role == "assistant"
+    standard(response)
     if response.status == "incomplete":
         assert response.incomplete_details.reason == "max_output_tokens"
     with client.responses.create(**kwargs, stream=True) as stream:
@@ -162,11 +202,13 @@ with openai.OpenAI(
     assert final.id != response.id
     assert all(event.item_id == final.output[0].id for event in deltas)
     assert events[0].response.id == final.id
+    standard(events)
     # Foreground records are explicitly retained, not a second model
     # state. Prior request-local instructions are replaced on continuation.
     stored = client.responses.create(**{**kwargs, "store": True})
     assert stored.store is True
     assert client.responses.retrieve(stored.id).model_dump() == stored.model_dump()
+    standard(stored)
     page = client.responses.input_items.list(stored.id, order="asc", limit=1)
     assert len(page.data) == 1 and not page.has_more
     assert page.data[0].role == "user"
@@ -308,8 +350,10 @@ with openai.OpenAI(
     updated = client.conversations.update(cid, metadata={"canary": "updated"})
     assert updated.created_at == conversation.created_at
     assert updated.metadata == {"canary": "updated"}
+    standard([conversation, updated])
     initial = client.conversations.items.list(cid, order="asc")
     assert len(initial.data) == 1 and initial.data[0].content[0].text == prompt
+    standard(initial.data)
     initial_id = initial.data[0].id
     # Omitted input replays the original stored typed history, without
     # re-appending that history or persisting request-local instructions.
@@ -352,6 +396,7 @@ with openai.OpenAI(
     assert last.output_text == expected.choices[0].message.content
     assert last.usage.input_tokens == expected.usage.prompt_tokens
     assert next_count.input_tokens == last.usage.input_tokens
+    standard(conversation_events)
     assert last.usage.output_tokens == expected.usage.completion_tokens
     page = client.conversations.items.list(cid, order="asc", limit=2)
     assert page.has_more and len(page.data) == 2
@@ -360,6 +405,7 @@ with openai.OpenAI(
     assert tail.data[0].content[0].text == new_prompt
     assert tail.data[1].id == last.output[0].id
     assert tail.data[1].content[0].text == last.output_text
+    standard([*page.data, *tail.data])
     all_input = client.responses.input_items.list(last.id, order="asc")
     assert [item.id for item in all_input.data] == [
         initial_id, first.output[0].id, tail.data[0].id,
@@ -483,3 +529,5 @@ with openai.OpenAI(
     assert client.responses.cancel(bg_id).model_dump() == stopped_stream.model_dump()
     assert client.responses.delete(bg_id) is None
     print(f"OpenAI SDK: background streaming cancellation race ({stopped_stream.status}) passed")
+
+print("OpenAI SDK: ordinary text, model, stream and resource objects contain no undeclared fields; unavailable media refused")

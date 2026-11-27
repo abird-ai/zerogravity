@@ -2,9 +2,9 @@
 //! a prepared model or another execution session. Every turn uses the
 //! original semantic admission and committed event receipt.
 use super::{
-    TextUsage,
+    ErrorReporting, TextUsage,
     body::{BoundedWriter, RESPONSE_TIMEOUT},
-    error_json, parse_json,
+    parse_json,
     transport::request_id,
     validate_finish_reason,
     websocket::{Admission, Socket},
@@ -94,8 +94,11 @@ async fn error(
     socket: &mut Socket,
     e: &ServiceError,
     client_event: Option<&str>,
+    errors: &ErrorReporting,
 ) -> io::Result<()> {
-    let mut value = error_json(e, false);
+    // Realtime events have their own canonical schema. Keep diagnostic
+    // causes out of it, even when trusted HTTP details are enabled.
+    let mut value = errors.report(e, false);
     if let Some(id) = client_event {
         value["error"]["event_id"] = json!(id);
     }
@@ -146,6 +149,7 @@ pub(crate) fn admission(
     service: Arc<dyn TextService>,
     sharing: Option<PrefixSharingScope>,
     body_limit: usize,
+    errors: ErrorReporting,
 ) -> Admission {
     Arc::new(move |path| {
         let alias = path
@@ -160,6 +164,7 @@ pub(crate) fn admission(
         let charge = service.charge_ingress("realtime-session", SESSION_BYTES)?;
         let session = Session {
             service: service.clone(),
+            errors: errors.clone(),
             alias: alias.to_owned(),
             registration,
             sharing,
@@ -179,6 +184,7 @@ pub(crate) fn admission(
 }
 struct Session {
     service: Arc<dyn TextService>,
+    errors: ErrorReporting,
     alias: String,
     registration: u64,
     sharing: Option<PrefixSharingScope>,
@@ -378,7 +384,7 @@ impl Session {
             let (event, charges) = match text_event(message, self.service.as_ref()) {
                 Ok(parsed) => parsed,
                 Err(e) => {
-                    error(&mut socket, &e, None).await?;
+                    error(&mut socket, &e, None, &self.errors).await?;
                     continue;
                 }
             };
@@ -406,9 +412,9 @@ impl Session {
                             .await
                             .map_err(|_| io::ErrorKind::TimedOut)??;
                     }
-                    Err(e) => error(&mut socket, &e, client_id.as_deref()).await?,
+                    Err(e) => error(&mut socket, &e, client_id.as_deref(), &self.errors).await?,
                 },
-                Err(e) => error(&mut socket, &e, client_id.as_deref()).await?,
+                Err(e) => error(&mut socket, &e, client_id.as_deref(), &self.errors).await?,
             }
         }
         Ok(())
@@ -447,7 +453,7 @@ impl Session {
                     self.count_event()?;
                     let (event, _charges) = match text_event(message, self.service.as_ref()) {
                         Ok(parsed) => parsed,
-                        Err(e) => { error(socket, &e, None).await?; continue; }
+                        Err(e) => { error(socket, &e, None, &self.errors).await?; continue; }
                     };
                     let cancel = object(&event).and_then(|map| {
                         keys(map, &["type", "event_id", "response_id"])?;
@@ -459,24 +465,24 @@ impl Session {
                     });
                     match cancel {
                         Ok(()) => break ("cancelled", Value::Null, json!({"type":"cancelled","reason":"client_cancelled"})),
-                        Err(e) => error(socket, &e, event.get("event_id").and_then(Value::as_str)).await?,
+                        Err(e) => error(socket, &e, event.get("event_id").and_then(Value::as_str), &self.errors).await?,
                     }
                 }
                 event = poll_fn(|cx| receipt.events.poll_recv(cx)) => {
                     match event {
                         Ok(ResponseEvent::Text(delta) | ResponseEvent::TokenText {text:delta,..}) => {
                             if delta.len() > self.max_text - text.len() {
-                                break failed("output_too_large");
+                                break self.failed("output_too_large");
                             }
                             text.push_str(&delta);
                             send(socket, "response.output_text.delta", json!({"response_id":response_id,"item_id":item_id,"output_index":0,"content_index":0,"delta":delta})).await?;
                         }
                         Ok(ResponseEvent::Done {output, prompt_tokens, cached_prompt_tokens, completion_tokens, finish_reason}) => {
                             if output != text || completion_tokens > max || validate_finish_reason(finish_reason).is_err() {
-                                break failed("invalid_terminal");
+                                break self.failed("invalid_terminal");
                             }
                             let Ok(usage) = TextUsage::new(prompt_tokens, cached_prompt_tokens, completion_tokens) else {
-                                break failed("invalid_usage");
+                                break self.failed("invalid_usage");
                             };
                             let usage = json!({"input_tokens":usage.prompt,"output_tokens":usage.output,"total_tokens":usage.total,
                                 "input_token_details":{"cached_tokens":usage.cached,"text_tokens":usage.prompt},
@@ -486,8 +492,11 @@ impl Session {
                             }
                             break ("completed", usage, Value::Null);
                         }
-                        Ok(ResponseEvent::Error(e)) => break failure(e.code, if e.status >= 500 { "server_error" } else { "invalid_request_error" }),
-                        Err(_) => break failed("inference_error"),
+                        Ok(ResponseEvent::Error(e)) => {
+                            self.errors.observe(&e);
+                            break failure(e.code, if e.status >= 500 { "server_error" } else { "invalid_request_error" });
+                        }
+                        Err(_) => break self.failed("inference_error"),
                     }
                 }
             }
@@ -520,9 +529,12 @@ impl Session {
         .await?;
         Ok(())
     }
-}
-fn failed(code: &'static str) -> (&'static str, Value, Value) {
-    failure(code, "server_error")
+
+    fn failed(&self, code: &'static str) -> (&'static str, Value, Value) {
+        self.errors
+            .observe(&ServiceError::new(500, code, "invalid realtime terminal"));
+        failure(code, "server_error")
+    }
 }
 fn failure(code: &'static str, kind: &'static str) -> (&'static str, Value, Value) {
     (

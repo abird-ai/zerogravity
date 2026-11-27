@@ -1026,25 +1026,10 @@ public control.
 
 ## 29. Compatibility matrix
 
-Maintain one concise table in serving documentation.
-
-Example structure:
-
-| Family | Wire compatibility | Runtime capability | Status |
-| --- | --- | --- | --- |
-| Models | GET list/retrieve | loaded registry | complete |
-| Responses text | request/stream/store | text generation | complete |
-| Chat | request/stream | chat generation | complete |
-| Completions | request/stream | text generation | complete |
-| Embeddings | request/response | embeddings | pending |
-| Audio transcription | multipart/response | ASR | pending |
-| Speech | request/audio | TTS | pending |
-| Images | multipart/JSON | image model | pending |
-| Realtime WS | event grammar | realtime pipeline | pending |
-
-Wire support and runtime support are separate columns.
-
-This prevents "route parses" from being mistaken for "feature works."
+The canonical user-facing [endpoint matrix](../../../docs/OPENAI.md)
+distinguishes implemented wire adapters from actually qualified model
+execution. The native runtime and registration remain the capability
+authority. Do not duplicate the matrix as another task ledger.
 
 ---
 
@@ -1772,16 +1757,29 @@ unless it is already trivial and required.
 
 ### OA-10 — compatibility closeout
 
-Run:
+**OA-10 (27 Nov): supported-capability closeout.** Corrected stale cold
+Responses/Embeddings route availability and extended existing endpoint
+family declarations without changing runtime eligibility. Updated CLI
+help and published the canonical supported/blocked matrix in
+[docs/OPENAI.md](../../../docs/OPENAI.md). Fixed public Content-Type
+message for multipart vs JSON, preserving code/status. Realtime errors
+now use the same safe operational observer as HTTP/SSE; no private
+diagnostic fields in standard Realtime events. Focused63/0/0, strict lint;
+socket tests prove missing media/cloud routes refuse before inference,
+server-generated correlation IDs, safe errors and retirement.
+Actual SDK object audit and changed consumers: passed (installed SDK2.33.0, cached CLI/native/attached-Web 125.30s, Realtime 20.05s).
+Final assembled: 2,603/0/112 (326 Rust suites, 463s), complete isolated gate passed.
 
-- concise endpoint matrix;
-- official SDK smokes;
-- shutdown/cancellation;
-- standard-object audit for accidental ZeroGravity fields;
-- docs/help updates.
+Keep trained MiniLM, natural/general speech, synthesis, image generation,
+additional Realtime/media, structured output and tools open until their
+actual model/runtime capability is qualified. No synthetic stand-in or
+implicit download. Existing explicit legacy metrics/diagnostic contracts
+remain opt-in; normal SDK objects do not require extensions.
+The original HTTP transport remains the sole listener; no duplicate
+bootstrap server to retire.
 
-Retire duplicated bootstrap transport paths only after equivalent bounded
-behavior is established.
+Next: ordinary public serving/benchmark acceptance through existing
+CLI/SDK, then ordered ROCm, CUDA and Vulkan performance campaigns.
 
 ---
 

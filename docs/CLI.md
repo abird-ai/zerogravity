@@ -214,10 +214,13 @@ Control authentication is independent of optional inference API
 authentication. Closing an attached browser does not stop the native host.
 Ctrl-C stops the foreground host and joins its work.
 
-Serving requires the serve feature and a qualified model route. The existing
-local API exposes health, model listing, text completions and chat completions;
-unsupported routes, models, parameters and backends refuse. It is loopback
-only at this checkpoint; optional `ZEROGRAVITY_API_KEY` protects inference.
+Serving requires the serve feature and an eligible loaded model route.
+The local API supports Models, Responses and conversation resources,
+Chat/legacy Completions, capability-gated embeddings and finite speech,
+and qualified text Realtime. Unsupported routes, models, parameters and
+backends refuse. It is loopback-only; optional `ZEROGRAVITY_API_KEY` protects
+inference. See the [OpenAI-compatible inference guide](OPENAI.md) for the
+actual endpoint matrix, model qualification boundaries and SDK example.
 Public serving compatibility and performance qualification are separate work.
 
 ### Error diagnostics

@@ -45,19 +45,22 @@ fn external_bind_and_unimplemented_endpoints_refuse() {
         Endpoint::Models,
         Endpoint::Completions,
         Endpoint::ChatCompletions,
+        Endpoint::Responses,
+        Endpoint::Conversations,
+        Endpoint::Embeddings,
+        Endpoint::Transcriptions,
+        Endpoint::Translations,
+        Endpoint::Realtime,
     ] {
         endpoint.require_implemented().unwrap();
     }
-    for endpoint in [Endpoint::Embeddings, Endpoint::Responses] {
+    for endpoint in [Endpoint::Speech, Endpoint::Images] {
         assert!(matches!(
             endpoint.require_implemented(),
             Err(Error::Unsupported(_))
         ));
     }
-    assert!(matches!(
-        zerogravity_serving::responses::require_implemented(),
-        Err(Error::Unsupported(_))
-    ));
+    zerogravity_serving::responses::require_implemented().unwrap();
     use zerogravity_serving::realtime::RealtimeTransport;
     RealtimeTransport::WebSocket.require_implemented().unwrap();
     assert!(RealtimeTransport::WebRtc.require_implemented().is_err());

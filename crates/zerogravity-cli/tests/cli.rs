@@ -42,6 +42,36 @@ fn help_is_available_offline() {
 }
 
 #[test]
+fn serve_help_describes_capability_gated_protocols() {
+    let output = binary()
+        .args(["serve", "--help"])
+        .output()
+        .expect("serve help");
+    assert!(output.status.success());
+    let text = String::from_utf8(output.stdout).unwrap();
+    if cfg!(feature = "serve") {
+        for route in [
+            "/v1/models",
+            "/v1/responses",
+            "/v1/responses/input_tokens",
+            "/v1/conversations",
+            "/v1/chat/completions",
+            "/v1/completions",
+            "/v1/embeddings",
+            "/v1/audio/transcriptions",
+            "/v1/audio/translations",
+            "/v1/realtime",
+        ] {
+            assert!(text.contains(route), "{route}: {text}");
+        }
+        assert!(text.contains("eligible loaded models"));
+        assert!(text.contains("WebRTC unavailable"));
+    } else {
+        assert!(text.contains("optional serve feature"));
+    }
+}
+
+#[test]
 fn serve_requires_an_explicit_feature_and_registered_model() {
     let root = std::env::temp_dir().join(format!("zg-serve-no-document-{}", std::process::id()));
     assert!(!root.exists());

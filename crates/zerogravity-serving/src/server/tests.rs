@@ -2190,3 +2190,68 @@ fn completion_projection_refuses_invalid_terminal_usage_and_finish_reason() {
         assert_eq!(host.serving_bytes(), baseline);
     }
 }
+
+#[test]
+fn supported_surface_refuses_unavailable_families_without_admission() {
+    let _lock = test_support::lock();
+    let host = test_support::host();
+    let baseline = host.serving_bytes();
+    let service = Script::new(host.clone());
+    let server = ServerBuilder::from_service(service.clone())
+        .bind("127.0.0.1:0".parse().unwrap())
+        .api_key(Some("fixture-key".into()))
+        .build()
+        .unwrap()
+        .start()
+        .unwrap();
+    let address = server.local_addr();
+    let mut ids = std::collections::BTreeSet::new();
+    for (path, status, code) in [
+        ("/v1/audio/speech", 404, "not_found"),
+        ("/v1/images/generations", 404, "not_found"),
+        ("/v1/images/edits", 404, "not_found"),
+        ("/v1/images/variations", 404, "not_found"),
+        ("/v1/realtime/calls", 404, "not_found"),
+        ("/v1/realtime/client_secrets", 404, "not_found"),
+        ("/v1/audio/transcriptions", 415, "unsupported_media_type"),
+        ("/v1/audio/translations", 415, "unsupported_media_type"),
+    ] {
+        let request = post(path, "{}").replacen(
+            "Host: localhost\r\n",
+            "Host: localhost\r\nAuthorization: Bearer fixture-key\r\nX-Request-Id: caller\r\n",
+            1,
+        );
+        let response = exchange(address, &request);
+        assert!(
+            response.starts_with(&format!("HTTP/1.1 {status}")),
+            "{path}: {response}"
+        );
+        let value = document(&response);
+        assert_eq!(value["error"]["code"], code, "{path}");
+        assert_eq!(value["error"]["type"], "invalid_request_error");
+        let error = value["error"].as_object().unwrap();
+        assert_eq!(error.len(), 4);
+        assert!(error.contains_key("param") && error.contains_key("message"));
+        if status == 415 {
+            assert_eq!(
+                error["message"],
+                "Unsupported Content-Type for this endpoint."
+            );
+        }
+        let id = response
+            .lines()
+            .find_map(|line| {
+                let (key, value) = line.split_once(':')?;
+                key.eq_ignore_ascii_case("x-request-id")
+                    .then_some(value.trim())
+            })
+            .unwrap();
+        assert!(id.starts_with("req_") && ids.insert(id.to_owned()), "{id}");
+    }
+    let denied = exchange(address, &post("/v1/images/generations", "{}"));
+    assert!(denied.starts_with("HTTP/1.1 401"));
+    assert!(service.requests.lock().unwrap().is_empty());
+    server.shutdown().unwrap();
+    drop(service);
+    assert_eq!(host.serving_bytes(), baseline);
+}

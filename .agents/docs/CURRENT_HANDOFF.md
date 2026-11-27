@@ -59,7 +59,51 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — OA-9A native text Realtime (27 Nov)
+### Current checkpoint — OA-10 supported-capability compatibility closeout (27 Nov)
+
+Started at clean signed 4735621b (OA-9A); previous assembled gate
+2,597/0/112 and actual learned/SDK receipts retained. Remaining native
+speech is finite, not streaming voice. No eligible TTS/image generation
+or trained MiniLM source found in previous approved inventory; no new
+acquisition. Close out actual supported protocols, not pretend full
+cloud feature coverage.
+
+Cold Endpoint::require_implemented now describes implemented protocol
+families, including Responses/Conversations, Embeddings, finite speech
+and text Realtime; synthesis/images refuse. Actual model capability
+and admission remain in original registration. Updated serve help and
+one canonical user-facing [endpoint matrix](../../docs/OPENAI.md);
+root README untouched. Public unsupported_media_type now correctly
+describes both JSON and multipart, same code/status. Realtime errors
+feed original safe operational observer; no diagnostic details in the
+standard Realtime event schema even with HTTP details enabled. Default
+HTTP errors/objects and caller vs server correlation remain explicit.
+Real socket refusal tests cover unavailable speech/image/cloud routes,
+wrong audio Content-Type, authentication, unique server IDs and no
+inference admission. Existing lifecycle test verifies safe Realtime
+error observations. Focused63/0/0 strict lint.
+
+Actual SDK object audit and changed consumers: passed (installed SDK2.33.0, cached CLI/native/attached-Web 125.30s, Realtime 20.05s).
+Final assembled: 2,603/0/112 (326 Rust suites, 463s), complete isolated gate passed.
+First SDK audit stopped on the documented boolean Response.store field,
+which SDK2.33.0 accepts as an extra despite its omission in the generated
+Response class. Official Responses wire examples include it. Retained
+existing storage semantics; narrowly corrected the audit (no source
+relaxation). Retry passed full actual model SDK object checks, replay,
+cancellation, CLI/native/attached-Web lifecycle and Realtime parity.
+Logs target/oa10-focused.log, target/oa10-sdk.log (initial audit failure),
+target/oa10-sdk-retry.log, target/oa10-assembled.log.
+Prior OA-6C/7D/7E actual installed SDK media evidence retained: no
+change to learned execution or wire success projection. Trained MiniLM
+and native-only Gemma public promotion stay unqualified; no voice/TTS,
+image generation, WebRTC, general media, tools or structured-output grant.
+
+Next: ordinary public serving and benchmark acceptance with actual
+supported text CLI/SDK, stable matched workload and explicit metrics;
+then ROCm/vLLM, CUDA/vLLM, Vulkan and optional compiled providers in
+the ordered plan. Do not wait on unauthorized acquisition.
+
+### Prior checkpoint — OA-9A native text Realtime (27 Nov)
 
 Recovered signed OA-7E 1585b579, complete 2,596/0/112 assembled gate.
 No approved trained TTS, image-generation or MiniLM source found in the

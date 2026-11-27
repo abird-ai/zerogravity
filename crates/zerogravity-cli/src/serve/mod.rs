@@ -293,8 +293,15 @@ pub(super) fn help() {
              [--batch-mode interleaved|fused] [--batch-rows 2|4|8] \
              [--max-pending-requests N|none] \
              [--enable-per-request-metrics] [--enable-error-details]\n\
-             ENDPOINTS: GET /health, GET /v1/models, \
-             POST /v1/chat/completions, POST /v1/completions.\n\
+             ENDPOINTS (eligible loaded models only):\n\
+             GET /health, GET /v1/models[/ID].\n\
+             POST /v1/responses (text, streaming, resources), /v1/responses/input_tokens.\n\
+             /v1/conversations and response resources (bounded listener-local state).\n\
+             POST /v1/chat/completions, /v1/completions (text).\n\
+             POST /v1/embeddings, /v1/audio/transcriptions, /v1/audio/translations \
+             (explicitly eligible SDK adapters; no built-in public media grant).\n\
+             WebSocket /v1/realtime?model=ID (qualified CPU text).\n\
+             Speech synthesis, image generation, audio Realtime and WebRTC unavailable.\n\
              Qwen3.5 greedy text CPU or resident GPU, no inference fallback. \
              GPU: workers=1, context=512. Default interleaved; fused enables \
              CUDA 2/4/8-row compatible prompt tails and independent decode frontiers \

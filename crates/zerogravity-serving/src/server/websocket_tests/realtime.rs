@@ -157,9 +157,15 @@ fn bounded_realtime_turns_use_original_receipts_and_retire() {
         requests: Mutex::new(Vec::new()),
         held: Mutex::new(Vec::new()),
     });
+    let observations = Arc::new(Mutex::new(
+        Vec::<zerogravity_engine::router::FailureDetails>::new(),
+    ));
+    let observed = observations.clone();
     let server = ServerBuilder::from_service(probe.clone())
         .bind("127.0.0.1:0".parse().unwrap())
         .api_key(Some("secret".into()))
+        .enable_error_details(true)
+        .observe_errors(move |details| observed.lock().unwrap().push(details))
         .build()
         .unwrap()
         .start()
@@ -176,10 +182,9 @@ fn bounded_realtime_turns_use_original_receipts_and_retire() {
         &mut client,
         json!({"type":"session.update","session":{"type":"realtime","output_modalities":["audio"]}}),
     );
-    assert_eq!(
-        read(&mut client, "error")["error"]["code"],
-        "unsupported_parameter"
-    );
+    let refusal = read(&mut client, "error");
+    assert_eq!(refusal["error"]["code"], "unsupported_parameter");
+    assert!(refusal["error"].get("details").is_none());
     client
         .send(Message::Text(
             r#"{"type":"response.create","type":"response.cancel"}"#.into(),
@@ -314,6 +319,20 @@ fn bounded_realtime_turns_use_original_receipts_and_retire() {
     server.shutdown().unwrap();
     assert!(probe.held.lock().unwrap()[2].1.is_cancelled());
     assert!(client.read().is_err());
+    let entries = observations.lock().unwrap();
+    for (code, status) in [
+        ("unsupported_parameter", 400),
+        ("invalid_terminal", 500),
+        ("invalid_input", 400),
+    ] {
+        assert!(
+            entries
+                .iter()
+                .any(|e| e.code == code && e.status == Some(status)),
+            "{code}"
+        );
+    }
+    drop(entries);
     drop(probe);
     assert_eq!(host.serving_bytes(), baseline);
 }

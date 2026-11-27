@@ -5,6 +5,16 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 27 Nov — OA-10 supported-capability compatibility closeout
+
+Cold protocol family markers, CLI help and canonical endpoint matrix
+corrected. Safe HTTP Content-Type message and Realtime operational
+error observation; original runtime and inference math unchanged.
+Focused63/0/0 strict lint, real refusal and lifecycle sockets.
+SDK and changed consumers: passed (installed SDK2.33.0, cached CLI/native/attached-Web 125.30s, Realtime 20.05s).
+Final assembled: 2,603/0/112 (326 Rust suites, 463s), complete isolated gate passed.
+No new physical GPU performance or learned media qualification.
+
 ## 27 Nov — OA-9A native text Realtime
 
 Original semantic Runtime/registration/receipt over existing WebSocket

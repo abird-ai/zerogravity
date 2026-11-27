@@ -174,10 +174,14 @@ pub(crate) struct ErrorReporting {
     pub observer: Option<ErrorObserver>,
 }
 impl ErrorReporting {
-    fn report(&self, error: &ServiceError, authorized: bool) -> Value {
+    fn observe(&self, error: &ServiceError) {
         if let Some(observer) = &self.observer {
             observer(error.details());
         }
+    }
+
+    fn report(&self, error: &ServiceError, authorized: bool) -> Value {
+        self.observe(error);
         error_json(error, self.details && authorized)
     }
 }

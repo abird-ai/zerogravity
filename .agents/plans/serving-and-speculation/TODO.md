@@ -285,6 +285,22 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   or WebRTC claim. Then OA-10 applicable endpoint matrix/SDK/lifecycle
   closeout with explicit missing capability rows.
 
+### OA-10 — Supported-capability compatibility closeout
+
+- [x] Correct stale protocol-family markers; cold adapter availability is
+  not loaded-model eligibility. Update serve help and publish one concise
+  actual matrix at ../../../docs/OPENAI.md.
+- [x] Public error/standard wire audit: accurate content-type message,
+  Realtime safe operational observer, no diagnostic extensions in normal
+  objects, explicit unavailable media/cloud refusal before inference,
+  server-generated IDs and joined retirement. Focused63/0/0 strict lint.
+- [x] Official SDK standard-object audit and changed real consumers:
+  passed (installed SDK2.33.0, cached CLI/native/attached-Web 125.30s, Realtime 20.05s).
+- [x] Final assembled workspace gate: 2,603/0/112 (326 Rust suites, 463s), complete isolated gate passed.
+- [ ] Independent qualified model/media expansion remains in owning
+  queues; do not block ordinary supported text serving benchmarks on
+  unauthorized acquisition or unimplemented capabilities.
+
 ### Current continuation — 22 Nov 2026
 
 - [x] Fresh baseline capture is complete and canonicalized in

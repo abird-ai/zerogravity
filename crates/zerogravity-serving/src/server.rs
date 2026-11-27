@@ -184,6 +184,7 @@ impl Server {
                 builder.service.clone(),
                 builder.prefix_sharing_scope,
                 builder.limits.body_bytes,
+                builder.errors.clone(),
             ))
         });
         let captures = AcceptCaptures {
