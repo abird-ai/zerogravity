@@ -102,8 +102,17 @@ fn denied_admission() -> TransferAdmission {
     }
 }
 fn publish(store: &CacheStore, model: &[u8], role: FileRole) -> (String, SnapshotLease) {
+    publish_named(store, MODEL, model, role)
+}
+
+fn publish_named(
+    store: &CacheStore,
+    name: &str,
+    model: &[u8],
+    role: FileRole,
+) -> (String, SnapshotLease) {
     let files = [
-        (MODEL, model, role),
+        (name, model, role),
         (CONFIG, CONFIG_BYTES, FileRole::Config),
         (TOKENIZER, TOKENIZER_BYTES, FileRole::Tokenizer),
     ];
@@ -461,4 +470,55 @@ fn raw_owned_source_reservation_precedes_copy_and_lasts_until_all_model_owners_d
             .reserved,
         0
     );
+}
+
+#[test]
+fn single_safetensors_authenticates_owned_bytes_and_prices_directory() {
+    let fixture = Fixture::new();
+    let store = fixture.open();
+    let name = "original/model.safetensors";
+    let header = br#"{"value":{"dtype":"F32","shape":[2],"data_offsets":[0,8]},"positions":{"dtype":"I64","shape":[1],"data_offsets":[8,16]}}"#;
+    let mut bytes = (header.len() as u64).to_le_bytes().to_vec();
+    bytes.extend(header);
+    bytes.extend(1f32.to_le_bytes());
+    bytes.extend(2f32.to_le_bytes());
+    bytes.extend(1i64.to_le_bytes());
+    let (_, lease) = publish_named(&store, name, &bytes, FileRole::Weights);
+    let a = admission();
+    let before = a.arbiter.snapshot(&a.resource).unwrap().reserved;
+    let owned = lease.single_safetensors(name, 4096, &a).unwrap();
+    assert_eq!(owned.vector("value").unwrap(), [1., 2.]);
+    assert_eq!(owned.verified_single_sha256(), Some(hash(&bytes).as_str()));
+    assert!(owned.verified_bundle_sha256().is_none());
+    assert_eq!(
+        owned.tensor("positions").unwrap().kind,
+        zerogravity_core::encoding::StoredTensorEncoding::I64
+    );
+    assert!(matches!(
+        owned.vector("positions"),
+        Err(Error::Unsupported(_))
+    ));
+    let reserved = a.arbiter.snapshot(&a.resource).unwrap().reserved;
+    assert!(reserved > before + bytes.len() as u64);
+    assert!(matches!(
+        lease.single_safetensors(name, 1, &a),
+        Err(Error::Limit(_))
+    ));
+    assert!(matches!(
+        lease.single_safetensors(name, 4096, &denied_admission()),
+        Err(Error::Resource(_))
+    ));
+    let blob = fixture.root.join(format!("blobs/sha256/{}", hash(&bytes)));
+    // Same opened inode, unchanged header and extent, different payload.
+    let last = bytes.len() - 1;
+    bytes[last] ^= 1;
+    fs::write(&blob, &bytes).unwrap();
+    assert!(matches!(
+        lease.single_safetensors(name, 4096, &a),
+        Err(Error::Malformed(_))
+    ));
+    assert_eq!(a.arbiter.snapshot(&a.resource).unwrap().reserved, reserved);
+    assert_eq!(owned.vector("value").unwrap(), [1., 2.]);
+    drop(owned);
+    assert_eq!(a.arbiter.snapshot(&a.resource).unwrap().reserved, before);
 }

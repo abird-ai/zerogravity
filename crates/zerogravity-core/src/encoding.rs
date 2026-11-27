@@ -22,6 +22,9 @@ pub enum QuantScheme {
 pub enum StoredTensorEncoding {
     Scalar(ScalarDType),
     Quantized(QuantScheme),
+    /// Original integer buffers (e.g. BERT position IDs), not activation
+    /// precision and never a floating-point or quantized projection codec.
+    I64,
 }
 
 impl std::fmt::Debug for StoredTensorEncoding {
@@ -30,6 +33,7 @@ impl std::fmt::Debug for StoredTensorEncoding {
         match self {
             Self::Scalar(dtype) => std::fmt::Debug::fmt(dtype, f),
             Self::Quantized(scheme) => std::fmt::Debug::fmt(scheme, f),
+            Self::I64 => f.write_str("I64"),
         }
     }
 }
@@ -45,6 +49,7 @@ impl StoredTensorEncoding {
             Self::Quantized(QuantScheme::Q6K) => "Q6_K",
             Self::Quantized(QuantScheme::Q8_0) => "Q8_0",
             Self::Quantized(QuantScheme::Q4K) => "Q4_K",
+            Self::I64 => "I64",
         }
     }
 
@@ -58,6 +63,7 @@ impl StoredTensorEncoding {
             Self::Quantized(QuantScheme::Q6K) => (256, 210),
             Self::Quantized(QuantScheme::Q8_0) => (32, 34),
             Self::Quantized(QuantScheme::Q4K) => (256, 144),
+            Self::I64 => (1, 8),
         }
     }
 
@@ -95,6 +101,7 @@ impl StoredTensorEncoding {
             "F32" => Ok(Self::Scalar(ScalarDType::F32)),
             "F16" => Ok(Self::Scalar(ScalarDType::F16)),
             "BF16" => Ok(Self::Scalar(ScalarDType::Bf16)),
+            "I64" => Ok(Self::I64),
             other => Err(Error::Unsupported(format!(
                 "safetensors dtype {other}: no validated tensor codec"
             ))),

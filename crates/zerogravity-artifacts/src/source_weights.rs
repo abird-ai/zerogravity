@@ -62,6 +62,9 @@ pub struct SourceWeights {
     /// every exact owned shard basename, length and whole-file SHA256.
     #[cfg(all(feature = "cache", target_os = "linux"))]
     verified_bundle_sha256: Option<String>,
+    /// Digest of an exact single-file Safetensors owner, not a shard index.
+    #[cfg(all(feature = "cache", target_os = "linux"))]
+    verified_single_sha256: Option<String>,
     #[cfg(all(feature = "cache", target_os = "linux"))]
     _memory: Option<GlobalResourceLease>,
 }
@@ -178,6 +181,8 @@ impl SourceWeights {
             #[cfg(all(feature = "cache", target_os = "linux"))]
             verified_bundle_sha256: None,
             #[cfg(all(feature = "cache", target_os = "linux"))]
+            verified_single_sha256: None,
+            #[cfg(all(feature = "cache", target_os = "linux"))]
             _memory,
         })
     }
@@ -206,8 +211,85 @@ impl SourceWeights {
             architecture: String::new(),
             verified_shard_index_sha256: Some(verified_index_sha256),
             verified_bundle_sha256: Some(verified_bundle_sha256),
+            verified_single_sha256: None,
             _memory: Some(memory),
         })
+    }
+
+    /// A complete single-file Safetensors source; authenticate the actual
+    /// owned bytes from the original opened descriptor. No synthetic index
+    /// and no inference eligibility inferred from successful ingestion.
+    #[cfg(all(feature = "cache", target_os = "linux"))]
+    pub(crate) fn from_verified_single_safetensors(
+        file: &std::fs::File,
+        expected_bytes: u64,
+        expected_sha256: &str,
+        maximum: u64,
+        admission: &crate::cache::TransferAdmission,
+    ) -> Result<Self> {
+        use std::os::unix::fs::FileExt;
+
+        // The first single-file owner uses a deliberately smaller directory
+        // envelope than the generic inspector. Price the owned bytes and
+        // directory (including parsing temporaries) before allocating either.
+        if expected_bytes > maximum || expected_bytes < 10 {
+            return Err(Error::Limit("single source byte extent".into()));
+        }
+        let mut prefix = [0; 8];
+        file.read_exact_at(&mut prefix, 0)?;
+        let header = u64::from_le_bytes(prefix);
+        if header == 0 || header > 1024 * 1024 || header > expected_bytes - 8 {
+            return Err(Error::Limit("single source directory extent".into()));
+        }
+        let memory = admission.arbiter.admit(
+            &admission.resource,
+            admission.owner.clone(),
+            &[
+                AllocationRequest {
+                    kind: AllocationClass::ImmutableWeights,
+                    bytes: expected_bytes,
+                },
+                AllocationRequest {
+                    kind: AllocationClass::Other,
+                    bytes: 16 * header + 64 * 1024,
+                },
+            ],
+        )?;
+        let source =
+            crate::artifact::copy_verified_file(file, expected_bytes, expected_sha256, maximum)?;
+        // Only the authenticated owned snapshot establishes geometry. Do not
+        // let a changed length invalidate the directory admission.
+        if source[..8] != prefix {
+            return Err(Error::Malformed("single source directory changed".into()));
+        }
+        let info = crate::artifact::parse_safetensors(
+            &mut std::io::Cursor::new(source.as_slice()),
+            expected_bytes,
+        )?;
+        let shards = info.tensors.iter().map(|t| (t.name.clone(), 0)).collect();
+        let tensors = info
+            .tensors
+            .into_iter()
+            .map(|t| (t.name.clone(), t))
+            .collect();
+        Ok(Self {
+            source_identity: SourceIdentity::for_new_allocation()?,
+            source: SourceStorage::Safetensors(vec![source]),
+            #[cfg(feature = "state-checkpoint")]
+            gguf_digest: std::sync::OnceLock::new(),
+            tensors,
+            shards,
+            architecture: String::new(),
+            verified_shard_index_sha256: None,
+            verified_bundle_sha256: None,
+            verified_single_sha256: Some(expected_sha256.to_owned()),
+            _memory: Some(memory),
+        })
+    }
+
+    #[cfg(all(feature = "cache", target_os = "linux"))]
+    pub fn verified_single_sha256(&self) -> Option<&str> {
+        self.verified_single_sha256.as_deref()
     }
 
     /// Identity of this immutable loaded model allocation for safe GPU

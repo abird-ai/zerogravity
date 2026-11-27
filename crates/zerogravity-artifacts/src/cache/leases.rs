@@ -83,6 +83,36 @@ impl SnapshotLease {
         SourceWeights::from_verified_artifact(parsed, entry.bytes(), entry.digest(), admission)
     }
 
+    /// Complete single-file source from the same manifest-bound descriptor.
+    pub fn single_safetensors(
+        &self,
+        logical_path: &str,
+        maximum: u64,
+        admission: &TransferAdmission,
+    ) -> Result<SourceWeights> {
+        let entry = self.entry(logical_path)?;
+        if entry.role() != FileRole::Weights {
+            return Err(Error::Unsupported(
+                "cache source must be a weights entry".into(),
+            ));
+        }
+        if entry.bytes() > maximum {
+            return Err(Error::Limit("single source exceeds byte budget".into()));
+        }
+        if Path::new(logical_path).extension().and_then(|s| s.to_str()) != Some("safetensors") {
+            return Err(Error::Unsupported(
+                "single source requires Safetensors".into(),
+            ));
+        }
+        SourceWeights::from_verified_single_safetensors(
+            self.file(logical_path)?,
+            entry.bytes(),
+            entry.digest(),
+            maximum,
+            admission,
+        )
+    }
+
     /// Bounded config/tokenizer/control copy verified against the manifest
     /// after copying, before a caller's existing parser sees any bytes.
     pub fn read_verified(&self, logical_path: &str, maximum: u64) -> Result<Vec<u8>> {

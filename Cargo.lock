@@ -6106,6 +6106,7 @@ dependencies = [
 name = "zerogravity-cpu"
 version = "0.1.0"
 dependencies = [
+ "libm",
  "rayon",
  "serde",
  "serde_json",
@@ -6154,6 +6155,20 @@ dependencies = [
  "zerogravity-cpu",
  "zerogravity-gpu",
  "zerogravity-model-qwen35",
+]
+
+[[package]]
+name = "zerogravity-model-bert"
+version = "0.1.0"
+dependencies = [
+ "ahash",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tokenizers",
+ "zerogravity-artifacts",
+ "zerogravity-core",
+ "zerogravity-cpu",
 ]
 
 [[package]]

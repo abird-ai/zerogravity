@@ -812,8 +812,11 @@ OA-5 typed Chat/legacy text compatibility accepted: focused 184/0/0,
 strict lint, actual official SDK/CLI/TUI/Firefox (184.78s), Rust SDK
 (13.99s) and full isolated gate 2,574/0/109 (318 suites, 306s) passed.
 Keep unavailable tool/structured-output/media/sampling capabilities
-explicitly refused. Next OA-6: actual embedding model/runtime
-capability before wire exposure.
+explicitly refused. OA-6A: native BERT source-bound embedding candidate,
+shared CPU noncausal primitives and verified single-file Safetensors
+owner, synthetic numerical/ownership qualification. OA-6 remains open
+for authorized actual MiniLM trained source, independent tokenizer/vector
+parity, original Runtime task/receipt integration and SDK wire acceptance.
 Preserve the original runtime, admission and listener owner.
 
 - [ ] Close the [OpenAI-compatible serving iteration](serving-and-speculation/NEXT_ITERATION_OPENAI_COMPATIBLE_SERVING.md):

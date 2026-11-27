@@ -36,7 +36,7 @@
       manifest = tomllib.loads((filtered / "Cargo.toml").read_text())
       assert "package" not in manifest and manifest["workspace"]["package"]["version"]
       members = set(manifest["workspace"]["members"])
-      assert members == {"crates/zerogravity-core", "crates/zerogravity-artifacts", "crates/zerogravity-cpu", "crates/zerogravity-model-qwen35", "crates/zerogravity-model-gemma4", "crates/zerogravity-gpu", "crates/zerogravity-engine", "crates/zerogravity-serving", "crates/zerogravity", "crates/zerogravity-cli", "tools/gpu-qualify"}, members
+      assert members == {"crates/zerogravity-core", "crates/zerogravity-artifacts", "crates/zerogravity-cpu", "crates/zerogravity-model-qwen35", "crates/zerogravity-model-gemma4", "crates/zerogravity-model-bert", "crates/zerogravity-gpu", "crates/zerogravity-engine", "crates/zerogravity-serving", "crates/zerogravity", "crates/zerogravity-cli", "tools/gpu-qualify"}, members
       for member in members:
           cargo_file = pathlib.Path(member) / "Cargo.toml"
           assert (filtered / cargo_file).read_bytes() == (original / cargo_file).read_bytes(), cargo_file
@@ -70,7 +70,7 @@
       assert sorted(str(p.relative_to(filtered)) for p in filtered.rglob("Cargo.lock")) == ["Cargo.lock"]
       assert (filtered / "README.md").read_bytes() == (original / "README.md").read_bytes()
       model_sources = []
-      for member in ["crates/zerogravity-artifacts", "crates/zerogravity-model-qwen35", "crates/zerogravity-model-gemma4"]:
+      for member in ["crates/zerogravity-artifacts", "crates/zerogravity-model-qwen35", "crates/zerogravity-model-gemma4", "crates/zerogravity-model-bert"]:
           for path in sorted((original / member).rglob("*.rs")):
               relative = path.relative_to(original)
               assert (filtered / relative).read_bytes() == path.read_bytes(), relative

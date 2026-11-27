@@ -34,6 +34,11 @@ pub fn f16_to_f32(bits: u16) -> f32 {
 /// Reference decoding, intended for correctness fixtures rather than speed.
 /// Q4_0 has 16 low-nibble values followed by 16 high-nibble values per block.
 pub fn dequantize(kind: StoredTensorEncoding, data: &[u8], elements: usize) -> Result<Vec<f32>> {
+    if kind == StoredTensorEncoding::I64 {
+        return Err(Error::Unsupported(
+            "I64 source buffer is not a floating weight".into(),
+        ));
+    }
     let expected = kind.byte_len(elements as u64)?;
     if data.len() as u64 != expected {
         return Err(Error::Malformed(format!(
@@ -46,6 +51,7 @@ pub fn dequantize(kind: StoredTensorEncoding, data: &[u8], elements: usize) -> R
     out.try_reserve_exact(elements)
         .map_err(|_| Error::Limit("reference tensor allocation failed".into()))?;
     match kind {
+        StoredTensorEncoding::I64 => unreachable!("integer buffers refused before allocation"),
         StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32) => {
             for b in data.chunks_exact(4) {
                 out.push(f32::from_le_bytes([b[0], b[1], b[2], b[3]]));

@@ -189,10 +189,21 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   failures resolved without production changes; see live handoff.
   Capability-bound tools/structured output/media/non-greedy sampling
   remain explicit unsupported until real implementations are qualified.
-- [ ] OA-6: real embedding semantic/model/runtime capability before
-  wire exposure. Inspect existing source/model adapters; qualify actual
+- [x] OA-6A: native BERT sentence encoder candidate and shared CPU
+  noncausal math; verified single-file Safetensors owner, I64 index
+  storage (never a floating projection), original WordPiece source
+  semantics, bounded admission and result lifetime. Independent
+  synthetic source/vector and ownership tests pass (489/0/16 focused);
+  default CLI compile passes. Assembled gate stopped at time boundary
+  after 1,844/0/95 (255 completed suites); no full acceptance.
+- [ ] Finish full isolated gate on unchanged OA-6A checkpoint.
+- [ ] OA-6B: authorize/acquire pinned MiniLM-L6-v2 original weights and
+  config/vocab/module closure; actual tokenizer and trained-vector
+  reference parity, memory and cancellation qualification. Extend the
+  original Runtime/registry/scheduler/receipt with embedding task and
+  output semantics before exposing /v1/embeddings. Qualify actual
   input, vector output/usage, admission, retirement and SDK consumer.
-  No fabricated embedding or separate execution owner.
+  No fabricated embedding or separate execution owner. OA-6 remains open.
 
 ### Current continuation — 22 Nov 2026
 

@@ -1,0 +1,25 @@
+[package]
+name = "zerogravity-model-bert"
+version.workspace = true
+edition = "2024"
+rust-version = "1.95"
+description = "Original BERT-family sentence encoder semantics and CPU reference"
+publish = false
+license = "MIT"
+
+[features]
+default = []
+cpu = ["dep:zerogravity-cpu"]
+source-binding = ["cpu", "zerogravity-artifacts/cache", "dep:tokenizers", "dep:ahash"]
+
+[dependencies]
+zerogravity-core = { path = "../zerogravity-core" }
+zerogravity-artifacts = { path = "../zerogravity-artifacts" }
+zerogravity-cpu = { path = "../zerogravity-cpu", optional = true }
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.151"
+tokenizers = { version = "=0.22.2", default-features = false, features = ["fancy-regex"], optional = true }
+ahash = { version = "=0.8.12", optional = true }
+
+[dev-dependencies]
+sha2 = "=0.10.9"

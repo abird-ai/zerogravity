@@ -126,6 +126,11 @@ impl ProjectionContract {
     pub fn activation(self, weights: StoredTensorEncoding) -> Result<ActivationEncoding> {
         match self {
             Self::Source => Ok(match weights {
+                StoredTensorEncoding::I64 => {
+                    return Err(Error::Unsupported(
+                        "integer source buffer has no projection activation codec".into(),
+                    ));
+                }
                 StoredTensorEncoding::Scalar(_) => {
                     ActivationEncoding::Scalar(ActivationPrecision::F32)
                 }

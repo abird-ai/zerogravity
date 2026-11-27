@@ -5,6 +5,17 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 27 Nov — OA-6A native embedding model candidate
+
+Source-bound BERT WordPiece/F32 encoder with affine LayerNorm, noncausal
+attention, exact GELU, mean pooling/L2 normalization, original cache
+descriptor and shared resource admission. Synthetic verified sources and
+independent scalar reference vectors qualified, focused 489/0/16 (47
+suites); default CLI compile passed. Assembled gate stopped at turn time boundary (946s): 1,844/0/95
+across 255 completed suites; remaining acquisition/release checks open.
+No cached trained embedding checkpoint or real trained-vector parity,
+runtime registration, /v1/embeddings exposure or new performance claim.
+
 ## 27 Nov — OA-5 Chat/Completions text compatibility
 
 Typed Chat text parts and neutral controls lower into the original

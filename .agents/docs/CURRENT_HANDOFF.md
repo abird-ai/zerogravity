@@ -9,7 +9,9 @@ work. The [standalone OA-4C continuation prompt](NEXT_AGENT_2026-11-27_OA4C.md)
 is the historical entry to the current work; use the live checkpoint below.
 OA-4B already committed at 89822f40; no production rework required.
 OA-4A–E and OA-5 current-capability Chat/legacy Completions accepted.
-Next: OA-6 actual embedding execution capability before wire exposure.
+OA-6A source-bound native BERT encoder candidate implemented and focused
+qualified. OA-6 remains open: trained-source parity, shared Runtime and
+embedding wire acceptance. No learned payload acquired.
 Appendix D preserves every post-M1 landing narrative, changed paths and
 exact engineering prose delta; Appendix B records unresolved markers.
 The preceding [UX-P-M1 pack](FULL_COMPREHENSIVE_HANDOFF_2026-11-26_UX_PM1.md),
@@ -37,7 +39,60 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — OA-4 and OA-5 text compatibility accepted (27 Nov)
+### Current checkpoint — OA-6A embedding encoder candidate (27 Nov)
+
+Started from clean signed 70e9809c on sole L5 main. The cached generation
+models do not supply a qualified sentence embedding executor; no trained
+embedding checkpoint was present. Selected the compact original
+sentence-transformers/all-MiniLM-L6-v2 BERT-family target. No learned
+payload downloaded, no generator-derived fake vectors and no HTTP
+endpoint/model-catalog eligibility declared.
+
+New zerogravity-model-bert owner binds original config, sentence/module
+and pooling semantics, verified WordPiece vocabulary/config, exact F32
+matrices/affine parameters, and original optional I64 index buffers.
+Bounded single-file Safetensors materialization in the original
+SourceWeights/cache owner charges bytes and tensor-directory envelope
+before copying, authenticates the exact opened descriptor and parses
+the owned bytes. I64 storage is distinct from floating weight arithmetic.
+The reference forward shares original source lookup/projection and CPU
+affine LayerNorm, bidirectional attention, exact-erf GELU, residual FFN,
+mean pooling and L2 normalization. Token IDs/text, finite output, exact
+usage including special tokens, source identity, cancellation and
+retained output credits use the existing resource domain. One unpadded
+sequence, CPU F32 only, explicit input/shape/module limits; no implicit
+truncation, dimension shortening, model-specific HTTP math or new queue.
+
+Independent scalar numerical vectors and original cache transaction
+fixtures passed, including WordPiece parity with explicit IDs, changed
+future-token output, bad index/tensor/pooling refusal, pre-cancel,
+pressure refusal, retained-result retirement and same-inode source digest
+refusal. Focused 489/0/16 across 47 suites; initial fixture-only cache
+budget and strict lint errors corrected. Default CLI GPU-feature compile
+passed. Assembled isolated gate stopped at the turn time boundary after
+1,844/0/95 across 255 completed Rust suites (946s), architecture,
+GPU-feature compile/finite regressions, strict CPU lint, CPU/minimal/cache
+matrices, serving shutdown and comparison self-tests passed. Remaining
+acquisition/release/installer checks were not completed; rerun full gate
+on unchanged checkpoint. No full acceptance claim.
+
+Next OA-6B: acquire the authorized pinned MiniLM source (model.safetensors,
+config.json, sentence_bert_config.json, modules.json, 1_Pooling/config.json,
+vocab.txt, tokenizer_config.json; tokenizer.json for independent parity).
+The original F32 weights are about 91 MB; authorize acquisition before
+downloading. Compare actual tokens and trained vectors to independent
+Hugging Face/SentenceTransformers CPU reference, including special-token
+and Unicode behavior, length/refusal, and actual resource envelopes.
+Integrate embedding task/output through the original Runtime,
+ControlPlane/registry, scheduler/workers and receipt; no second execution
+owner. Only then expose /v1/embeddings, typed single/batch input and exact
+usage/encoding, official SDK + real lifecycle/retirement. OA-6A is a model
+candidate, not trained-model eligibility or performance acceptance.
+
+Logs: target/oa6-focused-final.log, target/oa6-bert-tests.log,
+target/oa6-gpu-compile.log, target/oa6-assembled.log.
+
+### Prior checkpoint — OA-4 and OA-5 text compatibility accepted (27 Nov)
 
 Started from clean signed 37723346 on sole L5 main. Retried only the
 remaining real cached CLI/TUI/Firefox lifecycle on unchanged source,

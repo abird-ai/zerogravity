@@ -6,7 +6,7 @@ scaffolding), CLI/TUI/Web and serving, ROCm, CUDA, Vulkan, then concrete
 compiled providers. Native Hugging Face/Safetensors and GGUF are primary.
 Older ordering below is context; valid owner constraints remain authoritative.
 
-Status: **OA-1–5 accepted** (27 Nov), scoped to actual supported text capabilities. OA-6 real embedding capability next; later units remain ordered.
+Status: **OA-1–5 accepted** (27 Nov), scoped to actual supported text capabilities. OA-6A native BERT encoder candidate implemented; OA-6B trained-source/runtime/wire qualification remains open. Later units remain ordered.
 
 26 Nov user decision: [UX-P native TUI polish](../cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md)
 was the prerequisite. The assembled P4B gate passed on ad7a4178;
@@ -1578,6 +1578,36 @@ implementations, not by protocol shape alone.
 ### OA-6 — Embeddings
 
 Add the wire adapter only with a real embedding-capable runtime/model.
+
+**OA-6A (27 Nov): native BERT encoder candidate.** The resident cached
+generation-model inventory lacks a qualified embedding executor. First
+target: original sentence-transformers/all-MiniLM-L6-v2 (BERT, six
+layers, hidden size 384, source sentence limit 256). Model family owns
+source config and module closure, WordPiece tokenization, tensor binding,
+bidirectional forward and mean pooling/L2 normalization. Share original
+CPU source GEMV/lookup and noncausal primitives; no fake logits-derived
+embedding, decoder KV state, private Runtime or queue. F32 reference
+candidate accepts bounded unpadded sequences and text, refuses invalid
+geometry/unsupported module chains/overlong input, retains output
+credit and exact source identity. Single Safetensors owner verifies
+actual bytes from the existing cache descriptor before binding and
+charges directory and storage; I64 index buffers never enter floating
+weight projection. Synthetic source-independent oracle and ownership
+tests pass; default CLI compile passes. Full assembled gate stopped at
+the turn time boundary after 1,844/0/95 across 255 completed suites;
+remaining acquisition/release checks open. Rerun full isolated gate.
+
+**OA-6B:** acquire only authorized original pinned weights/config/vocab
+and pooling/module files; no learned payload present in current cache.
+Qualify real tokenizer IDs/usage and vector parity with an independent
+Hugging Face/SentenceTransformers reference and actual resource bounds.
+Introduce embedding semantic task and typed vector output through the
+same Runtime, ControlPlane, registered model, scheduler/workers and
+receipt; preserve cancellation, admission and joined retirement.
+Expose /v1/embeddings only after actual capability qualification. Verify
+single/batch strings and supported token-ID forms, ordering, exact usage,
+float/base64 encoding, explicit dimension/unsupported control refusal,
+and official OpenAI SDK on actual model. OA-6 remains open.
 
 ### OA-7 — Audio
 

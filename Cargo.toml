@@ -5,6 +5,7 @@ members = [
     "crates/zerogravity-cpu",
     "crates/zerogravity-model-qwen35",
     "crates/zerogravity-model-gemma4",
+    "crates/zerogravity-model-bert",
     "crates/zerogravity-gpu",
     "crates/zerogravity-engine",
     "crates/zerogravity-serving",

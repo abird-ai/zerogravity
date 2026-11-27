@@ -23,10 +23,10 @@ bash scripts/check-gpu-feature-boundaries.sh
 # of default CI. Cargo's --all-features would also enable diagnostic GPU paths.
 cpu_packages=(
   -p zerogravity-core -p zerogravity-artifacts -p zerogravity-cpu
-  -p zerogravity-model-qwen35 -p zerogravity-model-gemma4
+  -p zerogravity-model-qwen35 -p zerogravity-model-gemma4 -p zerogravity-model-bert
   -p zerogravity-engine -p zerogravity-serving -p zerogravity -p zerogravity-cli
 )
-cpu_features='zerogravity-cli/cpu,zerogravity-cli/model-qwen35,zerogravity-cli/text,zerogravity-cli/tui,zerogravity-cli/web,zerogravity-cli/diagnostic-cpu-checkpoint,zerogravity/state-checkpoint,zerogravity-cli/diagnostic-gdn-trace,zerogravity-model-qwen35/source-binding,zerogravity/model-gemma4-text-reference,zerogravity-model-gemma4/text-tokenizer,zerogravity-cli/gemma4-cpu-candidate'
+cpu_features='zerogravity-cli/cpu,zerogravity-cli/model-qwen35,zerogravity-cli/text,zerogravity-cli/tui,zerogravity-cli/web,zerogravity-cli/diagnostic-cpu-checkpoint,zerogravity/state-checkpoint,zerogravity-cli/diagnostic-gdn-trace,zerogravity-model-qwen35/source-binding,zerogravity/model-gemma4-text-reference,zerogravity-model-gemma4/text-tokenizer,zerogravity-model-bert/source-binding,zerogravity-cli/gemma4-cpu-candidate'
 cpu_args=(--locked --offline --no-default-features "${cpu_packages[@]}" --features "$cpu_features")
 
 echo "Checking workspace owners and explicit CPU dependency isolation..."
@@ -36,7 +36,7 @@ metadata = json.loads(subprocess.check_output([
     "cargo", "metadata", "--locked", "--offline", "--no-deps", "--format-version", "1"
 ]))
 names = {p["id"]: p["name"] for p in metadata["packages"]}
-expected = {"zerogravity-core", "zerogravity-artifacts", "zerogravity-cpu", "zerogravity-model-qwen35", "zerogravity-model-gemma4", "zerogravity", "zerogravity-cli", "zerogravity-gpu", "zerogravity-gpu-qualify", "zerogravity-engine", "zerogravity-serving"}
+expected = {"zerogravity-core", "zerogravity-artifacts", "zerogravity-cpu", "zerogravity-model-qwen35", "zerogravity-model-gemma4", "zerogravity-model-bert", "zerogravity", "zerogravity-cli", "zerogravity-gpu", "zerogravity-gpu-qualify", "zerogravity-engine", "zerogravity-serving"}
 assert {names[m] for m in metadata["workspace_members"]} == expected
 assert {names[m] for m in metadata["workspace_default_members"]} == {"zerogravity", "zerogravity-cli"}
 for selected in ["cpu,model-qwen35,text", "cpu,model-qwen35,text,cache"]:

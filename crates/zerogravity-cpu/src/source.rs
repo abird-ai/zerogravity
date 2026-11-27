@@ -112,6 +112,11 @@ impl SourceCpu<'_> {
     /// Used for independently checked FP32 ideal-reference projection probes.
     pub fn matvec_fp32_reference(&self, name: &str, input: &[f32]) -> Result<Vec<f32>> {
         let t = self.tensor(name)?;
+        if t.kind == StoredTensorEncoding::I64 {
+            return Err(Error::Unsupported(
+                "integer source buffer is not a projection weight".into(),
+            ));
+        }
         if t.shape.len() != 2 || t.shape[0] != input.len() as u64 || t.shape[1] > MAX_MATRIX_ROWS {
             return Err(Error::Malformed(format!(
                 "FP32 reference matvec shape {name}"
@@ -152,6 +157,11 @@ impl SourceCpu<'_> {
         provider: Option<&dyn MatVecKernel>,
     ) -> Result<Vec<f32>> {
         let t = self.tensor(name)?;
+        if t.kind == StoredTensorEncoding::I64 {
+            return Err(Error::Unsupported(
+                "integer source buffer is not a projection weight".into(),
+            ));
+        }
         if t.shape.len() != 2 || t.shape[0] != input.len() as u64 || t.shape[1] > MAX_MATRIX_ROWS {
             return Err(Error::Malformed(format!(
                 "matvec '{}' mismatch: {:?} vs input {}",
@@ -367,6 +377,7 @@ fn dot_f32_source_reduction(row: &[u8], x: &[f32]) -> f32 {
 
 fn dot_row(kind: StoredTensorEncoding, row: &[u8], x: &[f32]) -> f32 {
     match kind {
+        StoredTensorEncoding::I64 => unreachable!("validated floating projection"),
         StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32) => {
             dot_f32_source_reduction(row, x)
         }
