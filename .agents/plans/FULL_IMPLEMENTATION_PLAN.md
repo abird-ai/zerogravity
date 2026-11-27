@@ -806,9 +806,14 @@ focused 182/0/0, strict lint, actual official SDK 2.33.0 cached-model
 stream/replay/cancel/atomic append and Rust SDK (19.96s) passed. Same
 joined receipt, shared charged protocol log and exclusive cursor.
 Full isolated assembled gate 2,572/0/109 (318 suites, 548s) passed.
-Final OA-4 acceptance remains open for serial resident Firefox/CLI/TUI
-lifecycle retry (model-load timeout under
-observed shared host pressure; cause not established).
+Final serial resident Firefox/CLI/TUI retry passed 83.29s on unchanged
+37723346; earlier model-load timeout did not recur. OA-4 accepted.
+OA-5 typed Chat/legacy text compatibility accepted: focused 184/0/0,
+strict lint, actual official SDK/CLI/TUI/Firefox (184.78s), Rust SDK
+(13.99s) and full isolated gate 2,574/0/109 (318 suites, 306s) passed.
+Keep unavailable tool/structured-output/media/sampling capabilities
+explicitly refused. Next OA-6: actual embedding model/runtime
+capability before wire exposure.
 Preserve the original runtime, admission and listener owner.
 
 - [ ] Close the [OpenAI-compatible serving iteration](serving-and-speculation/NEXT_ITERATION_OPENAI_COMPATIBLE_SERVING.md):

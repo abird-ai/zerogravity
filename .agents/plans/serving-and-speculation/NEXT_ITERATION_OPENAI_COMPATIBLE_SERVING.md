@@ -6,7 +6,7 @@ scaffolding), CLI/TUI/Web and serving, ROCm, CUDA, Vulkan, then concrete
 compiled providers. Native Hugging Face/Safetensors and GGUF are primary.
 Older ordering below is context; valid owner constraints remain authoritative.
 
-Status: **OA-1 through OA-3 and OA-4A/B/C/D accepted** (27 Nov). OA-4E bounded background streaming/replay/resumption implemented and focused/SDK/assembled qualified; final acceptance remains open for resident Firefox lifecycle retry. Later units remain ordered.
+Status: **OA-1–5 accepted** (27 Nov), scoped to actual supported text capabilities. OA-6 real embedding capability next; later units remain ordered.
 
 26 Nov user decision: [UX-P native TUI polish](../cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md)
 was the prerequisite. The assembled P4B gate passed on ad7a4178;
@@ -1528,18 +1528,52 @@ Broader browser resident-model load timed out under observed shared
 host pressure (cause not established); Rust SDK lifecycle passed
 (19.96s). Full assembled private-network gate 2,572/0/109 across
 318 suites (548s), release TUI/Web, installer and scripts passed.
-Serial resident Firefox/CLI/TUI retry remains. No weakened admission
-or timeout; reuse passed SDK and assembled evidence.
-OA-4 closes only after its acceptance gates.
+Final serial resident Firefox/CLI/TUI lifecycle retry passed (83.29s)
+on unchanged 37723346. No weakened admission or timeout; reused passed
+SDK and assembled evidence. OA-4 accepted.
 
 ### OA-5 — Chat/Completions compatibility close
 
-Expand Chat to current supported message/content/tool/structured-output semantics
-over the common request model.
+Current API references:
+https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create
+and https://developers.openai.com/api/reference/resources/completions/methods/create/.
 
-Keep legacy Completions compatibility.
+Current supported text semantics (27 Nov): separate http/completions.rs
+adapter lowers string and nonempty typed text parts, in original order
+and role, directly to TextInput::Conversation; legacy single nonempty
+string prompt remains TextInput::Raw. Selected model owns all framing
+and delimiter validation; no HTTP-layer ChatML. Admit measured text,
+alias and turn vector before copying. Explicit neutral controls (greedy
+temperature/top_p/penalties, n=1, tools=[], auto/none tool choice,
+boolean parallel tool calls, response_format=text, modalities=[text],
+store=false, empty metadata/bias, logprobs=false/top_logprobs=0,
+default/auto service tier) have no unavailable effects. Assistant text
+replay accepts null tool/audio/refusal/function fields or empty tool
+calls only. Legacy best_of=1/echo=false and null optional controls;
+existing max_completion_tokens alias and token metrics retained.
+Unknown, cross-route and active unsupported controls refuse before
+admission; positive output limit within actual configured capacity.
+No fake tool use, JSON guarantees, audio/image, stop processing,
+non-greedy sampling, participant names, logprobs, bias or stored Chat.
 
-Remove HTTP-layer ChatML.
+One checked terminal count/finish validation shared with Responses;
+Chat/legacy JSON and SSE use actual cached prompt count, total and
+zero separate reasoning tokens. Chat requested include_usage places
+null on normal chunks and one final usage chunk. Preserve existing
+IDs, metrics and engine receipt ownership. Focused 184/0/0 and strict
+lint passed; real cached official SDK 2.33.0, CLI/TUI/Firefox (184.78s)
+and native Rust SDK (13.99s) passed serial retry. Actual typed/string
+Chat parity, JSON/SSE usage, legacy raw JSON/SSE and unavailable
+capability refusals. Legacy SDK CompletionChoice strict schema
+incorrectly excludes null nonterminal finish_reason; ordinary legacy
+streaming client explicitly checks partial/null and terminal reason,
+identity, complete text and usage. All other SDK checks remain strict.
+Earlier original host admission refusal and test-only SDK copy option
+failure are recorded in current handoff. Full isolated assembled gate
+2,574/0/109 across 318 suites (306s), release TUI/Web, installer and
+scripts passed. OA-5 accepted for current supported text capabilities.
+Remaining capabilities explicitly gated by actual semantic/model
+implementations, not by protocol shape alone.
 
 ### OA-6 — Embeddings
 

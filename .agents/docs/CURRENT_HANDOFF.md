@@ -8,9 +8,8 @@ Read §§0–13 first for current architecture, acceptance, limitations and next
 work. The [standalone OA-4C continuation prompt](NEXT_AGENT_2026-11-27_OA4C.md)
 is the historical entry to the current work; use the live checkpoint below.
 OA-4B already committed at 89822f40; no production rework required.
-OA-4C/D accepted. OA-4E bounded background streaming/replay/resumption
-implemented and focused/SDK/assembled qualified; final resident consumer
-acceptance remains open.
+OA-4A–E and OA-5 current-capability Chat/legacy Completions accepted.
+Next: OA-6 actual embedding execution capability before wire exposure.
 Appendix D preserves every post-M1 landing narrative, changed paths and
 exact engineering prose delta; Appendix B records unresolved markers.
 The preceding [UX-P-M1 pack](FULL_COMPREHENSIVE_HANDOFF_2026-11-26_UX_PM1.md),
@@ -38,7 +37,64 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — OA-4E background streaming/replay (27 Nov)
+### Current checkpoint — OA-4 and OA-5 text compatibility accepted (27 Nov)
+
+Started from clean signed 37723346 on sole L5 main. Retried only the
+remaining real cached CLI/TUI/Firefox lifecycle on unchanged source,
+serially with the original private-network harness, original model,
+resource admission and timeouts; installed SDK/assembled evidence reused.
+Passed 83.29s, including resident model load/invoke/unload, HTTP parity,
+authenticated listener lifecycle, native/Web shared settings and joined
+retirement. Earlier Firefox model-load timeout did not recur; no causal
+claim beyond observed host pressure. OA-4A–E accepted.
+Log: target/oa4e-resident-final.log.
+
+OA-5: split the Chat/legacy parser and projection into http/completions.rs.
+Current supported system/developer/user/assistant text roles, strings and
+nonempty typed text parts lower in-order into the original TextInput.
+Measure exact content and typed backing before copies; selected model
+owns template and delimiter validation. SDK-neutral controls accepted
+only if no unavailable behavior is requested; distinct Chat and legacy
+parameter sets, no silent dropped cross-route prompt/messages.
+Explicit null optional controls are omission; actual tools/calls/results,
+structured output, modalities beyond text, non-greedy sampling, stop
+sequences, logprobs, bias, stored Chat requests, participant names and
+other unqualified capabilities refuse with named parameters when known.
+Preserve existing model selection, positive bounded output, raw legacy
+prompt, max_tokens/max_completion_tokens alias, token metrics and IDs.
+
+Shared checked terminal accounting and finish-reason validation across
+Chat/Completions/Responses, exact original cached prompt tokens and
+total count in completion JSON/SSE, zero separate reasoning tokens.
+Chat include_usage emits null on normal chunks, one terminal usage
+chunk. No fake successful terminal on invalid counters/reason.
+Focused 184/0/0 and strict lint passed; actual TCP tests cover typed
+lowering, neutral controls, refusals before admission, cached usage,
+malformed terminal refusal and ledger retirement. Actual cached official
+SDK 2.33.0/CLI/TUI/Firefox passed 184.78s; native Rust SDK passed 13.99s.
+Typed/string Chat output+usage parity, legacy JSON/SSE parity, active
+capability refusals and all previous OA-4 regressions passed. Initial
+real run was refused before server startup by original 8 GiB serving
+admission (7934 MiB available); no weakened admission. Second run
+passed new Chat checks but test-only SDK copy(_strict_response_validation)
+is unsupported. The installed legacy CompletionChoice schema declares
+a non-null finish_reason even on partial SSE; qualify legacy stream with
+ordinary SDK client and explicit identity/null/terminal/usage checks,
+strict validation unchanged for Chat/Responses and legacy JSON. Final
+serial consumer retry passed without production changes. Full assembled
+private-network gate passed 2,574/0/109 across 318 suites (306s),
+release TUI/Web, installer and scripts. OA-5 accepted for actual
+text capabilities. No new physical GPU/performance claim.
+Next: OA-6, inspect real embedding-capable model/runtime paths and
+qualify semantic input/embedding output, source and resource ownership
+before exposing /v1/embeddings. If absent, implement the smallest real
+provider or keep the endpoint explicitly unsupported. No fake vectors,
+duplicate runtime or model-specific HTTP math.
+Logs: target/oa5-focused.log, target/oa5-real-consumers.log (admission
+refusal), target/oa5-real-consumers-retry.log (SDK fixture construction
+error), target/oa5-real-consumers-final.log, target/oa5-assembled.log.
+
+### Prior checkpoint — OA-4E background streaming/replay (27 Nov)
 
 Started from clean signed ad4fe6f7 on sole L5 main. One existing joined
 background consumer owns original receipt; foreground direct streaming
@@ -83,11 +139,8 @@ target/oa4e-focused-retry.log, target/oa4e-real-consumers.log (first
 fixture error), target/oa4e-real-consumers-retry.log (SDK pass, browser
 timeout), target/oa4e-rust-sdk.log, target/oa4e-assembled.log.
 
-Next: serial resident Firefox/CLI/TUI consumer retry only (reuse the
-cached model and previously passed SDK/assembled evidence; do not weaken
-the timeout or resource admission). Close OA-4 only on acceptance. Then OA-5 Chat/Completions compatibility over
-original semantic intent, model capabilities and qualified generation
-controls. No duplicate execution authority or unqualified modalities.
+Final resident Firefox/CLI/TUI retry passed 83.29s on unchanged
+37723346; see current checkpoint. OA-4 is accepted.
 
 ### Prior checkpoint — OA-4D exact input-token count accepted; replay next (27 Nov)
 

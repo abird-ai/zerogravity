@@ -8,9 +8,9 @@ pub(super) use input::{count, parse};
 pub(super) use store::{Pending, Store, conversation_route, route as resource_route};
 
 use super::{
-    ErrorReporting,
+    ErrorReporting, TextUsage,
     body::{self, Data, Reply},
-    epoch,
+    epoch, validate_finish_reason,
 };
 use crate::TextService;
 use hyper::{Response, StatusCode, body::Frame, header};
@@ -180,27 +180,17 @@ struct Usage {
 }
 impl Usage {
     fn new(prompt: usize, cached: usize, output: usize) -> Result<Self> {
-        if cached > prompt {
-            return Err(ServiceError::new(
-                500,
-                "invalid_usage",
-                "restored prefix exceeds prompt",
-            ));
-        }
-        let total = prompt
-            .checked_add(output)
-            .ok_or_else(|| ServiceError::new(500, "invalid_usage", "token usage overflow"))?;
+        let usage = TextUsage::new(prompt, cached, output)?;
         Ok(Self {
-            input_tokens: prompt,
+            input_tokens: usage.prompt,
             input_tokens_details: InputDetails {
-                cached_tokens: cached,
+                cached_tokens: usage.cached,
             },
-            output_tokens: output,
-            // No separate reasoning output capability is advertised.
+            output_tokens: usage.output,
             output_tokens_details: OutputDetails {
                 reasoning_tokens: 0,
             },
-            total_tokens: total,
+            total_tokens: usage.total,
         })
     }
 }
@@ -306,15 +296,12 @@ impl Options {
 }
 
 fn terminal_status(reason: &str) -> Result<&'static str> {
-    match reason {
-        "stop" => Ok("completed"),
-        "length" => Ok("incomplete"),
-        _ => Err(ServiceError::new(
-            500,
-            "invalid_finish_reason",
-            "unexpected text finish reason",
-        )),
-    }
+    validate_finish_reason(reason)?;
+    Ok(if reason == "stop" {
+        "completed"
+    } else {
+        "incomplete"
+    })
 }
 fn response_error(errors: &ErrorReporting, failure: &ServiceError, authorized: bool) -> Value {
     let mut reported = errors.report(failure, authorized);

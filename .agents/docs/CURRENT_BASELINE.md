@@ -5,6 +5,17 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 27 Nov — OA-5 Chat/Completions text compatibility
+
+Typed Chat text parts and neutral controls lower into the original
+semantic request; strict capability and route-specific refusals, exact
+cached/total usage and shared terminal validation. Focused 184/0/0,
+strict lint passed. Actual cached official SDK 2.33.0 and CLI/TUI/
+Firefox (184.78s), Rust SDK (13.99s) passed. Full isolated gate
+2,574/0/109 (318 suites, 306s), release TUI/Web, installer and scripts
+passed. OA-5 accepted for current text capabilities; OA-6 next.
+No new physical GPU or performance evidence.
+
 ## 27 Nov — OA-4E bounded background streaming/replay
 
 Original joined receipt and shared typed SSE projection; immutable charged
@@ -15,7 +26,8 @@ replay/output/usage/cancellation and Rust SDK (19.96s) passed. Broader
 real resident Firefox model-load timed out during observed shared host
 memory pressure; cause not established. Full isolated gate 2,572/0/109
 (318 suites, 548s), release TUI/Web, installer and scripts passed.
-Serial real resident consumer retry remains for final OA-4 acceptance.
+Final serial real resident consumer retry passed 83.29s on unchanged
+37723346. OA-4 accepted.
 No new physical GPU or performance evidence.
 
 ## 27 Nov — OA-4D exact input-token count

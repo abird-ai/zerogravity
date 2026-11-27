@@ -44,13 +44,86 @@ with openai.OpenAI(
         max_output_tokens=2,
         metadata={"canary": "oa3"},
     )
-    chat = client.chat.completions.create(
+    chat_kwargs = dict(
+        model="served-fixture",
+        messages=[
+            {"role": "developer", "content": [{"type": "text", "text": instructions}]},
+            {"role": "user", "content": [
+                {"type": "text", "text": "Continue: "},
+                {"type": "text", "text": "1, 2, 3,"},
+            ]},
+        ],
+        max_completion_tokens=2, temperature=0, top_p=1, n=1,
+        tools=[], tool_choice="none", parallel_tool_calls=False,
+        response_format={"type": "text"}, modalities=["text"], store=False,
+        logprobs=False, top_logprobs=0,
+    )
+    chat = client.chat.completions.create(**chat_kwargs)
+    plain = client.chat.completions.create(
         model="served-fixture",
         messages=[{"role": "developer", "content": instructions},
                   {"role": "user", "content": prompt}],
-        max_tokens=2,
-        temperature=0,
+        max_tokens=2, temperature=0,
     )
+    assert plain.choices[0].message.content == chat.choices[0].message.content
+    assert plain.choices[0].finish_reason == chat.choices[0].finish_reason
+    assert plain.usage.model_dump() == chat.usage.model_dump()
+    with client.chat.completions.create(
+        **chat_kwargs, stream=True,
+        stream_options={"include_usage": True, "include_obfuscation": False},
+    ) as stream:
+        chunks = list(stream)
+    assert chunks[0].choices[0].delta.role == "assistant"
+    assert all(chunk.id == chunks[0].id for chunk in chunks)
+    assert all(chunk.usage is None for chunk in chunks[:-1])
+    assert chunks[-1].choices == []
+    assert chunks[-1].usage.model_dump() == chat.usage.model_dump()
+    assert "".join(chunk.choices[0].delta.content or "" for chunk in chunks[:-1]) == chat.choices[0].message.content
+    assert chunks[-2].choices[0].finish_reason == chat.choices[0].finish_reason
+    assert chat.usage.prompt_tokens_details.cached_tokens == 0
+    assert chat.usage.completion_tokens_details.reasoning_tokens == 0
+    raw_kwargs = dict(model="fast", prompt=prompt, max_tokens=2,
+                      temperature=0, top_p=1, n=1, best_of=1, echo=False)
+    raw = client.completions.create(**raw_kwargs)
+    # SDK 2.33.0's legacy CompletionChoice declares a non-null literal
+    # finish_reason even for partial SSE chunks. Its ordinary client mode
+    # accepts the actual legacy stream; explicitly validate that boundary.
+    with openai.OpenAI(
+        api_key="local-fixture", base_url=f"http://{address}/v1",
+        max_retries=0, timeout=60,
+        http_client=httpx.Client(trust_env=False, timeout=60),
+    ) as legacy_client:
+        with legacy_client.completions.create(
+            **raw_kwargs, stream=True, stream_options={"include_usage": True},
+        ) as stream:
+            raw_chunks = list(stream)
+    assert all(chunk.id == raw_chunks[0].id and chunk.object == "text_completion" for chunk in raw_chunks)
+    assert all(chunk.choices[0].finish_reason is None for chunk in raw_chunks[:-2])
+    assert raw_chunks[-2].choices[0].finish_reason == raw.choices[0].finish_reason
+    assert "".join(chunk.choices[0].text for chunk in raw_chunks if chunk.choices) == raw.choices[0].text
+    assert raw_chunks[-1].choices == []
+    assert raw_chunks[-1].usage.model_dump() == raw.usage.model_dump()
+    for parameter, value in [
+        ("response_format", {"type": "json_object"}),
+        ("tools", [{"type": "function", "function": {"name": "lookup"}}]),
+        ("stop", ["end"]),
+        ("temperature", 0.5),
+        ("prompt", "must not be discarded"),
+    ]:
+        try:
+            client.chat.completions.create(
+                **{key: value for key, value in chat_kwargs.items() if key != parameter},
+                extra_body={parameter: value},
+            )
+            raise AssertionError(f"unsupported chat parameter accepted: {parameter}")
+        except openai.BadRequestError as error:
+            assert error.body["param"] == parameter and error.request_id
+    try:
+        client.completions.create(**{**raw_kwargs, "echo": True})
+        raise AssertionError("unsupported legacy echo accepted")
+    except openai.BadRequestError as error:
+        assert error.body["param"] == "echo" and error.request_id
+    print("OpenAI SDK: Chat string/typed text parity, neutral controls, exact JSON/SSE usage, legacy Completions and capability refusals passed")
     counted = client.responses.input_tokens.count(
         model=kwargs["model"], instructions=kwargs["instructions"],
         input=kwargs["input"], truncation="disabled",

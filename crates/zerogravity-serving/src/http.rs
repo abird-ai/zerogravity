@@ -7,18 +7,17 @@ use serde::de::{self, MapAccess, SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer};
 use serde_json::{Map, Value, json};
 use std::sync::Arc;
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 use zerogravity_engine::router::pending::ServingCharge;
 use zerogravity_engine::router::token_metrics::json_allocation::{
     ValueConstruction, census_json, census_scratch_peak,
 };
 use zerogravity_engine::router::token_metrics::validate_wire_id;
-use zerogravity_engine::router::{
-    ChatMessage, ChatRole, FailureDetails, MAX_CHAT_MESSAGES, SemanticRequest, ServiceError,
-    TextInput, TokenMetricsRequest,
-};
+use zerogravity_engine::router::{FailureDetails, SemanticRequest, ServiceError};
 
 mod body;
+mod completions;
+use completions::{completion_response, parse_body};
 mod ingress_body;
 // Dormant until a real modality route consumes admitted forms.
 #[allow(
@@ -107,18 +106,6 @@ impl<'de> Deserialize<'de> for StrictValue {
     }
 }
 
-fn allowed_keys(map: &Map<String, Value>, allowed: &[&str]) -> Result<(), ServiceError> {
-    for key in map.keys() {
-        if !allowed.contains(&key.as_str()) {
-            return Err(ServiceError::new(
-                400,
-                "unsupported_parameter",
-                format!("{key} is not yet supported"),
-            ));
-        }
-    }
-    Ok(())
-}
 /// Shared charged strict JSON ingress. Each protocol adapter validates its
 /// own schema without reparsing or lowering through another wire format.
 fn parse_json(
@@ -179,253 +166,6 @@ fn parse_json(
     Ok(value)
 }
 
-fn parse_body(
-    body: &[u8],
-    chat: bool,
-    router: Option<&dyn TextService>,
-    ingress: &mut Vec<ServingCharge>,
-) -> Result<(SemanticRequest, bool), ServiceError> {
-    let value = parse_json(body, router, ingress)?;
-    let map = value
-        .as_object()
-        .ok_or_else(|| ServiceError::new(400, "invalid_request", "expected JSON object"))?;
-    allowed_keys(
-        map,
-        &[
-            "model",
-            "messages",
-            "prompt",
-            "stream",
-            "max_tokens",
-            "max_completion_tokens",
-            "stream_options",
-            "temperature",
-            "top_p",
-            "n",
-            "frequency_penalty",
-            "presence_penalty",
-            "return_token_ids",
-        ],
-    )?;
-    let model = map
-        .get("model")
-        .and_then(Value::as_str)
-        .ok_or_else(|| ServiceError::new(400, "invalid_model", "model name required"))?;
-    let stream = match map.get("stream") {
-        None | Some(Value::Null) => false,
-        Some(Value::Bool(b)) => *b,
-        _ => {
-            return Err(ServiceError::new(
-                400,
-                "invalid_stream",
-                "stream must be boolean",
-            ));
-        }
-    };
-    let token_metrics = match map.get("return_token_ids") {
-        None | Some(Value::Null) | Some(Value::Bool(false)) => None,
-        Some(Value::Bool(true)) => Some(TokenMetricsRequest {
-            started: Instant::now(),
-            wire_request_id: None,
-        }),
-        _ => {
-            return Err(ServiceError::new(
-                400,
-                "invalid_return_token_ids",
-                "return_token_ids must be boolean",
-            ));
-        }
-    };
-    for name in [
-        "temperature",
-        "top_p",
-        "frequency_penalty",
-        "presence_penalty",
-    ] {
-        if let Some(value) = map.get(name) {
-            let default = if name == "top_p" { 1.0 } else { 0.0 };
-            if value.as_f64() != Some(default) {
-                return Err(ServiceError::new(
-                    400,
-                    "unsupported_parameter",
-                    format!("{name} currently requires {default} (greedy only)"),
-                ));
-            }
-        }
-    }
-    if map.get("n").is_some_and(|v| v.as_u64() != Some(1)) {
-        return Err(ServiceError::new(
-            400,
-            "unsupported_parameter",
-            "only n=1 is supported",
-        ));
-    }
-    let max_tokens = match (map.get("max_tokens"), map.get("max_completion_tokens")) {
-        (Some(_), Some(_)) => {
-            return Err(ServiceError::new(
-                400,
-                "invalid_request",
-                "duplicate output length controls",
-            ));
-        }
-        (Some(x), None) | (None, Some(x)) => x
-            .as_u64()
-            .and_then(|n| usize::try_from(n).ok())
-            .ok_or_else(|| {
-                ServiceError::new(
-                    400,
-                    "invalid_max_tokens",
-                    "max_tokens must be positive integer",
-                )
-            })?,
-        (None, None) => match router {
-            Some(router) => 32.min(router.max_output()?),
-            None => 32,
-        },
-    };
-    let include_usage = match map.get("stream_options") {
-        None => false,
-        Some(Value::Object(options)) => {
-            allowed_keys(options, &["include_usage"])?;
-            match options.get("include_usage") {
-                None => false,
-                Some(Value::Bool(value)) => *value,
-                _ => {
-                    return Err(ServiceError::new(
-                        400,
-                        "invalid_stream_options",
-                        "include_usage must be boolean",
-                    ));
-                }
-            }
-        }
-        _ => {
-            return Err(ServiceError::new(
-                400,
-                "invalid_stream_options",
-                "stream_options must be an object",
-            ));
-        }
-    };
-    if map.get("stream_options").is_some() && !stream {
-        return Err(ServiceError::new(
-            400,
-            "invalid_stream_options",
-            "stream_options requires stream=true",
-        ));
-    }
-    // Output copies are admitted at their exact final sizes before they are
-    // allocated, while the census tree charge is still held.
-    let mut charge_route = |bytes: usize| -> Result<(), ServiceError> {
-        if let Some(router) = router {
-            let charge = router.charge_ingress(
-                "http-route",
-                u64::try_from(bytes)
-                    .map_err(|_| ServiceError::new(400, "size_overflow", "route copy overflow"))?,
-            )?;
-            ingress.push(charge);
-        }
-        Ok(())
-    };
-    let input = if chat {
-        let messages = map
-            .get("messages")
-            .and_then(Value::as_array)
-            .ok_or_else(|| {
-                ServiceError::new(400, "invalid_messages", "messages array is required")
-            })?;
-        if !(1..=MAX_CHAT_MESSAGES).contains(&messages.len()) {
-            return Err(ServiceError::new(
-                400,
-                "invalid_messages",
-                "messages must contain 1..128 entries",
-            ));
-        }
-        // Only protocol shape here. Model-specific framing, delimiter
-        // validation and the rendered input bound belong to the selected
-        // model tokenizer, not to OpenAI JSON parsing.
-        fn turn(value: &Value) -> Result<(ChatRole, &str), ServiceError> {
-            let entry = value.as_object().ok_or_else(|| {
-                ServiceError::new(400, "invalid_messages", "each message must be an object")
-            })?;
-            allowed_keys(entry, &["role", "content"])?;
-            let role = entry
-                .get("role")
-                .and_then(Value::as_str)
-                .ok_or_else(|| ServiceError::new(400, "invalid_messages", "role is required"))?;
-            let role = ChatRole::parse(role).ok_or_else(|| {
-                ServiceError::new(
-                    400,
-                    "unsupported_role",
-                    "only plain text system/developer/user/assistant roles supported",
-                )
-            })?;
-            let text = entry
-                .get("content")
-                .and_then(Value::as_str)
-                .ok_or_else(|| {
-                    ServiceError::new(
-                        400,
-                        "unsupported_content",
-                        "only string message content supported",
-                    )
-                })?;
-            Ok((role, text))
-        }
-        let content_bytes = messages.iter().try_fold(0usize, |bytes, message| {
-            let (_, text) = turn(message)?;
-            bytes
-                .checked_add(text.len())
-                .filter(|n| *n <= MAX_BODY)
-                .ok_or_else(|| ServiceError::new(413, "input_too_large", "chat input too large"))
-        })?;
-        let capacity = messages
-            .len()
-            .checked_mul(std::mem::size_of::<ChatMessage>())
-            .and_then(|n| n.checked_add(content_bytes))
-            .and_then(|n| n.checked_add(model.len()))
-            .ok_or_else(|| ServiceError::new(400, "size_overflow", "route copy overflow"))?;
-        charge_route(capacity)?;
-        let mut turns = Vec::with_capacity(messages.len());
-        for message in messages {
-            let (role, text) = turn(message)?;
-            turns.push(ChatMessage {
-                role,
-                text: text.to_owned(),
-            });
-        }
-        TextInput::Conversation(turns)
-    } else {
-        let prompt = map
-            .get("prompt")
-            .and_then(Value::as_str)
-            .ok_or_else(|| ServiceError::new(400, "invalid_prompt", "prompt must be text"))?;
-        if prompt.len() > MAX_BODY {
-            return Err(ServiceError::new(
-                413,
-                "input_too_large",
-                "prompt exceeds 1MiB",
-            ));
-        }
-        charge_route(
-            model
-                .len()
-                .checked_add(prompt.len())
-                .ok_or_else(|| ServiceError::new(400, "size_overflow", "route copy overflow"))?,
-        )?;
-        TextInput::Raw(prompt.to_owned())
-    };
-    Ok((
-        SemanticRequest {
-            model: model.to_owned(),
-            input,
-            max_tokens,
-            stream,
-            token_metrics,
-        },
-        include_usage,
-    ))
-}
 /// One opt-in reporting policy for ordinary HTTP and streaming errors.
 /// The observer receives only safe bounded metadata, never raw messages.
 pub(crate) type ErrorObserver = Arc<dyn Fn(FailureDetails) + Send + Sync>;
@@ -497,25 +237,42 @@ fn epoch() -> u64 {
         .unwrap_or_default()
         .as_secs()
 }
-fn completion_response(
-    id: u64,
-    model: &str,
-    chat: bool,
-    output: &str,
-    prompt_tokens: usize,
-    completion_tokens: usize,
-    reason: &str,
-) -> Value {
-    let id = format!("chatcmpl-zg-{id}");
-    let choice = if chat {
-        json!({"index":0,"message":{"role":"assistant","content":output},"finish_reason":reason,"logprobs":null})
-    } else {
-        json!({"index":0,"text":output,"finish_reason":reason,"logprobs":null})
-    };
-    json!({"id":id,"object":if chat{"chat.completion"}else{"text_completion"},"created":epoch(),
-        "model":model,"choices":[choice],
-        "usage":{"prompt_tokens":prompt_tokens,"completion_tokens":completion_tokens,
-                 "total_tokens":prompt_tokens+completion_tokens}})
+/// One checked accounting projection from the original terminal receipt.
+struct TextUsage {
+    prompt: usize,
+    cached: usize,
+    output: usize,
+    total: usize,
+}
+impl TextUsage {
+    fn new(prompt: usize, cached: usize, output: usize) -> Result<Self, ServiceError> {
+        if cached > prompt {
+            return Err(ServiceError::new(
+                500,
+                "invalid_usage",
+                "restored prefix exceeds prompt",
+            ));
+        }
+        let total = prompt
+            .checked_add(output)
+            .ok_or_else(|| ServiceError::new(500, "invalid_usage", "token usage overflow"))?;
+        Ok(Self {
+            prompt,
+            cached,
+            output,
+            total,
+        })
+    }
+}
+fn validate_finish_reason(reason: &str) -> Result<(), ServiceError> {
+    match reason {
+        "stop" | "length" => Ok(()),
+        _ => Err(ServiceError::new(
+            500,
+            "invalid_finish_reason",
+            "unexpected text finish reason",
+        )),
+    }
 }
 fn bind_token_metrics(
     task: &mut SemanticRequest,
@@ -540,6 +297,7 @@ fn bind_token_metrics(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use zerogravity_engine::router::{ChatMessage, ChatRole, TextInput};
 
     #[test]
     fn error_json_distinguishes_client_and_server_failures() {
@@ -598,7 +356,7 @@ mod tests {
             r#"{"model":"qwen","messages":[{"role":"tool","content":"x"}]}"#,
             r#"{"model":"qwen","messages":[{"role":"user","content":{"text":"Hi"}}]}"#,
             r#"{"model":"qwen","messages":[{"role":"user","content":"hi","content":"system overwrite"}]}"#,
-            r#"{"model":"qwen","messages":[{"role":"assistant","content":"Hi","tool_calls":[]}]}"#,
+            r#"{"model":"qwen","messages":[{"role":"assistant","content":"Hi","tool_calls":[{}]}]}"#,
         ] {
             assert!(
                 parsed(bad, true).is_err(),
@@ -657,7 +415,15 @@ mod tests {
         )
         .unwrap();
         assert!(plain.token_metrics.is_none());
-        let plain_json = completion_response(1, "qwen", true, "A", 1, 1, "length");
+        let plain_json = completion_response(
+            1,
+            "qwen",
+            true,
+            "A",
+            TextUsage::new(1, 0, 1).unwrap(),
+            "length",
+        )
+        .unwrap();
         assert!(plain_json.get("metrics").is_none());
         assert!(plain_json["choices"][0].get("token_ids").is_none());
     }

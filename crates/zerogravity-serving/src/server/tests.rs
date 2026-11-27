@@ -1960,3 +1960,233 @@ fn input_count_uses_shared_context_lowering_and_strict_transport_without_enqueue
     drop(service);
     assert_eq!(host.serving_bytes(), baseline);
 }
+
+#[test]
+fn chat_content_and_controls_share_typed_request_and_truthful_usage() {
+    use serde_json::{Value, json};
+    let _lock = test_support::lock();
+    let host = test_support::host();
+    let baseline = host.serving_bytes();
+    let mut service = Script::new(host.clone());
+    Arc::get_mut(&mut service).unwrap().cached_prompt_tokens = 2;
+    let server = ServerBuilder::from_service(service.clone())
+        .bind("127.0.0.1:0".parse().unwrap())
+        .api_key(Some("secret".into()))
+        .build()
+        .unwrap()
+        .start()
+        .unwrap();
+    let address = server.local_addr();
+    let call = |route: &str, value: &Value| {
+        exchange(
+            address,
+            &post(route, &value.to_string()).replacen(
+                "\r\nHost: localhost\r\n",
+                "\r\nHost: localhost\r\nAuthorization: Bearer secret\r\n",
+                1,
+            ),
+        )
+    };
+    let chat = "/v1/chat/completions";
+    let legacy = "/v1/completions";
+    let request = json!({
+        "model":"fixture",
+        "messages":[
+            {"role":"system","content":[{"type":"text","text":"Brief."}]},
+            {"role":"developer","content":"Precise."},
+            {"role":"user","content":[{"type":"text","text":"hé"},{"type":"text","text":"llo"}]},
+            {"role":"assistant","content":[{"type":"text","text":"yes"}],"tool_calls":[],"audio":null,"refusal":null,"function_call":null},
+            {"role":"user","content":"again"}
+        ],
+        "max_completion_tokens":2,"max_tokens":null,"temperature":0,"top_p":1,"n":1,
+        "frequency_penalty":0,"presence_penalty":0,"tools":[],"tool_choice":"none",
+        "parallel_tool_calls":false,"response_format":{"type":"text"},"modalities":["text"],
+        "store":false,"logprobs":false,"top_logprobs":0,"metadata":{},"logit_bias":{},
+        "service_tier":"default","stop":null
+    });
+    let first = call(chat, &request);
+    assert!(first.starts_with("HTTP/1.1 200"), "{first}");
+    let first = document(&first);
+    let usage = json!({"prompt_tokens":3,"prompt_tokens_details":{"cached_tokens":2},"completion_tokens":1,
+        "completion_tokens_details":{"reasoning_tokens":0},"total_tokens":4});
+    assert_eq!(first["usage"], usage);
+    assert_eq!(
+        first["choices"][0]["message"]["content"],
+        "transport fixture"
+    );
+    let mut streaming = request.clone();
+    streaming["stream"] = json!(true);
+    streaming["stream_options"] = json!({"include_usage":true,"include_obfuscation":false});
+    let raw = call(chat, &streaming);
+    assert!(raw.starts_with("HTTP/1.1 200"), "{raw}");
+    let chunks = raw
+        .lines()
+        .filter_map(|line| line.strip_prefix("data: "))
+        .filter(|line| *line != "[DONE]")
+        .map(|line| serde_json::from_str::<Value>(line).unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(chunks.len(), 4);
+    assert!(raw.contains("data: [DONE]"));
+    for chunk in &chunks[..3] {
+        assert!(chunk.get("usage").is_some_and(Value::is_null));
+    }
+    assert_eq!(chunks[0]["choices"][0]["delta"]["role"], "assistant");
+    assert_eq!(
+        chunks[1]["choices"][0]["delta"]["content"],
+        first["choices"][0]["message"]["content"]
+    );
+    assert_eq!(chunks[2]["choices"][0]["finish_reason"], "stop");
+    assert_eq!(chunks[3]["choices"], json!([]));
+    assert_eq!(chunks[3]["usage"], usage);
+    let raw = call(
+        legacy,
+        &json!({"model":"fixture","prompt":"hello","best_of":1,"echo":false,"logprobs":null,"suffix":null,"max_tokens":2}),
+    );
+    assert!(raw.starts_with("HTTP/1.1 200"), "{raw}");
+    assert_eq!(document(&raw)["object"], "text_completion");
+    assert_eq!(document(&raw)["usage"], usage);
+    {
+        let requests = service.requests.lock().unwrap();
+        assert_eq!(requests.len(), 3);
+        assert_eq!(
+            requests[0].0.input,
+            TextInput::Conversation(vec![
+                ChatMessage {
+                    role: ChatRole::System,
+                    text: "Brief.".into()
+                },
+                ChatMessage {
+                    role: ChatRole::Developer,
+                    text: "Precise.".into()
+                },
+                ChatMessage {
+                    role: ChatRole::User,
+                    text: "héllo".into()
+                },
+                ChatMessage {
+                    role: ChatRole::Assistant,
+                    text: "yes".into()
+                },
+                ChatMessage {
+                    role: ChatRole::User,
+                    text: "again".into()
+                },
+            ])
+        );
+        assert_eq!(requests[0].0.input, requests[1].0.input);
+        assert_eq!(requests[0].0.max_tokens, 2);
+        assert_eq!(requests[2].0.input, TextInput::Raw("hello".into()));
+    }
+    // Active capabilities may not disappear during protocol normalization.
+    for (name, value) in [
+        ("prompt", json!("ignored prompt")),
+        (
+            "tools",
+            json!([{"type":"function","function":{"name":"lookup"}}]),
+        ),
+        ("tool_choice", json!("required")),
+        ("response_format", json!({"type":"json_object"})),
+        ("modalities", json!(["text", "audio"])),
+        ("store", json!(true)),
+        ("logprobs", json!(true)),
+        ("top_logprobs", json!(2)),
+        ("temperature", json!(0.5)),
+        ("stop", json!(["end"])),
+        ("max_completion_tokens", json!(5)),
+        (
+            "messages",
+            json!([{"role":"tool","content":"result","tool_call_id":"x"}]),
+        ),
+        (
+            "messages",
+            json!([{"role":"user","name":"other","content":"hi"}]),
+        ),
+        (
+            "messages",
+            json!([{"role":"user","content":[{"type":"image_url","image_url":{"url":"https://invalid"}}]}]),
+        ),
+        (
+            "messages",
+            json!([{"role":"user","content":[{"type":"text","text":"hi","prompt_cache_breakpoint":{}}]}]),
+        ),
+        (
+            "messages",
+            json!([{"role":"assistant","content":"hi","refusal":"no"}]),
+        ),
+    ] {
+        let mut refused = request.clone();
+        refused[name] = value;
+        let reply = call(chat, &refused);
+        assert!(reply.starts_with("HTTP/1.1 400"), "{name}: {reply}");
+        assert_eq!(document(&reply)["error"]["param"], name);
+    }
+    streaming["stream_options"] = json!({"include_obfuscation":true});
+    let reply = call(chat, &streaming);
+    assert!(reply.starts_with("HTTP/1.1 400"));
+    assert_eq!(document(&reply)["error"]["param"], "stream_options");
+    for (name, value) in [
+        ("messages", request["messages"].clone()),
+        ("best_of", json!(2)),
+        ("echo", json!(true)),
+        ("logprobs", json!(0)),
+    ] {
+        let mut refused = json!({"model":"fixture","prompt":"hello"});
+        refused[name] = value;
+        let reply = call(legacy, &refused);
+        assert!(reply.starts_with("HTTP/1.1 400"), "{name}: {reply}");
+        assert_eq!(document(&reply)["error"]["param"], name);
+    }
+    assert_eq!(service.requests.lock().unwrap().len(), 3);
+    server.shutdown().unwrap();
+    drop(service);
+    assert_eq!(host.serving_bytes(), baseline);
+}
+
+#[test]
+fn completion_projection_refuses_invalid_terminal_usage_and_finish_reason() {
+    use serde_json::json;
+    let _lock = test_support::lock();
+    let host = test_support::host();
+    let baseline = host.serving_bytes();
+    for (cached, reason, code) in [
+        (4, "stop", "invalid_usage"),
+        (0, "tool_calls", "invalid_finish_reason"),
+    ] {
+        let mut service = Script::new(host.clone());
+        let script = Arc::get_mut(&mut service).unwrap();
+        script.cached_prompt_tokens = cached;
+        script.finish_reason = reason;
+        let server = ServerBuilder::from_service(service.clone())
+            .bind("127.0.0.1:0".parse().unwrap())
+            .build()
+            .unwrap()
+            .start()
+            .unwrap();
+        let address = server.local_addr();
+        let path = "/v1/chat/completions";
+        let mut request = json!({"model":"fixture","messages":[{"role":"user","content":"hello"}]});
+        let reply = exchange(address, &post(path, &request.to_string()));
+        assert!(reply.starts_with("HTTP/1.1 500"), "{reply}");
+        assert_eq!(document(&reply)["error"]["code"], code);
+        request["stream"] = json!(true);
+        request["stream_options"] = json!({"include_usage":true});
+        let reply = exchange(address, &post(path, &request.to_string()));
+        assert!(reply.starts_with("HTTP/1.1 200"), "{reply}");
+        let events = reply
+            .lines()
+            .filter_map(|l| l.strip_prefix("data: "))
+            .filter(|l| *l != "[DONE]")
+            .map(|l| serde_json::from_str::<serde_json::Value>(l).unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(events.last().unwrap()["error"]["code"], code);
+        assert!(events.iter().all(|v| v["usage"].is_null()));
+        assert!(
+            events
+                .iter()
+                .all(|v| v["choices"][0]["finish_reason"].is_null())
+        );
+        server.shutdown().unwrap();
+        drop(service);
+        assert_eq!(host.serving_bytes(), baseline);
+    }
+}

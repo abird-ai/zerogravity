@@ -592,9 +592,16 @@ impl Connection {
             let events = match host.config.prefix_sharing_scope {
                 Some(scope) => host
                     .service
-                    .request_semantic_admitted_scoped(task, ingress, scope)?,
-                None => host.service.request_semantic_admitted(task, ingress)?,
-            };
+                    .request_semantic_admitted_scoped(task, ingress, scope),
+                None => host.service.request_semantic_admitted(task, ingress),
+            }
+            .map_err(|error| {
+                if error.code == "model_not_found" {
+                    error.with_parameter("model")
+                } else {
+                    error
+                }
+            })?;
             if let Some((options, wire, pending)) = projection {
                 if options.background {
                     responses::start_background(

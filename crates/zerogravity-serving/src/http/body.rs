@@ -1,6 +1,6 @@
 //! Direct Hyper body over the original charged request receipt. No secondary
 //! event queue, blocking receiver, per-token task, or detached producer.
-use super::{ErrorReporting, completion_response, epoch};
+use super::{ErrorReporting, TextUsage, completion_response, epoch, validate_finish_reason};
 use bytes::{Buf, Bytes};
 use futures_core::Stream;
 use hyper::{
@@ -196,19 +196,18 @@ pub(super) async fn completion(
             ResponseEvent::Done {
                 output,
                 prompt_tokens,
+                cached_prompt_tokens,
                 completion_tokens,
                 finish_reason,
-                ..
             } => {
                 let mut value = completion_response(
                     events.id,
                     &events.model,
                     chat,
                     &output,
-                    prompt_tokens,
-                    completion_tokens,
+                    TextUsage::new(prompt_tokens, cached_prompt_tokens, completion_tokens)?,
                     finish_reason,
-                );
+                )?;
                 if let Some(observations) = &mut metrics {
                     let (aggregate, records) = observations.finish(completion_tokens)?;
                     value["choices"][0]["token_ids"] = json!(observations.token_ids());
@@ -246,11 +245,17 @@ pub(super) fn streaming(
     let stream = async_stream::try_stream! {
         let created = epoch();
         let kind = if chat { "chat.completion.chunk" } else { "text_completion" };
+        let chunk = |choice: Value| {
+            let mut value = json!({
+                "id":id,"object":kind,"created":created,"model":owner.model,"choices":[choice]
+            });
+            if chat && include_usage {
+                value["usage"] = Value::Null;
+            }
+            value
+        };
         if chat {
-            yield Frame::data(Data::sse(&json!({
-                "id":id,"object":kind,"created":created,"model":owner.model,
-                "choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]
-            }), &owner));
+            yield Frame::data(Data::sse(&chunk(json!({"index":0,"delta":{"role":"assistant"},"finish_reason":null})), &owner));
         }
         let deadline = time::Instant::now() + RESPONSE_TIMEOUT;
         loop {
@@ -290,9 +295,7 @@ pub(super) fn streaming(
                     } else {
                         json!({"index":0,"text":text,"token_ids":[token_id],"finish_reason":null})
                     };
-                    let mut data = Data::sse(&json!({
-                        "id":id,"object":kind,"created":created,"model":owner.model,"choices":[choice]
-                    }), &owner);
+                    let mut data = Data::sse(&chunk(choice), &owner);
                     let (written, observed) = oneshot::channel();
                     data.written = Some(written);
                     yield Frame::data(data);
@@ -307,11 +310,16 @@ pub(super) fn streaming(
                     } else {
                         json!({"index":0,"text":text,"finish_reason":null})
                     };
-                    yield Frame::data(Data::sse(&json!({
-                        "id":id,"object":kind,"created":created,"model":owner.model,"choices":[choice]
-                    }), &owner));
+                    yield Frame::data(Data::sse(&chunk(choice), &owner));
                 }
-                ResponseEvent::Done { prompt_tokens, completion_tokens, finish_reason, .. } => {
+                ResponseEvent::Done { prompt_tokens, cached_prompt_tokens, completion_tokens, finish_reason, .. } => {
+                    let usage = match validate_finish_reason(finish_reason).and_then(|()| TextUsage::new(prompt_tokens, cached_prompt_tokens, completion_tokens)) {
+                        Ok(usage) => usage,
+                        Err(error) => {
+                            yield Frame::data(Data::sse(&errors.report(&error, authorized), &owner));
+                            break;
+                        }
+                    };
                     let observed = if let Some(observations) = metrics.as_mut() {
                         match observations.finish(completion_tokens) {
                             Ok(value) => Some(value),
@@ -326,14 +334,11 @@ pub(super) fn streaming(
                     } else {
                         json!({"index":0,"text":"","finish_reason":finish_reason})
                     };
-                    yield Frame::data(Data::sse(&json!({
-                        "id":id,"object":kind,"created":created,"model":owner.model,"choices":[choice]
-                    }), &owner));
+                    yield Frame::data(Data::sse(&chunk(choice), &owner));
                     if include_usage || observed.is_some() {
                         let mut usage = json!({
                             "id":id,"object":kind,"created":created,"model":owner.model,"choices":[],
-                            "usage":{"prompt_tokens":prompt_tokens,"completion_tokens":completion_tokens,
-                                     "total_tokens":prompt_tokens+completion_tokens}
+                            "usage":usage.completion_json()
                         });
                         if let Some((aggregate, records)) = observed {
                             usage["metrics"] = aggregate;

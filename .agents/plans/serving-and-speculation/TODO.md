@@ -173,11 +173,26 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   lifecycle (19.96s) passed. No duplicate scheduler/model state.
   Full assembled private-network gate 2,572/0/109 (318 suites, 548s)
   passed, including release TUI/Web, installer and scripts.
-- [ ] OA-4E final acceptance: serial real resident Firefox/CLI/TUI
-  lifecycle revalidation. Prior SDK pass
-  followed by Firefox model-load timeout under observed shared host
-  pressure (cause not established); no weakened timeout or admission.
-  Retest only remaining consumer check before OA-4 closure and OA-5.
+- [x] OA-4E final acceptance: serial real resident Firefox/CLI/TUI
+  lifecycle revalidation passed (83.29s) on unchanged 37723346.
+  Earlier Firefox model-load timeout did not recur; no weakened
+  admission or timeout. OA-4 accepted.
+- [x] OA-5 text compatibility implementation: typed Chat text parts,
+  neutral controls, route-specific validation and named refusals;
+  preserve original raw legacy request and token metrics. Shared
+  checked usage and finish reason, exact cached/total JSON/SSE counts.
+  Focused 184/0/0 and strict lint passed.
+- [x] OA-5 acceptance: actual cached official SDK 2.33.0/CLI/TUI/
+  Firefox (184.78s) and native Rust SDK (13.99s) passed. Full isolated
+  gate 2,574/0/109 (318 suites, 306s), release TUI/Web, installer and
+  scripts passed. Earlier admission and fixture-only SDK construction
+  failures resolved without production changes; see live handoff.
+  Capability-bound tools/structured output/media/non-greedy sampling
+  remain explicit unsupported until real implementations are qualified.
+- [ ] OA-6: real embedding semantic/model/runtime capability before
+  wire exposure. Inspect existing source/model adapters; qualify actual
+  input, vector output/usage, admission, retirement and SDK consumer.
+  No fabricated embedding or separate execution owner.
 
 ### Current continuation — 22 Nov 2026
 
