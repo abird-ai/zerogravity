@@ -337,7 +337,7 @@ pub(super) fn authorize(headers: &HeaderMap, api_key: Option<&str>) -> Result<()
 
 // Opaque process-wide correlation IDs, not authentication or resource
 // permits. The process namespace keeps restarts/listeners distinct.
-fn request_id() -> Result<String, ServiceError> {
+pub(super) fn request_id() -> Result<String, ServiceError> {
     static NAMESPACE: OnceLock<u128> = OnceLock::new();
     static NEXT: AtomicU64 = AtomicU64::new(1);
     let namespace = NAMESPACE.get_or_init(|| {

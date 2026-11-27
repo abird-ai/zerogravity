@@ -63,6 +63,7 @@ pub(super) struct Route<A: Executor> {
     drained: Condvar,
     retire: Option<ModelRetirement<A::Model>>,
     independent_retirement: bool,
+    public_realtime_text: bool,
     public_embeddings: bool,
     public_transcription: bool,
     translation: bool,
@@ -73,6 +74,8 @@ impl<A: Executor> Route<A> {
     fn new(model: RouteModel<A::Model>) -> Result<Self> {
         let retire = A::selective_retirement();
         let independent_retirement = !matches!(&model, RouteModel::Text(_)) || retire.is_some();
+        let public_realtime_text =
+            matches!(&model, RouteModel::Text(text) if text.model().public_realtime_text());
         let public_embeddings =
             matches!(&model, RouteModel::Encoder(encoder) if encoder.public_embeddings());
         let public_transcription =
@@ -99,6 +102,7 @@ impl<A: Executor> Route<A> {
             drained: Condvar::new(),
             retire,
             independent_retirement,
+            public_realtime_text,
             public_embeddings,
             public_transcription,
             translation,
@@ -360,6 +364,7 @@ fn missing_model() -> ServiceError {
 }
 pub(crate) trait Models: Send + Sync {
     fn model(&self, alias: &str) -> Option<Arc<dyn PreparedModel>>;
+    fn realtime_text_registration(&self, alias: &str) -> std::result::Result<u64, ServiceError>;
     fn registration(&self, alias: &str) -> Option<RegisteredOwner>;
     fn acquire(
         &self,
@@ -402,6 +407,13 @@ impl<A: Executor> Models for Registry<A> {
             RouteModel::Text(model) => Some(model.erased()),
             RouteModel::Encoder(_) | RouteModel::Speech(_) => None,
         }
+    }
+    fn realtime_text_registration(&self, alias: &str) -> std::result::Result<u64, ServiceError> {
+        let route = self.routes.get(alias).ok_or_else(missing_model)?;
+        if !route.public_realtime_text || !route.accepting() {
+            return Err(missing_model());
+        }
+        Ok(route.registration.id)
     }
     fn registration(&self, alias: &str) -> Option<RegisteredOwner> {
         let route = self.routes.get(alias)?;
@@ -560,6 +572,7 @@ impl<A: Executor> Models for Registry<A> {
                                 embedding_dimensions: None,
                                 transcription: false,
                                 translation: false,
+                                realtime_text: route.public_realtime_text,
                                 chat_allowed: prepared.validate_chat().is_ok(),
                                 details: A::describe_model(&model)?,
                             }
@@ -572,6 +585,7 @@ impl<A: Executor> Models for Registry<A> {
                             embedding_dimensions: Some(model.dimensions()),
                             transcription: false,
                             translation: false,
+                            realtime_text: false,
                             chat_allowed: false,
                             details: model.describe()?,
                         },
@@ -583,6 +597,7 @@ impl<A: Executor> Models for Registry<A> {
                             embedding_dimensions: None,
                             transcription: true,
                             translation: route.translation,
+                            realtime_text: false,
                             chat_allowed: false,
                             details: model.describe()?,
                         },

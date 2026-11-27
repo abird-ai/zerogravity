@@ -1092,6 +1092,47 @@ impl Router {
         Ok(dimensions)
     }
 
+    /// A session token retains no model reader or executable. The route is
+    /// immutable within a router; a replaced router issues a new registration.
+    pub fn realtime_text_registration(&self, alias: &str) -> Result<u64, ServiceError> {
+        self.models.realtime_text_registration(alias)
+    }
+
+    pub fn request_realtime_text_admitted(
+        &self,
+        request: SemanticRequest,
+        registration: u64,
+        ingress: Vec<ServingCharge>,
+        sharing: Option<crate::state_cache::PrefixSharingScope>,
+    ) -> Result<RequestEvents, ServiceError> {
+        self.request_realtime_text_with(request, registration, ingress, sharing, MAX_INPUT_BYTES)
+    }
+
+    pub(crate) fn request_realtime_text_with(
+        &self,
+        request: SemanticRequest,
+        registration: u64,
+        ingress: Vec<ServingCharge>,
+        sharing: Option<crate::state_cache::PrefixSharingScope>,
+        input_limit: usize,
+    ) -> Result<RequestEvents, ServiceError> {
+        if self.realtime_text_registration(&request.model)? != registration {
+            return Err(ServiceError::new(
+                409,
+                "model_changed",
+                "realtime model registration changed",
+            ));
+        }
+        if !request.input.is_chat() || !request.stream || request.token_metrics.is_some() {
+            return Err(ServiceError::new(
+                400,
+                "unsupported_task",
+                "realtime requires a streamed semantic conversation",
+            ));
+        }
+        self.request_with(request, Some(ingress), sharing, input_limit)
+    }
+
     pub fn validate_chat(&self, alias: &str) -> Result<(), ServiceError> {
         let model = self.models.model(alias).ok_or_else(|| {
             if self.models.registration(alias).is_some() {

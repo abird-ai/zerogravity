@@ -5,6 +5,20 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 27 Nov — OA-9A native text Realtime
+
+Original semantic Runtime/registration/receipt over existing WebSocket
+listener, bounded text-only conversation state, native usage and
+cancellation. Explicit CPU Qwen capability, no additional decoder or
+scheduler. Actual installed SDK2.33.0/websockets16.0 on cached Qwen0.8B
+GGUF, two turns exact native text and usage (19/8/27 and 27/8/35, both
+length/incomplete); strict actual event schema, test22.59s with retirement.
+Controlled real sockets qualify complete history, failure, stale
+registration, cancellation and joined shutdown. AST invalid generated
+terminal now inference-state failure. Focused62/0/0 strict lint;
+final assembled 2,597/0/112 (326 Rust suites, 546s), complete isolated gate passed.
+No media/voice, latency or physical GPU performance claim.
+
 ## 27 Nov — OA-7E native speech translation
 
 One original speech job with task-bound public limits/receipt, separate

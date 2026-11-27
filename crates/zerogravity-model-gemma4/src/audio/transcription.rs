@@ -58,6 +58,23 @@ fn translation_range(text: &str) -> Option<std::ops::Range<usize>> {
     Some(start..text.len())
 }
 
+fn terminal_range(
+    task: SpeechTask,
+    finish: TranscriptFinish,
+    text: &str,
+) -> Result<std::ops::Range<usize>> {
+    match task {
+        SpeechTask::Transcribe => Ok(0..text.len()),
+        SpeechTask::TranslateEnglish => match translation_range(text) {
+            Some(range) => Ok(range),
+            None if finish == TranscriptFinish::Length => Ok(0..0),
+            None => Err(Error::State(
+                "Gemma translation missing the required bilingual terminal structure".into(),
+            )),
+        },
+    }
+}
+
 pub struct Gemma4Transcriber {
     model: Arc<Gemma4AudioLanguage>,
     tokenizer: Mutex<Gemma4TextTokenizer>,
@@ -282,18 +299,7 @@ impl Gemma4Transcription {
                 .lock()
                 .map_err(|_| Error::State("Gemma tokenizer mutex".into()))?
                 .decode(content, true, cancelled)?;
-            let range =
-                match self.task {
-                    SpeechTask::Transcribe => 0..text.as_str().len(),
-                    SpeechTask::TranslateEnglish => match translation_range(text.as_str()) {
-                        Some(range) => range,
-                        None if finish == TranscriptFinish::Length => 0..0,
-                        None => return Err(Error::Malformed(
-                            "Gemma translation missing the required bilingual terminal structure"
-                                .into(),
-                        )),
-                    },
-                };
+            let range = terminal_range(self.task, finish, text.as_str())?;
             check_cancel(cancelled)?;
             return Ok(Some(Gemma4Transcript {
                 text,
@@ -327,6 +333,19 @@ mod tests {
             "Hola\nEnglish: Hello\nEnglish: World",
         ] {
             assert!(translation_range(wrong).is_none(), "{wrong:?}");
+            assert!(matches!(
+                terminal_range(SpeechTask::TranslateEnglish, TranscriptFinish::Stop, wrong),
+                Err(Error::State(_))
+            ));
+            assert_eq!(
+                terminal_range(
+                    SpeechTask::TranslateEnglish,
+                    TranscriptFinish::Length,
+                    wrong
+                )
+                .unwrap(),
+                0..0
+            );
         }
     }
 }

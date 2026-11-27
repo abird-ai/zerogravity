@@ -1735,14 +1735,40 @@ approved source cached, keep explicit blocker and advance ready work.
 
 ### OA-8 — Images
 
-Add generation/edit/variation over common image execution.
+Add generation/edit/variation over common image execution. No approved
+learned generator found in visible existing cache inventory; blocked on
+authorized actual source, not on a placeholder route.
 
 ### OA-9 — Realtime WebSocket
 
 Implement current OpenAI Realtime WebSocket event semantics over the common
 session/pipeline runtime.
 
-Do not add WebRTC in the same slice unless it is already trivial and required.
+**OA-9A (27 Nov): native text Realtime.** Same authenticated listener and
+WebSocket transport, registration capability captured at load and rechecked
+with original admission on each semantic streamed response. Ordinary CPU
+Qwen adapter explicitly eligible; default false otherwise. Original
+worker/receipt, no private decoder or scheduler. Bounded connection
+session/history and text-only settings, user message items, response
+creation, text deltas, actual usage, completion/cancellation/error events.
+Only valid stop-completed assistant text enters history. Length and failed
+or cancelled responses do not append assistant history. Original request
+cancels on disconnect/explicit cancel/shutdown. Session charge512 KiB,
+64 history items/32 KiB, <=8 KiB individual text,256 client events,
+existing frame/wire bounds and180s response deadline.
+Catalog reports actual capability. Actual SDK2.33.0/websockets16.0,
+cached Qwen0.8B GGUF two turns exact direct native text/usage/finish
+(19/8/27,27/8/35, both incomplete). Installed SDK event schema validated
+strictly; actual retirement, test22.59s. Focused62/0/0 strict lint;
+final assembled 2,597/0/112 (326 Rust suites, 546s), complete isolated gate passed.
+OA-7E correction: malformed generated bilingual terminal is inference
+state failure rather than malformed source; length stays incomplete.
+
+Remaining: additional Realtime modes only for actually qualified
+capabilities; finite speech receipt alone cannot establish streaming
+ASR/VAD/TTS/voice. Refuse audio, tools, unsupported controls and
+resumption rather than simulate. Do not add WebRTC in the same slice
+unless it is already trivial and required.
 
 ### OA-10 — compatibility closeout
 

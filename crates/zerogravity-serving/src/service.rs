@@ -123,6 +123,26 @@ pub trait TextService: Send + Sync + 'static {
             "translation endpoint unavailable",
         ))
     }
+    fn realtime_text_registration(&self, _alias: &str) -> Result<u64> {
+        Err(ServiceError::new(
+            404,
+            "not_found",
+            "realtime text unavailable",
+        ))
+    }
+    fn request_realtime_text_admitted(
+        &self,
+        _request: SemanticRequest,
+        _registration: u64,
+        _ingress: Vec<ServingCharge>,
+        _sharing: Option<PrefixSharingScope>,
+    ) -> Result<RequestEvents> {
+        Err(ServiceError::new(
+            404,
+            "not_found",
+            "realtime text unavailable",
+        ))
+    }
     fn charge_ingress(&self, session: &str, bytes: u64) -> Result<ServingCharge>;
     fn model_ids(&self) -> Result<Vec<String>>;
     fn max_output(&self) -> Result<usize>;
@@ -138,6 +158,18 @@ pub trait TextService: Send + Sync + 'static {
 }
 
 impl TextService for Runtime {
+    fn realtime_text_registration(&self, alias: &str) -> Result<u64> {
+        Runtime::realtime_text_registration(self, alias)
+    }
+    fn request_realtime_text_admitted(
+        &self,
+        request: SemanticRequest,
+        registration: u64,
+        ingress: Vec<ServingCharge>,
+        sharing: Option<PrefixSharingScope>,
+    ) -> Result<RequestEvents> {
+        Runtime::request_realtime_text_admitted(self, request, registration, ingress, sharing)
+    }
     fn translation_limits(&self, alias: &str) -> Result<TranscriptionLimits> {
         self.public_translation_limits(alias)
     }
@@ -235,6 +267,18 @@ impl TextService for Runtime {
 }
 
 impl TextService for Router {
+    fn realtime_text_registration(&self, alias: &str) -> Result<u64> {
+        Router::realtime_text_registration(self, alias)
+    }
+    fn request_realtime_text_admitted(
+        &self,
+        request: SemanticRequest,
+        registration: u64,
+        ingress: Vec<ServingCharge>,
+        sharing: Option<PrefixSharingScope>,
+    ) -> Result<RequestEvents> {
+        Router::request_realtime_text_admitted(self, request, registration, ingress, sharing)
+    }
     fn translation_limits(&self, alias: &str) -> Result<TranscriptionLimits> {
         self.public_translation_limits(alias)
     }

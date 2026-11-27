@@ -846,9 +846,16 @@ capability-gated multipart translations, original model-owned bilingual
 prompt and target projection, independent Spanish "Hola mundo" ->
 "Hello world" reference. Actual learned SDK: actual installed OpenAI SDK2.33.0 strict JSON {"text":"Hello world"}, exact independent English target and native input56/output8 usage; SDK completion378.481s, real learned test passed399.51s including retirement.
 Focused314/0/6 strict lint. Assembled: 2,596/0/112 (324 Rust suites, 698s), complete isolated gate passed.
-Next real synthesis source inventory or next ready modality. No
-natural-speech quality, TTS or streaming claim.
-Preserve the original runtime, admission and listener owner.
+OA-9A bounded text Realtime over original registration, semantic Runtime,
+worker and receipt. Explicit CPU Qwen eligibility, text-only conversation,
+native usage, complete/incomplete/failure/cancellation, joined retirement.
+Actual installed SDK2.33.0/websockets16.0 cached Qwen0.8B GGUF two turns exact
+native text/usage, both length-limited; focused62/0/0 strict lint,
+final assembled 2,597/0/112 (326 Rust suites, 546s), complete isolated gate passed. Corrected malformed generated AST
+terminal classification. No approved TTS/image generator/MiniLM source
+found; keep missing-media holds, advance genuinely qualified Realtime
+capabilities and OA-10 closeout. No natural-speech quality, voice,
+low-latency or physical GPU claim.
 
 - [ ] Close the [OpenAI-compatible serving iteration](serving-and-speculation/NEXT_ITERATION_OPENAI_COMPATIBLE_SERVING.md):
   model catalog/router, OpenAI Chat/Responses and supported completion/

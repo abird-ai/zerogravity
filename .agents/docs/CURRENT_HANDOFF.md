@@ -2,12 +2,11 @@
 
 Canonical cross-window entry point for `/home/pvl/spaces/abird/src/zerogravity`.
 
-**Latest complete takeover (27 Nov, through OA-4B):**
-[FULL_COMPREHENSIVE_HANDOFF_2026-11-27_OA4B.md](FULL_COMPREHENSIVE_HANDOFF_2026-11-27_OA4B.md).
-Read §§0–13 first for current architecture, acceptance, limitations and next
-work. The [standalone OA-4C continuation prompt](NEXT_AGENT_2026-11-27_OA4C.md)
-is the historical entry to the current work; use the live checkpoint below.
-OA-4B already committed at 89822f40; no production rework required.
+**Latest complete takeover (27 Nov, through OA-7D):**
+[FULL_COMPREHENSIVE_HANDOFF_2026-11-27_OA7D.md](FULL_COMPREHENSIVE_HANDOFF_2026-11-27_OA7D.md).
+Read §§0–13 and Appendix F. The [OA-7E continuation prompt](NEXT_AGENT_2026-11-27_OA7E.md)
+is historical: the interrupted work landed at signed 1585b579.
+Use the live checkpoint below for subsequent work.
 OA-4A–E and OA-5 current-capability Chat/legacy Completions accepted.
 OA-6A source-bound native BERT candidate passed full workspace revalidation.
 OA-6B native embedding tasks, shared worker/registry lifecycle and the
@@ -60,7 +59,50 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — OA-7E source-supported speech translation (27 Nov)
+### Current checkpoint — OA-9A native text Realtime (27 Nov)
+
+Recovered signed OA-7E 1585b579, complete 2,596/0/112 assembled gate.
+No approved trained TTS, image-generation or MiniLM source found in the
+visible existing inventory; no acquisition. Advanced the ready text
+Realtime capability rather than pretending support for missing media.
+
+Authenticated /v1/realtime?model=alias uses the existing listener,
+WebSocket transport, request IDs, original registration and semantic
+Runtime/worker/receipt. Explicit opt-in only on ordinary CPU Qwen text
+adapter; all other adapters default false. Recheck captured registration
+and admission on every response, with no retained decoder/model pin or
+second worker. Catalog, Web and TUI expose the same capability.
+Strict text-only session settings, user message items, response creation,
+text deltas and terminal events, exact native usage, response cancellation.
+Retain only bounded message history; append assistant only on a valid
+completed stop terminal. Length, failure and cancellation never commit
+an assistant turn. Session charge 512 KiB; history 64 items/32 KiB,
+per-text <=8 KiB subject to frame limit, 256 client events, existing
+frame/wire limits and 180s response deadline. Original cancel on peer
+close, explicit cancel or joined shutdown. No response resumption,
+audio buffers, VAD, tools, WebRTC or latency claim.
+Gemma AST malformed completed generated text is an inference-state
+failure, not malformed source; incomplete remains incomplete.
+
+Actual installed OpenAI SDK2.33.0 + websockets16.0, existing CPU Qwen
+0.8B GGUF: two sequential SDK text turns equal direct native text,
+usage and finish (input19/output8/total27, input27/output8/total35;
+both incomplete at the deliberately small limit). Strict installed
+RealtimeServerEvent validation, actual model unload and retirement,
+test 22.59s. Controlled socket test covers completed history, incomplete,
+failure, stale registration and cancellation/close/shutdown retirement.
+Focused 62/0/0 and strict lint before final metadata/error projection;
+final assembled evidence: 2,597/0/112 (326 Rust suites, 546s), complete isolated gate passed.
+Logs target/oa9a-compile.log, target/oa9a-focused.log,
+target/oa9a-sdk.log, target/oa9a-assembled.log.
+
+Next: assess remaining genuinely qualified Realtime tasks on the same
+Runtime and close OA-10 for implemented capabilities. Finite speech
+receipts do not imply streaming ASR or voice eligibility; missing media
+source and trained acceptance stay explicit, not simulated. Then ordinary
+serving/benchmark acceptance and ordered ROCm/CUDA/Vulkan parity.
+
+### Prior checkpoint — OA-7E source-supported speech translation (27 Nov)
 
 Started clean signed 05c54e5d on sole L5 main. Reused original cached
 Gemma4 E2B audio/language source, native model, tokenizer, existing

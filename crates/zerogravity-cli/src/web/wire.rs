@@ -19,6 +19,7 @@ pub(super) fn snapshot(
             "embedding_dimensions": cap.embedding_dimensions,
             "transcription": cap.transcription,
             "translation": cap.translation,
+            "realtime_text": cap.realtime_text,
             "provider": cap.details.execution.as_ref().map(|execution| format!("{:?}", execution.selected.provider)),
             "family": cap.details.artifact.as_ref().map(|artifact| &artifact.family),
             "snapshot": cap.details.artifact.as_ref().and_then(|artifact| artifact.cache_snapshot.as_ref()),

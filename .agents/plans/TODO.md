@@ -6,7 +6,7 @@ The historical queue narratives and P-level labels below preserve owner scopes, 
 
 Current source, tests, and this queue are authoritative; Git retains retired history.
 Cross-window entrypoint: [CURRENT_HANDOFF.md](../docs/CURRENT_HANDOFF.md).
-Full takeover context: [FULL_COMPREHENSIVE_HANDOFF_2026-11-25_PHASE1_EXIT.md](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-25_PHASE1_EXIT.md).
+Full takeover context: [FULL_COMPREHENSIVE_HANDOFF_2026-11-27_OA7D.md](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-27_OA7D.md), with the linked historical Phase 1 exit pack.
 The Phase 1 exit pack links the complete dated history, Phase 2.1
 UX-1 entry, original design and plan/open-work/Git inventories. The previous
 foundations pack remains historical; live source and owning TODOs are authoritative.
@@ -233,7 +233,7 @@ selected model performance/trend and reported layer placement
 acceptance (CPU/native/Firefox/HTTP, SDK listener, simultaneous transfers,
 actual CUDA layer/counters), full native link/launch and strict lint pass.
 Final assembled private-network gate on ad7a4178 passed 2,539 passed, zero failures, 109 explicit skips across 318 Rust suites; release Web/TUI/installer/scripts passed. UX-P accepted. Proceed to
-public serving (OA-1–5 accepted for actual supported text capabilities; OA-6A native BERT candidate workspace-qualified; OA-6B shared Runtime/SDK workspace-qualified; OA-6C capability-gated wire workspace-qualified; trained-source authorization/parity and built-in eligibility remain; OA-7A/B cached Gemma4 audio encoder and shared original-source audio-conditioned decoder parity passed, OA-7C native transcription implemented, independent synthesized speech reference pass; actual learned SDK and assembled workspace gate passed; OA-7D gated multipart transcription wire focused-qualified, actual learned SDK and assembled workspace gate passed; OA-7E native/source-supported AST and shared wire focused-qualified, actual learned SDK and assembled workspace gate passed), then ordinary benchmarks and ordered performance phases.
+public serving (OA-1–5 accepted for actual supported text capabilities; OA-6A native BERT candidate workspace-qualified; OA-6B shared Runtime/SDK workspace-qualified; OA-6C capability-gated wire workspace-qualified; trained-source authorization/parity and built-in eligibility remain; OA-7A/B cached Gemma4 audio encoder and shared original-source audio-conditioned decoder parity passed, OA-7C native transcription implemented, independent synthesized speech reference pass; actual learned SDK and assembled workspace gate passed; OA-7D gated multipart transcription wire focused-qualified, actual learned SDK and assembled workspace gate passed; OA-7E native/source-supported AST and shared wire actual learned SDK and assembled workspace gate passed; OA-9A native text Realtime actual SDK and focused lifecycle qualified, final assembled 2,597/0/112 (326 Rust suites, 546s), complete isolated gate passed). Missing qualified media/trained source remains explicit; close applicable serving, then ordinary benchmarks and ordered performance phases.
 Optional deeper profiling is not a blocker; see live handoff.
 General UMA/foreign backing, device-write host read, unqualified model/
 backend/media and other expansion holds remain explicit. Historical

@@ -532,6 +532,31 @@ impl Runtime {
             )
         })
     }
+    pub fn realtime_text_registration(
+        &self,
+        alias: &str,
+    ) -> std::result::Result<u64, ServiceError> {
+        self.with_text_router(|router| router.realtime_text_registration(alias))
+    }
+
+    pub fn request_realtime_text_admitted(
+        &self,
+        request: crate::router::SemanticRequest,
+        registration: u64,
+        ingress: Vec<crate::router::pending::ServingCharge>,
+        sharing: Option<crate::state_cache::PrefixSharingScope>,
+    ) -> std::result::Result<RequestEvents, ServiceError> {
+        self.with_text_router(|router| {
+            router.request_realtime_text_with(
+                request,
+                registration,
+                ingress,
+                sharing,
+                self.inner.limits.max_input_bytes,
+            )
+        })
+    }
+
     /// Admitted protocol payload, retaining the caller's existing ingress
     /// charges and this runtime's configured semantic/rendered input limit.
     pub fn request_semantic_ingress(

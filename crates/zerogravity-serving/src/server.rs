@@ -30,7 +30,7 @@ pub struct ServerBuilder {
     enable_per_request_metrics: bool,
     errors: http::ErrorReporting,
     prefix_sharing_scope: Option<PrefixSharingScope>,
-    // Installed only by a real realtime adapter. Ordinary servers refuse it.
+    // Private test override; ordinary sessions use capability-gated admission.
     realtime: Option<http::RealtimeAdmission>,
 }
 pub struct Server {
@@ -179,6 +179,13 @@ impl Server {
         let listener = TcpListener::bind(builder.address).map_err(io_error)?;
         listener.set_nonblocking(true).map_err(io_error)?;
         let address = listener.local_addr().map_err(io_error)?;
+        let realtime = builder.realtime.or_else(|| {
+            Some(http::realtime_admission(
+                builder.service.clone(),
+                builder.prefix_sharing_scope,
+                builder.limits.body_bytes,
+            ))
+        });
         let captures = AcceptCaptures {
             listener,
             service: builder.service,
@@ -189,7 +196,7 @@ impl Server {
                 errors: builder.errors,
                 prefix_sharing_scope: builder.prefix_sharing_scope,
                 limits: builder.limits,
-                realtime: builder.realtime,
+                realtime,
             },
             metrics: Arc::clone(&metrics),
         };

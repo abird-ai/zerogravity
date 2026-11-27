@@ -6,6 +6,19 @@ use super::{
 type Result<T> = std::result::Result<T, ServiceError>;
 
 impl TextService for crate::Runtime {
+    fn realtime_text_registration(&self, alias: &str) -> Result<u64> {
+        self.engine.realtime_text_registration(alias)
+    }
+    fn request_realtime_text_admitted(
+        &self,
+        request: SemanticRequest,
+        registration: u64,
+        ingress: Vec<ServingCharge>,
+        sharing: Option<zerogravity_engine::state_cache::PrefixSharingScope>,
+    ) -> Result<RequestEvents> {
+        self.engine
+            .request_realtime_text_admitted(request, registration, ingress, sharing)
+    }
     fn translation_limits(
         &self,
         alias: &str,

@@ -13,19 +13,17 @@ Repository naming follows the short canonical vocabulary in
 concept rather than historical qualification shorthand.
 
 Cross-window continuation starts at [the canonical current handoff](../docs/CURRENT_HANDOFF.md).
-The latest [comprehensive takeover through OA-4B](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-27_OA4B.md)
-§§0–13 describes original architecture, accepted Phase 1/UX-P and serving
-OA-1–3/OA-4A/B, actual evidence, limitations and next coherent work.
-The [OA-4C takeover prompt](../docs/NEXT_AGENT_2026-11-27_OA4C.md) is
-historical; read the live current handoff for accepted OA-4A–E
-and OA-5 current-capability text compatibility.
-Current unit: [OA-7 Audio](serving-and-speculation/NEXT_ITERATION_OPENAI_COMPATIBLE_SERVING.md#oa-7--audio):
-OA-7A original cached Gemma 4 E2B waveform-to-language-token CPU reference
-and actual learned numerical parity passed; OA-7B shared original source
-and native audio-conditioned F32 decoder prefill/continuation parity passed.
-OA-7C native model prompt/Runtime transcription implemented and focused-qualified; actual learned SDK and assembled workspace gate passed. OA-7D explicit capability-gated multipart transcription wire focused-qualified; actual learned SDK and assembled workspace gate passed. OA-7E native/source-supported translation and shared wire implemented, focused-qualified; actual learned SDK and assembled workspace gate passed. OA-6A/B/C workspace-qualified;
-MiniLM trained-source authorization/parity and built-in public eligibility
-remain open. No new model download.
+The latest [comprehensive takeover through OA-7D](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-27_OA7D.md)
+§§0–13 and Appendix F preserve original architecture, chronology, accepted
+work and the recovered OA-7E work. The
+[OA-7E takeover prompt](../docs/NEXT_AGENT_2026-11-27_OA7E.md) is historical;
+OA-7E landed at signed 1585b579, actual learned SDK and assembled gate passed.
+Current unit: [OA-9 Realtime](serving-and-speculation/NEXT_ITERATION_OPENAI_COMPATIBLE_SERVING.md#oa-9--realtime-websocket).
+OA-9A native text Realtime over original Runtime, registration and receipt,
+actual installed SDK parity and focused lifecycle tests pass;
+final assembled 2,597/0/112 (326 Rust suites, 546s), complete isolated gate passed.
+OA-6 trained MiniLM, OA-7 synthesis/streaming and OA-8 image generation
+require actual authorized source and capability acceptance. No new model download.
 OA-4 fully accepted after the serial resident lifecycle retry; OA-5
 focused/SDK/assembled qualified. Deeper M2 inspection stays optional and
 capability-bound. §10.2 records remaining packaging and physical

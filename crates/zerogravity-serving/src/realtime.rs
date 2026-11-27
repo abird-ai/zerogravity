@@ -1,4 +1,4 @@
-//! Future transports; network ACK is not playback or neural commit.
+//! Transport availability does not imply a qualified loaded-model capability.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RealtimeTransport {
     WebSocket,
@@ -6,8 +6,11 @@ pub enum RealtimeTransport {
 }
 impl RealtimeTransport {
     pub fn require_implemented(self) -> crate::Result<()> {
-        Err(crate::Error::Unsupported(format!(
-            "Fabric {self:?} transport is not implemented"
-        )))
+        match self {
+            Self::WebSocket => Ok(()),
+            Self::WebRtc => Err(crate::Error::Unsupported(
+                "Realtime WebRTC transport is not implemented".into(),
+            )),
+        }
     }
 }

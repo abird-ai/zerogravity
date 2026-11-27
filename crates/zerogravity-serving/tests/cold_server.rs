@@ -58,11 +58,9 @@ fn external_bind_and_unimplemented_endpoints_refuse() {
         zerogravity_serving::responses::require_implemented(),
         Err(Error::Unsupported(_))
     ));
-    assert!(
-        zerogravity_serving::realtime::RealtimeTransport::WebSocket
-            .require_implemented()
-            .is_err()
-    );
+    use zerogravity_serving::realtime::RealtimeTransport;
+    RealtimeTransport::WebSocket.require_implemented().unwrap();
+    assert!(RealtimeTransport::WebRtc.require_implemented().is_err());
 }
 
 #[test]

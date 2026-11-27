@@ -104,23 +104,19 @@ impl Pending {
     }
 }
 
-/// Direct message IO; no unbounded send queue. This stays private to the
-/// serving crate until the realtime event/session adapter is implemented.
-#[allow(
-    dead_code,
-    reason = "qualified transport primitive; realtime inference adapter is a later slice"
-)]
+/// Direct message IO; no unbounded send queue.
 pub(crate) struct Socket {
     stream: WebSocketStream<TokioIo<Upgraded>>,
     limit: usize,
 }
-#[allow(
-    dead_code,
-    reason = "qualified transport primitive; realtime inference adapter is a later slice"
-)]
 impl Socket {
+    pub(crate) fn limit(&self) -> usize {
+        self.limit
+    }
     pub(crate) async fn receive(&mut self) -> io::Result<Option<Message>> {
-        let deadline = Instant::now() + IO_TIMEOUT;
+        self.receive_until(Instant::now() + IO_TIMEOUT).await
+    }
+    pub(crate) async fn receive_until(&mut self, deadline: Instant) -> io::Result<Option<Message>> {
         loop {
             if Instant::now() >= deadline {
                 return Err(io::ErrorKind::TimedOut.into());

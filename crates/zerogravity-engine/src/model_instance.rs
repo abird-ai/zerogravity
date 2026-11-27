@@ -73,6 +73,10 @@ pub trait PreparedModel: Send + Sync {
     fn validate_chat(&self) -> std::result::Result<(), crate::router::ServiceError> {
         Ok(())
     }
+    /// Explicit qualification for bounded text-only realtime conversation turns.
+    fn public_realtime_text(&self) -> bool {
+        false
+    }
     /// Source-specific validation after count and host admission, before enqueue.
     fn validate_request(
         &self,

@@ -1,5 +1,5 @@
-//! The only installed realtime adapter here is a transport fixture. No
-//! model, event protocol or public realtime capability is advertised.
+//! Transport and controlled realtime lifecycle fixtures; no learned math.
+mod realtime;
 use super::*;
 use crate::{
     service::ServiceError,

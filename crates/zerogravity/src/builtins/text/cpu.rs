@@ -55,6 +55,9 @@ impl PreparedModel for Model {
     fn vocabulary_size(&self) -> u64 {
         self.weights.model().geometry().vocab_size
     }
+    fn public_realtime_text(&self) -> bool {
+        true
+    }
     fn describe(&self) -> crate::Result<zerogravity_engine::diagnostics::ModelDetails> {
         use zerogravity_core::provider::{
             ExecutionDescription, ExecutionMode, ProviderKind, SelectedMode,

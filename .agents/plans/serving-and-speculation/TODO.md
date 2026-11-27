@@ -264,6 +264,27 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   supported capability, no new model acquisition without authorization.
   No second source/runtime or fake text.
 
+### OA-9 — Realtime and remaining modalities
+
+- [x] OA-7E generated malformed bilingual terminal classification:
+  inference-state failure, explicit length still incomplete.
+- [ ] OA-8 actual generation/edit/variation: no eligible approved learned
+  generator found in visible existing source inventory. No acquisition.
+- [x] OA-9A text Realtime implementation: original authenticated
+  WebSocket transport, explicit captured registration eligibility
+  (ordinary CPU Qwen only), per-turn recheck, original semantic Runtime
+  and receipt; bounded session history/controls, exact usage, deltas,
+  stop/length/failure/cancel, stale refusal and joined retirement.
+  Controlled real sockets and focused62/0/0 strict lint.
+- [x] OA-9A actual installed SDK2.33.0/websockets16.0, cached Qwen0.8B
+  GGUF, strict event schema and exact two-turn native text/usage/finish
+  parity (19/8/27,27/8/35 both incomplete), actual retirement22.59s.
+- [x] OA-9A final assembled workspace gate: 2,597/0/112 (326 Rust suites, 546s), complete isolated gate passed.
+- [ ] Remaining OA-9: additional actual qualified modes only; no implicit
+  streaming ASR/voice from finite speech, no audio/tool/VAD simulation
+  or WebRTC claim. Then OA-10 applicable endpoint matrix/SDK/lifecycle
+  closeout with explicit missing capability rows.
+
 ### Current continuation — 22 Nov 2026
 
 - [x] Fresh baseline capture is complete and canonicalized in
