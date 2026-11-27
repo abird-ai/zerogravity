@@ -6,7 +6,7 @@ scaffolding), CLI/TUI/Web and serving, ROCm, CUDA, Vulkan, then concrete
 compiled providers. Native Hugging Face/Safetensors and GGUF are primary.
 Older ordering below is context; valid owner constraints remain authoritative.
 
-Status: **OA-1–5 accepted** (27 Nov), scoped to actual supported text capabilities. OA-6A native BERT encoder candidate implemented; OA-6B trained-source/runtime/wire qualification remains open. Later units remain ordered.
+Status: **OA-1–5 accepted** (27 Nov), scoped to actual supported text capabilities. OA-6A native BERT candidate workspace-qualified; OA-6B native shared Runtime/SDK workspace-qualified; OA-6C trained-source/wire qualification remains open. Later units remain ordered.
 
 26 Nov user decision: [UX-P native TUI polish](../cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md)
 was the prerequisite. The assembled P4B gate passed on ad7a4178;
@@ -1593,17 +1593,35 @@ credit and exact source identity. Single Safetensors owner verifies
 actual bytes from the existing cache descriptor before binding and
 charges directory and storage; I64 index buffers never enter floating
 weight projection. Synthetic source-independent oracle and ownership
-tests pass; default CLI compile passes. Full assembled gate stopped at
-the turn time boundary after 1,844/0/95 across 255 completed suites;
-remaining acquisition/release checks open. Rerun full isolated gate.
+tests pass; default CLI compile passes. Previous interrupted gate
+superseded by full unchanged 6a5e3518 isolated gate, 2,581/0/109 across
+319 Rust suites (580s), acquisition/release/installer passed.
 
-**OA-6B:** acquire only authorized original pinned weights/config/vocab
+**OA-6B (27 Nov): native shared Runtime.** Model-neutral synchronous
+EmbeddingEncoder plus bounded typed EmbeddingRequest/EmbeddingBatch
+through the original registry, request-ID allocator, PendingQueue,
+workers, RequestEvents terminal channel and CancelToken. Max 16 ordered
+rows, 4096 dimensions, checked aggregate input bytes, vocabulary and
+runtime/source context. Shared active-slot budget; one sequence quantum
+per iteration alongside text rounds. Charge private request/output before
+enqueue; exact source-domain admission, caller-owned vector storage,
+finite output and actual token usage validation. Publish complete batch
+or discard; retained output charge independent of model retirement.
+No extra decoder state, queue or serving worker. Native snapshot reports
+embedding dimensions; prefill/token-byte fields optional for non-text
+owners. Text list/resolve and HTTP models remain text-only. Explicit
+candidate feature and trusted cold load via existing Runtime slot;
+engine mixed owners supported, facade encoder-only load. No automatic
+qualified loader. Actual source-bound synthetic Rust SDK and controlled
+mixed scheduling/lifecycle tests pass, 246/0/1 focused, strict lint.
+Actual loopback embedding refusal verified. Assembled gate:
+2,584/0/109 (321 Rust suites, 834s), complete isolated gate passed.
+
+**OA-6C:** acquire only authorized original pinned weights/config/vocab
 and pooling/module files; no learned payload present in current cache.
 Qualify real tokenizer IDs/usage and vector parity with an independent
 Hugging Face/SentenceTransformers reference and actual resource bounds.
-Introduce embedding semantic task and typed vector output through the
-same Runtime, ControlPlane, registered model, scheduler/workers and
-receipt; preserve cancellation, admission and joined retirement.
+Bind actual qualified source to native and serving capability policy.
 Expose /v1/embeddings only after actual capability qualification. Verify
 single/batch strings and supported token-ID forms, ordering, exact usage,
 float/base64 encoding, explicit dimension/unsupported control refusal,

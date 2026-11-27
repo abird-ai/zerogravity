@@ -7,6 +7,7 @@ impl<'a> ModelCatalog<'a> {
     pub(crate) fn new(runtime: &'a Runtime) -> Self {
         Self { runtime }
     }
+    /// Loaded text-generation handles. Use snapshot for every task capability.
     pub fn list(&self) -> Result<Vec<ModelInstance>> {
         self.runtime.loaded_text_models()
     }

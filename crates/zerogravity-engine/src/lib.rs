@@ -3,6 +3,7 @@
 pub use zerogravity_core::{Error, Result};
 pub mod catalog;
 pub mod diagnostics;
+pub mod embedding;
 pub mod executable;
 pub mod model_instance;
 pub mod output;

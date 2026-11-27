@@ -9,9 +9,10 @@ use super::pending::{
 pub use super::registry::ModelRead;
 pub(crate) use super::registry::RegisteredOwner;
 use super::{host::HostLogits, registry, statistics::WorkStats, waves, worker};
+use crate::embedding::{EmbeddingJob, EmbeddingReceipt, EmbeddingRequest, MAX_DIMENSIONS};
 pub use crate::model_instance::TextTokenizer;
 use crate::model_instance::execution::*;
-use crate::model_instance::{LogitModel, ModelInstance};
+use crate::model_instance::{EmbeddingEncoder, LogitModel, ModelInstance};
 #[cfg(test)]
 use crate::model_instance::{PreparedModel, TextSession};
 use std::collections::{BTreeMap, VecDeque};
@@ -245,20 +246,20 @@ pub enum ResponseEvent {
     },
     Error(ServiceError),
 }
-pub struct RequestEvents {
+pub struct RequestEvents<E = ResponseEvent> {
     pub id: u64,
     pub model: String,
-    pub events: mpsc::Receiver<ResponseEvent>,
+    pub events: mpsc::Receiver<E>,
     pub token_metrics: Option<TokenMetricsRequest>,
     _cancel: CancelToken,
     _request: Option<ServingCharge>,
     _transport: Option<Arc<ServingCharge>>,
 }
-impl RequestEvents {
+impl<E> RequestEvents<E> {
     pub fn new(
         id: u64,
         model: String,
-        events: mpsc::Receiver<ResponseEvent>,
+        events: mpsc::Receiver<E>,
         cancel: CancelToken,
         request: Option<ServingCharge>,
         transport: Option<Arc<ServingCharge>>,
@@ -276,12 +277,14 @@ impl RequestEvents {
     pub fn cancel(&self) {
         self._cancel.cancel();
     }
+}
+impl RequestEvents {
     pub fn observed(mut self, metrics: Option<TokenMetricsRequest>) -> Self {
         self.token_metrics = metrics;
         self
     }
 }
-impl Drop for RequestEvents {
+impl<E> Drop for RequestEvents<E> {
     fn drop(&mut self) {
         self._cancel.cancel();
     }
@@ -595,10 +598,25 @@ pub struct Scheduled {
     /// Only direct diagnostic row construction may omit the registry reader.
     pub model_reader: Option<ModelRead>,
 }
+// Text work remains inline; only encoder work needs the boxed batch
+// state. No extra per-token indirection or separate pending queue.
+#[allow(clippy::large_enum_variant)]
+pub(crate) enum Work {
+    Text(Scheduled),
+    Encoder(Box<EmbeddingJob>),
+}
+impl Work {
+    pub(crate) fn is_cancelled(&self) -> bool {
+        match self {
+            Self::Text(job) => job.cancel.is_cancelled(),
+            Self::Encoder(job) => job.is_cancelled(),
+        }
+    }
+}
 pub struct Router {
     models: Arc<dyn registry::Models>,
     host: HostPool,
-    queue: PendingQueue<Scheduled>,
+    queue: PendingQueue<Work>,
     stats: Arc<WorkStats>,
     active_limit: usize,
     workers: Vec<thread::JoinHandle<()>>,
@@ -617,6 +635,7 @@ impl Router {
         let host = HostPool::isolated(256).unwrap();
         let router = Self::start::<HostLogits>(
             BTreeMap::new(),
+            BTreeMap::new(),
             host.clone(),
             WorkerConfig {
                 workers: 1,
@@ -633,6 +652,7 @@ impl Router {
     #[cfg(test)]
     pub(crate) fn retirement_test<A: Executor>(host: HostPool) -> Self {
         Self::start::<A>(
+            BTreeMap::new(),
             BTreeMap::new(),
             host,
             WorkerConfig {
@@ -692,14 +712,49 @@ impl Router {
         host: HostPool,
         config: WorkerConfig,
     ) -> Result<Self, ServiceError> {
+        Self::with_executor_and_embeddings::<A>(models, BTreeMap::new(), host, config)
+    }
+    /// A cold encoder-only route set, using the same CPU worker algorithm.
+    pub fn with_embeddings(
+        encoders: BTreeMap<String, Arc<dyn EmbeddingEncoder>>,
+        host: HostPool,
+        config: WorkerConfig,
+    ) -> Result<Self, ServiceError> {
+        Self::with_executor_and_embeddings::<HostLogits>(BTreeMap::new(), encoders, host, config)
+    }
+    /// Mixed prepared owners; one alias set, FIFO, active limit and worker
+    /// join. Encoder calls are synchronous, finite, non-text quanta.
+    pub fn with_executor_and_embeddings<A: Executor>(
+        models: BTreeMap<String, A::Model>,
+        encoders: BTreeMap<String, Arc<dyn EmbeddingEncoder>>,
+        host: HostPool,
+        config: WorkerConfig,
+    ) -> Result<Self, ServiceError> {
         validate_config(
-            models.len(),
+            models.len().saturating_add(encoders.len()),
             config.workers,
             config.active,
             config.context,
             config.output,
             config.max_pending,
         )?;
+        validate_aliases(models.keys().chain(encoders.keys()).map(String::as_str))?;
+        for (alias, model) in &encoders {
+            if !model.source().is_bound()
+                || model.max_context() == 0
+                || model.vocabulary_size() == 0
+                || !(1..=MAX_DIMENSIONS).contains(&model.dimensions())
+            {
+                return Err(ServiceError::new(
+                    400,
+                    "invalid_model",
+                    "unbound or unbounded encoder",
+                ));
+            }
+            model
+                .validate_admission(&host.transfer_admission(alias, "encoder")?)
+                .map_err(ServiceError::inference)?;
+        }
         for (alias, handle) in &models {
             validate_alias(alias)?;
             let model = handle.model();
@@ -777,10 +832,11 @@ impl Router {
                 _ => {}
             }
         }
-        Self::start::<A>(models, host, config)
+        Self::start::<A>(models, encoders, host, config)
     }
     fn start<A: Executor>(
         models: BTreeMap<String, A::Model>,
+        encoders: BTreeMap<String, Arc<dyn EmbeddingEncoder>>,
         host: HostPool,
         config: WorkerConfig,
     ) -> Result<Self, ServiceError> {
@@ -797,13 +853,13 @@ impl Router {
                 // One owner per distinct prepared model (at most alias count).
                 // Covers the additional route Arc/state and stable slot.
                 (arc_bytes::<registry::Route<A>>()? + fixed_size::<Arc<registry::Route<A>>>()?)
-                    .checked_mul(models.len() as u64)
+                    .checked_mul((models.len() + encoders.len()) as u64)
                     .ok_or_else(|| {
                         ServiceError::new(400, "size_overflow", "route owner inventory overflow")
                     })?,
             ])?,
         )?;
-        let models = Arc::new(registry::Registry::<A>::new(models)?);
+        let models = Arc::new(registry::Registry::<A>::new(models, encoders)?);
         let stats = Arc::new(WorkStats::default());
         let queue = PendingQueue::new(host.clone(), config.max_pending)?;
         let rows = vecdeque_backing_bytes::<worker::Active<A>>(config.active)?;
@@ -832,6 +888,14 @@ impl Router {
             ])?
         } else {
             rows
+        };
+        let extra = if models.has_encoders() {
+            pending::checked_sum(&[
+                extra,
+                vecdeque_backing_bytes::<worker::ActiveEmbedding>(config.active)?,
+            ])?
+        } else {
+            extra
         };
         let worker_charge = workers_charge(
             &host,
@@ -919,6 +983,13 @@ impl Router {
     ) -> crate::Result<Option<registry::SelectiveRetirement>> {
         self.models.begin_unload(model)
     }
+    pub(crate) fn begin_unload_registration(
+        &self,
+        alias: &str,
+        id: u64,
+    ) -> crate::Result<Option<registry::SelectiveRetirement>> {
+        self.models.begin_unload_registration(alias, id)
+    }
     pub fn host(&self) -> &HostPool {
         &self.host
     }
@@ -929,10 +1000,14 @@ impl Router {
         }
     }
     pub fn validate_chat(&self, alias: &str) -> Result<(), ServiceError> {
-        self.models
-            .model(alias)
-            .ok_or_else(|| ServiceError::new(404, "model_not_found", "model is not registered"))?
-            .validate_chat()
+        let model = self.models.model(alias).ok_or_else(|| {
+            if self.models.registration(alias).is_some() {
+                ServiceError::new(400, "unsupported_task", "model is not a text generator")
+            } else {
+                ServiceError::new(404, "model_not_found", "model is not registered")
+            }
+        })?;
+        model.validate_chat()
     }
     pub fn scheduler_snapshot(&self) -> worker::SchedulerSnapshot {
         worker::SchedulerSnapshot {
@@ -1119,6 +1194,40 @@ impl Router {
         Ok(tokens.len())
     }
 
+    fn next_request_id(&self) -> Result<u64, ServiceError> {
+        self.next_id
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
+            .map_err(|_| ServiceError::new(503, "id_exhausted", "request IDs exhausted"))
+    }
+
+    pub fn request_embeddings(
+        &self,
+        request: EmbeddingRequest,
+    ) -> Result<EmbeddingReceipt, ServiceError> {
+        self.request_embeddings_with(request, MAX_INPUT_BYTES)
+    }
+    pub(crate) fn request_embeddings_with(
+        &self,
+        request: EmbeddingRequest,
+        input_limit: usize,
+    ) -> Result<EmbeddingReceipt, ServiceError> {
+        let (model, reader) = self.models.acquire_encoder(&request.model)?;
+        let context = self.config.context.min(model.max_context());
+        request.validate(
+            input_limit.min(MAX_INPUT_BYTES),
+            context,
+            model.vocabulary_size(),
+        )?;
+        let id = self.next_request_id()?;
+        let ticket = self.queue.reserve()?;
+        let (job, receipt) =
+            EmbeddingJob::prepare(request, model, reader, &self.host, &self.queue, id, context)?;
+        self.queue
+            .enqueue(ticket, Work::Encoder(job))
+            .map_err(|(error, _)| error)?;
+        Ok(receipt)
+    }
+
     pub(crate) fn request_with(
         &self,
         mut request: SemanticRequest,
@@ -1140,10 +1249,7 @@ impl Router {
         if request.input.is_chat() {
             model.validate_chat()?;
         }
-        let id = self
-            .next_id
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
-            .map_err(|_| ServiceError::new(503, "id_exhausted", "request IDs exhausted"))?;
+        let id = self.next_request_id()?;
         // Count/admission reservation precedes every request-derived
         // allocation and queue publication.
         let ticket = self.queue.reserve()?;
@@ -1246,7 +1352,7 @@ impl Router {
             transport: Some(Arc::clone(&transport)),
             model_reader: Some(model_reader),
         };
-        if let Err((error, _)) = self.queue.enqueue(ticket, scheduled) {
+        if let Err((error, _)) = self.queue.enqueue(ticket, Work::Text(scheduled)) {
             return Err(error);
         }
         Ok(RequestEvents::new(
@@ -1340,7 +1446,7 @@ pub fn workers_charge(
         .map_err(ServiceError::inference)?;
     let per_worker = pending::checked_sum(&[
         control,
-        fixed_size::<WorkerQueue<Scheduled>>()?,
+        fixed_size::<WorkerQueue<Work>>()?,
         extra_per_worker,
     ])?;
     let handles = pending::vec_bytes::<thread::JoinHandle<()>>(workers)?;

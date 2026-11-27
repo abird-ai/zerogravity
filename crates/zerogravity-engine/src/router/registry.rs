@@ -6,7 +6,7 @@ use super::{
     worker::SchedulerSnapshot,
 };
 use crate::model_instance::{
-    ModelInstance, PreparedModel,
+    EmbeddingEncoder, ModelInstance, PreparedModel,
     execution::{Executor, ModelHandle, ModelRetirement},
 };
 use crate::state_cache::{PrefixCacheEviction, PrefixSharingScope};
@@ -40,15 +40,32 @@ pub(crate) struct RegisteredOwner {
 }
 static NEXT_REGISTRATION: AtomicU64 = AtomicU64::new(1);
 
+#[derive(Clone)]
+enum RouteModel<M> {
+    Text(M),
+    Encoder(Arc<dyn EmbeddingEncoder>),
+}
+impl<M: ModelHandle> RouteModel<M> {
+    fn source(&self) -> SourceIdentity {
+        match self {
+            Self::Text(model) => model.model().source(),
+            Self::Encoder(model) => model.source(),
+        }
+    }
+}
+
 pub(super) struct Route<A: Executor> {
     registration: RegisteredOwner,
-    state: Mutex<OwnerState<A::Model>>,
+    state: Mutex<OwnerState<RouteModel<A::Model>>>,
     drained: Condvar,
     retire: Option<ModelRetirement<A::Model>>,
+    independent_retirement: bool,
     performance: RegistrationPerformance,
 }
 impl<A: Executor> Route<A> {
-    fn new(model: A::Model) -> Result<Self> {
+    fn new(model: RouteModel<A::Model>) -> Result<Self> {
+        let retire = A::selective_retirement();
+        let independent_retirement = matches!(&model, RouteModel::Encoder(_)) || retire.is_some();
         let id = NEXT_REGISTRATION
             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |next| {
                 next.checked_add(1)
@@ -57,7 +74,7 @@ impl<A: Executor> Route<A> {
         Ok(Self {
             registration: RegisteredOwner {
                 id,
-                source: model.model().source(),
+                source: model.source(),
             },
             state: Mutex::new(OwnerState {
                 model: Some(model),
@@ -65,11 +82,12 @@ impl<A: Executor> Route<A> {
                 readers: 0,
             }),
             drained: Condvar::new(),
-            retire: A::selective_retirement(),
+            retire,
+            independent_retirement,
             performance: RegistrationPerformance::new(std::time::Instant::now()),
         })
     }
-    fn state(&self) -> MutexGuard<'_, OwnerState<A::Model>> {
+    fn state(&self) -> MutexGuard<'_, OwnerState<RouteModel<A::Model>>> {
         // No executor work or destructors run in this critical section.
         self.state
             .lock()
@@ -78,7 +96,7 @@ impl<A: Executor> Route<A> {
     fn accepting(&self) -> bool {
         self.state().lifecycle == ModelLifecycle::Ready
     }
-    fn model(&self) -> Option<A::Model> {
+    fn model(&self) -> Option<RouteModel<A::Model>> {
         let state = self.state();
         if state.lifecycle == ModelLifecycle::Ready {
             state.model.clone()
@@ -87,17 +105,19 @@ impl<A: Executor> Route<A> {
         }
     }
     fn matches(&self, model: &Arc<dyn PreparedModel>) -> bool {
-        self.model()
-            .is_some_and(|current| Arc::ptr_eq(&current.erased(), model))
+        matches!(self.model(), Some(RouteModel::Text(current)) if Arc::ptr_eq(&current.erased(), model))
+    }
+    fn matches_encoder(&self, model: &Arc<dyn EmbeddingEncoder>) -> bool {
+        matches!(self.model(), Some(RouteModel::Encoder(current)) if Arc::ptr_eq(&current, model))
     }
     fn acquire(
         self: &Arc<Self>,
-    ) -> std::result::Result<(Arc<dyn PreparedModel>, ModelRead), ServiceError> {
+    ) -> std::result::Result<(RouteModel<A::Model>, ModelRead), ServiceError> {
         let mut state = self.state();
         if state.lifecycle != ModelLifecycle::Ready {
             return Err(missing_model());
         }
-        let model = state.model.as_ref().ok_or_else(missing_model)?.erased();
+        let model = state.model.as_ref().ok_or_else(missing_model)?.clone();
         state.readers = state.readers.checked_add(1).ok_or_else(|| {
             ServiceError::new(503, "model_readers", "model request reader count exhausted")
         })?;
@@ -109,7 +129,7 @@ impl<A: Executor> Route<A> {
     fn close(self: &Arc<Self>) -> Result<SelectiveRetirement> {
         // Only a concrete executor that can retire one independent owner
         // while other owners run may opt in.
-        if self.retire.is_none() {
+        if !self.independent_retirement {
             return Err(Error::Unsupported(
                 "executor has no independent model retirement".into(),
             ));
@@ -141,9 +161,11 @@ impl<A: Executor> RouteControl for Route<A> {
         }
     }
     fn retire(&self) -> Result<()> {
-        let retire = self.retire.ok_or_else(|| {
-            Error::Unsupported("executor has no independent model retirement".into())
-        })?;
+        if !self.independent_retirement {
+            return Err(Error::Unsupported(
+                "executor has no independent model retirement".into(),
+            ));
+        }
         let mut state = self
             .drained
             .wait_while(self.state(), |state| state.readers != 0)
@@ -160,7 +182,13 @@ impl<A: Executor> RouteControl for Route<A> {
         state.lifecycle = ModelLifecycle::Retiring;
         drop(state);
         // Actual adapter cleanup and final source destruction are unlocked.
-        let result = retire(&model).map_err(ServiceError::into_core);
+        let result = match &model {
+            RouteModel::Text(model) => self.retire.expect("text retirement admitted")(model)
+                .map_err(ServiceError::into_core),
+            // Synchronous stateless encoder; the last admitted call has
+            // completed. Original source/scratch owners drop normally.
+            RouteModel::Encoder(_) => Ok(()),
+        };
         drop(model);
         self.state().lifecycle = if result.is_ok() {
             ModelLifecycle::Retired
@@ -187,7 +215,7 @@ impl ModelRead {
     pub(super) fn observe_token(&mut self, committed: std::time::Instant) {
         self.0.performance().observe(&mut self.1, committed);
     }
-    pub(super) fn complete(&mut self) {
+    pub(crate) fn complete(&mut self) {
         self.0.performance().complete(&mut self.1);
     }
 }
@@ -212,19 +240,51 @@ impl Drop for SelectiveRetirement {
 
 pub(crate) struct Registry<A: Executor> {
     routes: BTreeMap<String, Arc<Route<A>>>,
+    has_encoders: bool,
 }
 impl<A: Executor> Registry<A> {
-    pub(super) fn new(models: BTreeMap<String, A::Model>) -> Result<Self> {
+    pub(super) fn new(
+        models: BTreeMap<String, A::Model>,
+        encoders: BTreeMap<String, Arc<dyn EmbeddingEncoder>>,
+    ) -> Result<Self> {
         let mut routes = BTreeMap::<String, Arc<Route<A>>>::new();
         for (alias, model) in models {
             let identity = model.erased();
             let route = match routes.values().find(|route| route.matches(&identity)) {
                 Some(route) => route.clone(),
-                None => Arc::new(Route::new(model)?),
+                None => Arc::new(Route::new(RouteModel::Text(model))?),
             };
             routes.insert(alias, route);
         }
-        Ok(Self { routes })
+        let has_encoders = !encoders.is_empty();
+        for (alias, model) in encoders {
+            let route = match routes.values().find(|route| route.matches_encoder(&model)) {
+                Some(route) => route.clone(),
+                None => Arc::new(Route::new(RouteModel::Encoder(model))?),
+            };
+            routes.insert(alias, route);
+        }
+        Ok(Self {
+            routes,
+            has_encoders,
+        })
+    }
+
+    pub(super) fn has_encoders(&self) -> bool {
+        self.has_encoders
+    }
+
+    fn retire_route(&self, route: &Arc<Route<A>>) -> Result<Option<SelectiveRetirement>> {
+        if self
+            .routes
+            .values()
+            .any(|other| !Arc::ptr_eq(route, other) && other.accepting())
+        {
+            route.close().map(Some)
+        } else {
+            // Last owner uses the established whole-queue drain and join.
+            Ok(None)
+        }
     }
 
     pub(super) fn model_for_job(
@@ -241,9 +301,14 @@ impl<A: Executor> Registry<A> {
             ));
         }
         // Closed admission does not revoke a previously accepted reader.
-        route.state().model.clone().ok_or_else(|| {
-            ServiceError::new(500, "model_reader", "accepted model reader lost its owner")
-        })
+        match route.state().model.clone() {
+            Some(RouteModel::Text(model)) => Ok(model),
+            _ => Err(ServiceError::new(
+                500,
+                "model_reader",
+                "accepted text reader lost its owner",
+            )),
+        }
     }
 
     // Bounded cold adapter views, not a second registry. Retired/draining
@@ -252,7 +317,10 @@ impl<A: Executor> Registry<A> {
     fn snapshot(&self) -> BTreeMap<String, A::Model> {
         self.routes
             .iter()
-            .filter_map(|(alias, route)| route.model().map(|model| (alias.clone(), model)))
+            .filter_map(|(alias, route)| match route.model() {
+                Some(RouteModel::Text(model)) => Some((alias.clone(), model)),
+                _ => None,
+            })
             .collect()
     }
     pub(super) fn retire_all(&self) -> std::result::Result<(), ServiceError> {
@@ -270,6 +338,15 @@ pub(crate) trait Models: Send + Sync {
         &self,
         alias: &str,
     ) -> std::result::Result<(Arc<dyn PreparedModel>, ModelRead), ServiceError>;
+    fn acquire_encoder(
+        &self,
+        alias: &str,
+    ) -> std::result::Result<(Arc<dyn EmbeddingEncoder>, ModelRead), ServiceError>;
+    fn begin_unload_registration(
+        &self,
+        alias: &str,
+        id: u64,
+    ) -> Result<Option<SelectiveRetirement>>;
     fn alias_slots(&self) -> usize;
     fn ready_counts(&self) -> (usize, usize);
     fn catalog_snapshot(&self, registrations: Option<&[u64]>) -> Result<Vec<ModelSnapshot>>;
@@ -287,7 +364,10 @@ pub(crate) trait Models: Send + Sync {
 }
 impl<A: Executor> Models for Registry<A> {
     fn model(&self, alias: &str) -> Option<Arc<dyn PreparedModel>> {
-        self.routes.get(alias)?.model().map(|model| model.erased())
+        match self.routes.get(alias)?.model()? {
+            RouteModel::Text(model) => Some(model.erased()),
+            RouteModel::Encoder(_) => None,
+        }
     }
     fn registration(&self, alias: &str) -> Option<RegisteredOwner> {
         let route = self.routes.get(alias)?;
@@ -298,7 +378,53 @@ impl<A: Executor> Models for Registry<A> {
         &self,
         alias: &str,
     ) -> std::result::Result<(Arc<dyn PreparedModel>, ModelRead), ServiceError> {
-        self.routes.get(alias).ok_or_else(missing_model)?.acquire()
+        let (model, reader) = self
+            .routes
+            .get(alias)
+            .ok_or_else(missing_model)?
+            .acquire()?;
+        let reader = reader;
+        let model = model;
+        match model {
+            RouteModel::Text(model) => Ok((model.erased(), reader)),
+            RouteModel::Encoder(_) => Err(ServiceError::new(
+                400,
+                "unsupported_task",
+                "model is an encoder, not a text generator",
+            )),
+        }
+    }
+    fn acquire_encoder(
+        &self,
+        alias: &str,
+    ) -> std::result::Result<(Arc<dyn EmbeddingEncoder>, ModelRead), ServiceError> {
+        let (model, reader) = self
+            .routes
+            .get(alias)
+            .ok_or_else(missing_model)?
+            .acquire()?;
+        let reader = reader;
+        let model = model;
+        match model {
+            RouteModel::Encoder(model) => Ok((model, reader)),
+            RouteModel::Text(_) => Err(ServiceError::new(
+                400,
+                "unsupported_task",
+                "model is a text generator, not an encoder",
+            )),
+        }
+    }
+    fn begin_unload_registration(
+        &self,
+        alias: &str,
+        id: u64,
+    ) -> Result<Option<SelectiveRetirement>> {
+        let route = self
+            .routes
+            .get(alias)
+            .filter(|route| route.registration.id == id && route.accepting())
+            .ok_or_else(|| Error::State("selected model registration is no longer ready".into()))?;
+        self.retire_route(route)
     }
     fn alias_slots(&self) -> usize {
         self.routes.len()
@@ -347,14 +473,28 @@ impl<A: Executor> Models for Registry<A> {
             };
             let capabilities = model
                 .map(|model| {
-                    let prepared = model.model();
-                    Ok::<_, Error>(ModelCapabilities {
-                        max_context: prepared.max_context(),
-                        vocabulary_size: prepared.vocabulary_size(),
-                        max_token_bytes: prepared.max_token_bytes(),
-                        prefill: A::prefill(&model),
-                        chat_allowed: prepared.validate_chat().is_ok(),
-                        details: A::describe_model(&model)?,
+                    Ok::<_, Error>(match model {
+                        RouteModel::Text(model) => {
+                            let prepared = model.model();
+                            ModelCapabilities {
+                                max_context: prepared.max_context(),
+                                vocabulary_size: prepared.vocabulary_size(),
+                                max_token_bytes: Some(prepared.max_token_bytes()),
+                                prefill: Some(A::prefill(&model)),
+                                embedding_dimensions: None,
+                                chat_allowed: prepared.validate_chat().is_ok(),
+                                details: A::describe_model(&model)?,
+                            }
+                        }
+                        RouteModel::Encoder(model) => ModelCapabilities {
+                            max_context: model.max_context(),
+                            vocabulary_size: model.vocabulary_size(),
+                            max_token_bytes: None,
+                            prefill: None,
+                            embedding_dimensions: Some(model.dimensions()),
+                            chat_allowed: false,
+                            details: model.describe()?,
+                        },
                     })
                 })
                 .transpose()?;
@@ -370,7 +510,7 @@ impl<A: Executor> Models for Registry<A> {
                 lifecycle,
                 admitted_requests,
                 performance: route.performance.snapshot(std::time::Instant::now()),
-                independent_retirement: route.retire.is_some(),
+                independent_retirement: route.independent_retirement,
                 capabilities,
             });
         }
@@ -378,7 +518,10 @@ impl<A: Executor> Models for Registry<A> {
     }
     fn alias(&self, index: usize) -> Option<&str> {
         let (alias, route) = self.routes.iter().nth(index)?;
-        route.accepting().then_some(alias.as_str())
+        let state = route.state();
+        (state.lifecycle == ModelLifecycle::Ready
+            && matches!(state.model.as_ref(), Some(RouteModel::Text(_))))
+        .then_some(alias.as_str())
     }
     fn begin_unload(&self, model: &ModelInstance) -> Result<Option<SelectiveRetirement>> {
         let route = self
@@ -386,16 +529,7 @@ impl<A: Executor> Models for Registry<A> {
             .values()
             .find(|route| route.matches(model.prepared()))
             .ok_or_else(|| Error::State("model is not the original registered owner".into()))?;
-        if self
-            .routes
-            .values()
-            .any(|other| !Arc::ptr_eq(route, other) && other.accepting())
-        {
-            route.close().map(Some)
-        } else {
-            // Last owner uses the established whole-queue drain and join.
-            Ok(None)
-        }
+        self.retire_route(route)
     }
     fn admission(
         &self,

@@ -409,8 +409,13 @@ pub(super) fn details(model: &ModelSnapshot) -> Vec<String> {
             "Prepared execution".into(),
             format!("Context capacity: {}", cap.max_context),
             format!("Vocabulary: {}", cap.vocabulary_size),
-            format!("Prefill: {:?}", cap.prefill),
         ]);
+        if let Some(prefill) = cap.prefill {
+            lines.push(format!("Prefill: {prefill:?}"));
+        }
+        if let Some(dimensions) = cap.embedding_dimensions {
+            lines.push(format!("Embedding dimensions: {dimensions}"));
+        }
         if let Some(execution) = &cap.details.execution {
             lines.push(format!(
                 "Provider: {:?} · {:?}",

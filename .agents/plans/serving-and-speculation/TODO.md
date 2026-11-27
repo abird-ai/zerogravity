@@ -194,15 +194,23 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   storage (never a floating projection), original WordPiece source
   semantics, bounded admission and result lifetime. Independent
   synthetic source/vector and ownership tests pass (489/0/16 focused);
-  default CLI compile passes. Assembled gate stopped at time boundary
-  after 1,844/0/95 (255 completed suites); no full acceptance.
-- [ ] Finish full isolated gate on unchanged OA-6A checkpoint.
-- [ ] OA-6B: authorize/acquire pinned MiniLM-L6-v2 original weights and
+  default CLI compile passes. Earlier interrupted assembled gate
+  1,844/0/95 (255 suites) retained as history.
+- [x] Full isolated gate on unchanged OA-6A 6a5e3518: 2,581/0/109
+  (319 suites, 580s), acquisition/release/installer checks passed.
+- [x] OA-6B implementation: native embedding request/ordered charged
+  vector batch and generic existing receipt, one registry/FIFO/worker
+  pool with shared active slots and original retirement. Actual verified
+  synthetic BERT SDK plus mixed scheduling, cancellation, accounting
+  and loopback refusal pass. Focused 246/0/1 (26 suites), strict lint.
+  Explicit candidate feature; no trained-model or public eligibility.
+- [x] OA-6B full workspace acceptance: 2,584/0/109 (321 Rust suites, 834s), complete isolated gate passed.
+- [ ] OA-6C: authorize/acquire pinned MiniLM-L6-v2 original weights and
   config/vocab/module closure; actual tokenizer and trained-vector
-  reference parity, memory and cancellation qualification. Extend the
-  original Runtime/registry/scheduler/receipt with embedding task and
-  output semantics before exposing /v1/embeddings. Qualify actual
-  input, vector output/usage, admission, retirement and SDK consumer.
+  reference parity, memory and cancellation qualification. Bind qualified
+  source/catalog eligibility and expose /v1/embeddings only on that
+  actual capability, with exact input/usage/float/base64 projections,
+  dimensions/control refusal, official SDK and joined retirement.
   No fabricated embedding or separate execution owner. OA-6 remains open.
 
 ### Current continuation — 22 Nov 2026

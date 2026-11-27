@@ -18,6 +18,8 @@ cpu = ["dep:zerogravity-cpu", "zerogravity-model-qwen35?/cpu"]
 model-qwen35 = ["dep:zerogravity-model-qwen35", "text", "cache"]
 # Source contracts only; selecting this feature does not enable Gemma inference.
 model-gemma4 = ["dep:zerogravity-model-gemma4"]
+# Explicit unqualified source-bound encoder reference. Not part of all-models.
+model-bert-cpu-candidate = ["cpu", "cache", "dep:zerogravity-model-bert", "zerogravity-model-bert/source-binding"]
 # Analytic source/text reference; no tokenizer, trained model or native permit.
 model-gemma4-text-reference = ["model-gemma4", "zerogravity-model-gemma4/text-reference"]
 model-gemma4-cpu-candidate = ["cpu", "cache", "model-gemma4", "zerogravity-model-gemma4/execution"]
@@ -83,6 +85,7 @@ zerogravity-artifacts = { path = "../zerogravity-artifacts" }
 zerogravity-cpu = { path = "../zerogravity-cpu", optional = true }
 zerogravity-model-qwen35 = { path = "../zerogravity-model-qwen35", default-features = false, optional = true }
 zerogravity-model-gemma4 = { path = "../zerogravity-model-gemma4", default-features = false, optional = true }
+zerogravity-model-bert = { path = "../zerogravity-model-bert", default-features = false, optional = true }
 zerogravity-gpu = { path = "../zerogravity-gpu", default-features = false, optional = true }
 # Authenticated diagnostic reference manifests; already locked/cached.
 serde = { version = "=1.0.229", features = ["derive"] }

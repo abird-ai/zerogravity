@@ -5,16 +5,24 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 27 Nov — OA-6B native embedding Runtime
+
+Original registry/queue/worker/receipt admits bounded native encoder batches
+with exact usage and separately retained output credit. Actual source-bound
+synthetic BERT SDK and shared text/encoder scheduler tests passed, focused
+246/0/1 (26 suites), strict Clippy. Assembled gate: 2,584/0/109 (321 Rust suites, 834s), complete isolated gate passed.
+No trained source, public embedding capability or new performance claim.
+
 ## 27 Nov — OA-6A native embedding model candidate
 
 Source-bound BERT WordPiece/F32 encoder with affine LayerNorm, noncausal
 attention, exact GELU, mean pooling/L2 normalization, original cache
 descriptor and shared resource admission. Synthetic verified sources and
 independent scalar reference vectors qualified, focused 489/0/16 (47
-suites); default CLI compile passed. Assembled gate stopped at turn time boundary (946s): 1,844/0/95
-across 255 completed suites; remaining acquisition/release checks open.
-No cached trained embedding checkpoint or real trained-vector parity,
-runtime registration, /v1/embeddings exposure or new performance claim.
+suites); default CLI compile passed. Earlier interrupted gate 1,844/0/95
+(255 completed suites, 946s) superseded by complete unchanged 6a5e3518
+isolated retry: 2,581/0/109 (319 suites, 580s), acquisition/release/installer
+checks passed. No trained-vector parity or performance qualification.
 
 ## 27 Nov — OA-5 Chat/Completions text compatibility
 

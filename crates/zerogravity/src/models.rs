@@ -353,6 +353,33 @@ impl<'a> ModelCatalog<'a> {
             .engine
             .configure_text(|| crate::builtins::load_text(request, self.runtime.engine.limits()))
     }
+    /// Trusted prepared encoder composition. The original cold load slot
+    /// covers preparation, publication and worker retirement.
+    pub fn load_encoders(
+        &self,
+        config: crate::embedding::EncoderConfig,
+        load: impl FnOnce(
+            &crate::embedding::ServingHost,
+        ) -> std::result::Result<
+            crate::embedding::EncoderModels,
+            crate::runtime::text::ServiceError,
+        >,
+    ) -> std::result::Result<(), crate::runtime::text::ServiceError> {
+        self.runtime.engine.configure_text(|| {
+            let worker = config.worker(self.runtime.engine.limits())?;
+            let host = crate::embedding::ServingHost::new(config.host_mib)?;
+            let models = load(&host)?;
+            zerogravity_engine::router::Router::with_embeddings(models, host, worker)
+        })
+    }
+
+    /// Exact observed registration, for any task kind in the catalog.
+    pub fn unload_registration(&self, alias: &str, registration_id: u64) -> crate::Result<()> {
+        self.runtime
+            .engine
+            .unload_registration(alias, registration_id)
+    }
+
     /// Resolve explicit existing source declarations through the same cold
     /// route preparation as graph-selected models. None uses the default
     /// cache root; original-HF policies own their explicit CacheOptions.

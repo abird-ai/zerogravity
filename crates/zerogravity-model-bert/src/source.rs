@@ -390,20 +390,80 @@ impl BertSentenceEncoder {
         self.embed_tokens(&tokens, cancel)
     }
 
+    /// Same actual prepared domain must cover scheduling and model scratch.
+    pub fn validate_admission(&self, admission: &TransferAdmission) -> Result<()> {
+        self._parameters
+            .bytes_in_domain(&admission.arbiter, &admission.resource)?;
+        Ok(())
+    }
+
     /// One independent unpadded token sequence. Every supplied token is a
-    /// real attended position; tokenizer special tokens/length policy are
-    /// the caller's responsibility for pretokenized input.
-    /// No silent truncation, no dimension shortening, no generated tokens.
+    /// real attended position. The direct result retains its own credit.
     pub fn embed_tokens(&self, tokens: &[u32], cancel: Option<&AtomicBool>) -> Result<Embedding> {
+        self.validate_tokens(tokens, self.config.max_sequence, self.config.hidden)?;
+        check_cancel(cancel)?;
+        let output = reserve(
+            &self.admission,
+            AllocationClass::Output,
+            self.config.hidden as u64 * 4,
+        )?;
+        let mut values = vec![0.; self.config.hidden];
+        self.forward_tokens(tokens, &mut values, cancel)?;
+        Ok(Embedding {
+            values,
+            tokens: tokens.len(),
+            source: self.source(),
+            _output: output,
+        })
+    }
+
+    /// Caller owns admitted output backing; model retains only private
+    /// tokenizer and mathematical scratch. Runtime context applies before
+    /// forward, including special tokens.
+    pub fn embed_text_into(
+        &self,
+        text: &str,
+        max_tokens: usize,
+        output: &mut [f32],
+        cancel: Option<&AtomicBool>,
+    ) -> Result<usize> {
+        check_cancel(cancel)?;
+        let (tokens, _charge) = self.tokenizer.encode(text, &self.config, &self.admission)?;
+        self.embed_tokens_into(&tokens, max_tokens, output, cancel)
+    }
+
+    pub fn embed_tokens_into(
+        &self,
+        tokens: &[u32],
+        max_tokens: usize,
+        output: &mut [f32],
+        cancel: Option<&AtomicBool>,
+    ) -> Result<usize> {
+        self.validate_tokens(tokens, max_tokens, output.len())?;
+        self.forward_tokens(tokens, output, cancel)
+    }
+
+    fn validate_tokens(&self, tokens: &[u32], max_tokens: usize, output_len: usize) -> Result<()> {
         let c = &self.config;
         if tokens.is_empty()
-            || tokens.len() > c.max_sequence
+            || tokens.len() > c.max_sequence.min(max_tokens)
+            || output_len != c.hidden
             || tokens.iter().any(|&id| id as usize >= c.vocabulary)
         {
             return Err(Error::InvalidInput(
                 "BERT token sequence extent/vocabulary".into(),
             ));
         }
+        Ok(())
+    }
+
+    fn forward_tokens(
+        &self,
+        tokens: &[u32],
+        output: &mut [f32],
+        cancel: Option<&AtomicBool>,
+    ) -> Result<usize> {
+        let c = &self.config;
         check_cancel(cancel)?;
         // At most input+Q/K/V+attention+projection overlap, or input+
         // intermediate+output, plus one-row shared GEMV and reduction scratch.
@@ -418,11 +478,6 @@ impl BertSentenceEncoder {
             .and_then(|n| n.checked_add(64 * 1024))
             .ok_or_else(overflow)?;
         let _scratch = reserve(&self.admission, AllocationClass::Scratch, scratch)?;
-        let output = reserve(
-            &self.admission,
-            AllocationClass::Output,
-            (c.hidden as u64) * 4,
-        )?;
         let mut hidden = Vec::with_capacity(tokens.len() * c.hidden);
         let token_type = self.lookup(&self.types, 0)?;
         for (position, &id) in tokens.iter().enumerate() {
@@ -442,12 +497,8 @@ impl BertSentenceEncoder {
         }
         let values = mean_l2_normalize(&hidden, c.hidden, 1e-12)?;
         check_cancel(cancel)?;
-        Ok(Embedding {
-            values,
-            tokens: tokens.len(),
-            source: self.source(),
-            _output: output,
-        })
+        output.copy_from_slice(&values);
+        Ok(tokens.len())
     }
 }
 

@@ -6051,6 +6051,7 @@ dependencies = [
  "zerogravity-cpu",
  "zerogravity-engine",
  "zerogravity-gpu",
+ "zerogravity-model-bert",
  "zerogravity-model-gemma4",
  "zerogravity-model-qwen35",
  "zerogravity-serving",

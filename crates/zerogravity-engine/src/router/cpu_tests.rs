@@ -1240,3 +1240,250 @@ fn exact_input_count_is_charged_but_does_not_admit_generation() {
     drop((router, model));
     assert_eq!(host.snapshot().unwrap().1, 0);
 }
+
+// Scheduler-control adapter only. Actual encoder math is covered by the
+// source-bound BERT SDK consumer, not by these deterministic gate values.
+struct EncoderProbe {
+    source: SourceIdentity,
+    charge: GlobalResourceLease,
+    calls: AtomicUsize,
+    first: Option<Arc<Gate>>,
+    third: Option<Arc<Gate>>,
+}
+impl EncoderProbe {
+    fn new(host: &HostPool, first: Option<Arc<Gate>>, third: Option<Arc<Gate>>) -> Arc<Self> {
+        Arc::new(Self {
+            source: SourceIdentity::for_new_allocation().unwrap(),
+            charge: host
+                .admit("encoder", "source", AllocationClass::ImmutableWeights, 64)
+                .unwrap(),
+            calls: AtomicUsize::new(0),
+            first,
+            third,
+        })
+    }
+}
+impl EmbeddingEncoder for EncoderProbe {
+    fn source(&self) -> SourceIdentity {
+        self.source
+    }
+    fn max_context(&self) -> usize {
+        8
+    }
+    fn vocabulary_size(&self) -> u64 {
+        4
+    }
+    fn dimensions(&self) -> usize {
+        2
+    }
+    fn validate_admission(
+        &self,
+        admission: &zerogravity_core::resource_arbiter::TransferAdmission,
+    ) -> crate::Result<()> {
+        self.charge
+            .bytes_in_domain(&admission.arbiter, &admission.resource)
+            .map(|_| ())
+    }
+    fn embed_into(
+        &self,
+        input: &crate::embedding::EmbeddingInput,
+        max_tokens: usize,
+        output: &mut [f32],
+        _: &AtomicBool,
+    ) -> crate::Result<usize> {
+        let call = self.calls.fetch_add(1, Ordering::AcqRel);
+        if call == 0
+            && let Some(gate) = &self.first
+        {
+            gate.worker();
+        }
+        if call == 2
+            && let Some(gate) = &self.third
+        {
+            gate.worker();
+        }
+        let crate::embedding::EmbeddingInput::Tokens(ids) = input else {
+            return Err(crate::Error::Unsupported(
+                "probe supports only explicit IDs".into(),
+            ));
+        };
+        assert!(ids.len() <= max_tokens);
+        output.copy_from_slice(&[ids[0] as f32, ids.len() as f32]);
+        Ok(ids.len())
+    }
+}
+fn embedding_request(alias: &str, ids: &[u32]) -> crate::embedding::EmbeddingRequest {
+    crate::embedding::EmbeddingRequest {
+        model: alias.into(),
+        inputs: ids
+            .iter()
+            .map(|&id| crate::embedding::EmbeddingInput::Tokens(vec![id]))
+            .collect(),
+    }
+}
+fn mixed_config() -> WorkerConfig {
+    WorkerConfig {
+        workers: 1,
+        active: 2,
+        context: 128,
+        output: 16,
+        max_pending: Some(1),
+        policy: WorkPolicy::Sequential,
+    }
+}
+
+#[test]
+fn mixed_encoder_and_generation_share_fifo_slots_and_rounds() {
+    let host = HostPool::isolated(256).unwrap();
+    let baseline = host.serving_bytes();
+    let first = Arc::new(Gate::default());
+    let third = Arc::new(Gate::default());
+    let text = MockModel::new(&host, None);
+    let encoder = EncoderProbe::new(&host, Some(first.clone()), Some(third.clone()));
+    let model: Arc<dyn LogitModel> = text.clone();
+    let embeddings: Arc<dyn EmbeddingEncoder> = encoder.clone();
+    let mut router = Router::with_executor_and_embeddings::<HostLogits>(
+        BTreeMap::from([("model".into(), model)]),
+        BTreeMap::from([
+            ("embed".into(), embeddings.clone()),
+            ("embed-alias".into(), embeddings),
+        ]),
+        host.clone(),
+        mixed_config(),
+    )
+    .unwrap();
+    assert_eq!(router.model_ids().collect::<Vec<_>>(), ["model"]);
+    let snapshots = router.catalog_snapshot().unwrap();
+    assert_eq!(snapshots.len(), 2);
+    assert_eq!(snapshots[0].aliases, ["embed", "embed-alias"]);
+    assert_eq!(
+        snapshots[0]
+            .capabilities
+            .as_ref()
+            .unwrap()
+            .embedding_dimensions,
+        Some(2)
+    );
+    let mut wrong = request("hello");
+    wrong.model = "embed".into();
+    assert_eq!(
+        router.request(wrong).err().unwrap().code,
+        "unsupported_task"
+    );
+    assert_eq!(
+        router
+            .request_embeddings(embedding_request("model", &[1]))
+            .err()
+            .unwrap()
+            .code,
+        "unsupported_task"
+    );
+    let batch = router
+        .request_embeddings(embedding_request("embed-alias", &[1, 2, 3]))
+        .unwrap();
+    first.entered();
+    let text_reply = router.request(request("a")).unwrap();
+    assert_eq!(text_reply.id, batch.id + 1);
+    assert_eq!(router.queue_snapshot().pending, 1);
+    assert_eq!(
+        router
+            .request_embeddings(embedding_request("embed", &[1]))
+            .err()
+            .unwrap()
+            .code,
+        "queue_full"
+    );
+    first.release();
+    third.entered();
+    assert_eq!(router.active_sessions(), 2);
+    assert!(
+        text.log
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(_, stage, _)| *stage == "last"),
+        "a text quantum must run between the encoder sequences"
+    );
+    third.release();
+    let result = batch
+        .events
+        .recv_timeout(Duration::from_secs(5))
+        .unwrap()
+        .unwrap();
+    assert_eq!(result.values(), [1., 1., 2., 1., 3., 1.]);
+    assert_eq!(result.input_tokens(), 3);
+    assert_eq!(done(&text_reply), "AB");
+    drop((batch, text_reply));
+    let counters = router.scheduler_snapshot().counters;
+    assert_eq!(counters.embedding_requests, 1);
+    assert_eq!(counters.embedding_input_tokens, 3);
+    assert_eq!(counters.output_tokens, 2);
+    assert_eq!(counters.peak, 2);
+    let id = snapshots[0].registration_id;
+    router
+        .begin_unload_registration("embed", id)
+        .unwrap()
+        .unwrap()
+        .finish()
+        .unwrap();
+    assert!(router.registration("embed-alias").is_none());
+    assert_eq!(
+        router
+            .request_embeddings(embedding_request("embed", &[1]))
+            .err()
+            .unwrap()
+            .code,
+        "model_not_found"
+    );
+    assert!(router.begin_unload_registration("embed", id).is_err());
+    assert_eq!(done(&router.request(request("b")).unwrap()), "AB");
+    router.shutdown().unwrap();
+    drop((router, encoder, text));
+    assert!(host.serving_bytes() > baseline);
+    drop(result);
+    assert_eq!(host.serving_bytes(), baseline);
+}
+
+#[test]
+fn encoder_cancel_and_domain_refusal_never_publish_a_partial_batch() {
+    let host = HostPool::isolated(256).unwrap();
+    let baseline = host.serving_bytes();
+    let foreign = HostPool::isolated(256).unwrap();
+    let wrong: Arc<dyn EmbeddingEncoder> = EncoderProbe::new(&foreign, None, None);
+    assert!(
+        Router::with_embeddings(
+            BTreeMap::from([("wrong".into(), wrong)]),
+            host.clone(),
+            mixed_config()
+        )
+        .is_err()
+    );
+    assert_eq!(host.serving_bytes(), baseline);
+    let first = Arc::new(Gate::default());
+    let encoder = EncoderProbe::new(&host, Some(first.clone()), None);
+    let model: Arc<dyn EmbeddingEncoder> = encoder.clone();
+    let mut router = Router::with_embeddings(
+        BTreeMap::from([("embed".into(), model)]),
+        host.clone(),
+        mixed_config(),
+    )
+    .unwrap();
+    let reply = router
+        .request_embeddings(embedding_request("embed", &[1, 2]))
+        .unwrap();
+    first.entered();
+    let queued = router
+        .request_embeddings(embedding_request("embed", &[3]))
+        .unwrap();
+    queued.cancel();
+    reply.cancel();
+    first.release();
+    assert!(reply.events.recv_timeout(Duration::from_secs(5)).is_err());
+    assert!(queued.events.recv_timeout(Duration::from_secs(5)).is_err());
+    assert_eq!(encoder.calls.load(Ordering::Acquire), 1);
+    assert_eq!(router.scheduler_snapshot().counters.embedding_requests, 0);
+    drop((reply, queued));
+    router.shutdown().unwrap();
+    drop((router, encoder));
+    assert_eq!(host.serving_bytes(), baseline);
+}

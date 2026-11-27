@@ -814,9 +814,13 @@ strict lint, actual official SDK/CLI/TUI/Firefox (184.78s), Rust SDK
 Keep unavailable tool/structured-output/media/sampling capabilities
 explicitly refused. OA-6A: native BERT source-bound embedding candidate,
 shared CPU noncausal primitives and verified single-file Safetensors
-owner, synthetic numerical/ownership qualification. OA-6 remains open
-for authorized actual MiniLM trained source, independent tokenizer/vector
-parity, original Runtime task/receipt integration and SDK wire acceptance.
+owner, synthetic numerical/ownership qualification and complete unchanged
+workspace gate (2,581/0/109). OA-6B native shared Runtime/registry/FIFO/workers
+and typed charged receipt integrated; actual synthetic source-bound SDK,
+mixed scheduling and refusal tests pass (246/0/1 focused, strict lint).
+Assembled gate: 2,584/0/109 (321 Rust suites, 834s), complete isolated gate passed. OA-6 remains open for authorized actual
+MiniLM trained source, independent tokenizer/vector parity and SDK wire
+acceptance.
 Preserve the original runtime, admission and listener owner.
 
 - [ ] Close the [OpenAI-compatible serving iteration](serving-and-speculation/NEXT_ITERATION_OPENAI_COMPATIBLE_SERVING.md):

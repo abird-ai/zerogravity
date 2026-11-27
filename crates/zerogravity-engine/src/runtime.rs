@@ -388,6 +388,16 @@ impl Runtime {
             router.request_with(request, None, None, self.inner.limits.max_input_bytes)
         })
     }
+    /// Native finite encoder batch on the same admitted runtime/router.
+    pub fn request_embeddings(
+        &self,
+        request: crate::embedding::EmbeddingRequest,
+    ) -> std::result::Result<crate::embedding::EmbeddingReceipt, ServiceError> {
+        self.with_text_router(|router| {
+            router.request_embeddings_with(request, self.inner.limits.max_input_bytes)
+        })
+    }
+
     /// Exact selected-model input count under the original lifecycle and
     /// configured semantic/rendered input limits. Does not admit generation.
     pub fn count_input_tokens(
@@ -681,11 +691,7 @@ impl Runtime {
                         "selected model registration is no longer ready".into(),
                     ));
                 }
-                let model = router.model(alias).ok_or_else(|| {
-                    Error::State("selected model registration is no longer ready".into())
-                })?;
-                router.begin_unload(&model)?
-                // The temporary model handle drops before the original retirement.
+                router.begin_unload_registration(alias, registration_id)?
             }
         };
         if selected.is_none() {

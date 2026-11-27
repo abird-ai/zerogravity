@@ -420,8 +420,13 @@ pub fn advance_single<A: Executor>(
     }
 }
 
+pub(super) struct ActiveEmbedding {
+    job: Box<crate::embedding::EmbeddingJob>,
+    _active: ActiveCharge,
+}
+
 pub(crate) struct WorkerCaptures<A: Executor> {
-    pub queue: WorkerQueue<Scheduled>,
+    pub(super) queue: WorkerQueue<Work>,
     pub models: Arc<super::registry::Registry<A>>,
     pub host: HostPool,
     pub stats: Arc<WorkStats>,
@@ -435,13 +440,18 @@ impl<A: Executor> WorkerCaptures<A> {
     }
 }
 fn run<A: Executor>(
-    queue: WorkerQueue<Scheduled>,
+    queue: WorkerQueue<Work>,
     models: Arc<super::registry::Registry<A>>,
     host: HostPool,
     stats: Arc<WorkStats>,
     config: WorkerConfig,
 ) {
     let mut active = VecDeque::<Active<A>>::with_capacity(config.active);
+    let mut encoders = VecDeque::<ActiveEmbedding>::with_capacity(if models.has_encoders() {
+        config.active
+    } else {
+        0
+    });
     let wave_capacity = if matches!(config.policy, WorkPolicy::Waves(_)) {
         config.active
     } else {
@@ -450,7 +460,7 @@ fn run<A: Executor>(
     let mut eligible_rows = VecDeque::with_capacity(wave_capacity);
     let mut parked = VecDeque::with_capacity(wave_capacity);
     let mut closing = false;
-    let cancelled = |job: &Scheduled| job.cancel.is_cancelled();
+    let cancelled = Work::is_cancelled;
     loop {
         let _ = queue.sweep(cancelled);
         if matches!(config.policy, WorkPolicy::Waves(_)) {
@@ -464,8 +474,8 @@ fn run<A: Executor>(
             });
         }
         if !closing {
-            while active.len() < config.active {
-                let next = if active.is_empty() {
+            while active.len() + encoders.len() < config.active {
+                let next = if active.is_empty() && encoders.is_empty() {
                     let wait = if matches!(config.policy, WorkPolicy::Sequential) {
                         30
                     } else {
@@ -481,6 +491,16 @@ fn run<A: Executor>(
                     Pop::Closed => {
                         closing = true;
                         break;
+                    }
+                };
+                let job = match job {
+                    Work::Text(job) => job,
+                    Work::Encoder(job) => {
+                        encoders.push_back(ActiveEmbedding {
+                            job,
+                            _active: stats.enter(),
+                        });
+                        continue;
                     }
                 };
                 if job.cancelled.load(Ordering::Acquire) {
@@ -520,7 +540,7 @@ fn run<A: Executor>(
                 }
             }
         }
-        if active.is_empty() {
+        if active.is_empty() && encoders.is_empty() {
             if closing {
                 if let Err(error) = models.retire_all() {
                     stats.failed.fetch_add(1, Ordering::Relaxed);
@@ -529,6 +549,14 @@ fn run<A: Executor>(
                 }
                 return;
             }
+            continue;
+        }
+        if let Some(mut encoder) = encoders.pop_front()
+            && encoder.job.step(&stats)
+        {
+            encoders.push_back(encoder);
+        }
+        if active.is_empty() {
             continue;
         }
         match config.policy {

@@ -117,12 +117,12 @@ impl TextTask<'_> {
         }
         match self.target {
             TaskTarget::Model(alias) => {
-                if router.registration(alias).is_none() {
-                    return Err(ServiceError::new(
-                        404,
-                        "model_not_found",
-                        "model is not registered",
-                    ));
+                if router.model(alias).is_none() {
+                    return Err(if router.registration(alias).is_some() {
+                        ServiceError::new(400, "unsupported_task", "model is not a text generator")
+                    } else {
+                        ServiceError::new(404, "model_not_found", "model is not registered")
+                    });
                 }
                 if self.controls.chat {
                     router.validate_chat(alias)?;

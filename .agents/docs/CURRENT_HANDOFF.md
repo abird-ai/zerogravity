@@ -9,9 +9,11 @@ work. The [standalone OA-4C continuation prompt](NEXT_AGENT_2026-11-27_OA4C.md)
 is the historical entry to the current work; use the live checkpoint below.
 OA-4B already committed at 89822f40; no production rework required.
 OA-4A–E and OA-5 current-capability Chat/legacy Completions accepted.
-OA-6A source-bound native BERT encoder candidate implemented and focused
-qualified. OA-6 remains open: trained-source parity, shared Runtime and
-embedding wire acceptance. No learned payload acquired.
+OA-6A source-bound native BERT candidate passed full workspace revalidation.
+OA-6B native embedding tasks, shared worker/registry lifecycle and the
+actual source-bound Rust SDK consumer passed focused and assembled
+workspace qualification. OA-6 remains open for trained-source and embedding wire
+acceptance. No learned payload acquired.
 Appendix D preserves every post-M1 landing narrative, changed paths and
 exact engineering prose delta; Appendix B records unresolved markers.
 The preceding [UX-P-M1 pack](FULL_COMPREHENSIVE_HANDOFF_2026-11-26_UX_PM1.md),
@@ -39,7 +41,80 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — OA-6A embedding encoder candidate (27 Nov)
+### Current checkpoint — OA-6B shared native embedding Runtime (27 Nov)
+
+Started from clean signed 6a5e3518 on sole L5 main. Retried the complete
+isolated quality gate on that exact unchanged OA-6A source before applying
+this unit: 2,581/0/109 across 319 Rust suites, 580s; acquisition, release
+TUI/Web, installer and scripts passed. Previous interrupted gate retained
+as history, not acceptance evidence.
+
+One model registry now holds prepared text or synchronous stateless encoder
+owners, with exact alias deduplication, original registration/readers and
+joined retirement. Native EmbeddingRequest accepts ordered nonempty text
+or exact token-ID rows, maximum 16 inputs and 4096 vector dimensions, with
+aggregate input-byte, vocabulary and runtime/source context bounds. The
+existing RequestEvents receipt/channel/cancellation and request-ID counter
+carry a typed EmbeddingBatch terminal. Original PendingQueue admits both
+task kinds; text entries stay inline, encoder batches are explicitly charged
+boxed jobs. Existing workers share the active-slot budget: one bounded
+encoder sequence quantum per iteration followed by the text round, with
+rotation across active encoder batches. No second queue, worker owner,
+fake token-generation state, decoder KV state or HTTP math. This is finite
+cooperative scheduling, not a cross-task latency guarantee.
+
+Charge request backing capacities, output storage, queue/channel and
+cancellation before publication. Validate adapter physical domain at
+registration; model owns tokenizer and mathematical scratch. BERT forwards
+into caller-admitted output, without another retained vector. Reject invalid
+shape, nonfinite/unwritten output and inconsistent usage; publish only the
+complete ordered batch. Cancellation/failure discards private results;
+successful output retains credit independently of the registry reader/model.
+Use actual embedding request/input-token counters, not invented decoder
+output or timing. Unload exact registration through original lifecycle.
+
+Public native Runtime::request_embeddings and ModelCatalog::load_encoders
+use the original cold configure slot; EncoderConfig uses the existing
+WorkerConfig. Engine trusted composition supports mixed text/encoder owners;
+facade load_encoders is encoder-only for this unit. Optional explicit
+model-bert-cpu-candidate feature is absent from defaults/all-models;
+BertEncoderCandidate::prepare binds verified cached source and existing
+host admission. No automatic trained-model loader or eligibility.
+Native catalog snapshot includes embedding dimensions; text-only
+prefill/max_token_bytes are now Option in Rust, preserving text JSON
+values. Existing text list/resolve and HTTP /v1/models remain text-only;
+TUI/Web project the typed capabilities. Native unload by exact registration
+works for either task kind. /v1/embeddings still refuses (404 not_found).
+No trained source or network acquisition.
+
+Focused 246/0/1 across 26 suites and strict Clippy passed; controlled
+mixed-worker tests cover common IDs, shared pending/active bounds, text
+progress between encoder rows, modality refusal, cancellation, foreign
+physical domain refusal, retained result and retirement. Actual native SDK
+uses the same verified synthetic BERT fixture as the model reference:
+text/explicit IDs match, ordered three rows with exact 11 input tokens,
+independent scalar vector parity, late invalid input discards whole
+batch, no fake text counters/roots; exact alias unload and result credit.
+Actual loopback HTTP model-list/embedding refusal passed. Initial borrow
+compile error and collapsible worker-loop lint corrected; focused rerun
+passed. Assembled gate: 2,584/0/109 (321 Rust suites, 834s), complete isolated gate passed.
+
+Next OA-6C: authorize acquisition of exact original pinned MiniLM
+sentence-transformers/all-MiniLM-L6-v2 weights (~91 MB) and
+config/tokenizer/pooling/module closure. Qualify actual tokenizer and
+trained vectors independently against Hugging Face/SentenceTransformers,
+including Unicode, special tokens, length, batch ordering, cancellation
+and memory bounds. Then bind qualified source/catalog eligibility and
+truthful public /v1/embeddings on the same Runtime/receipt with single and
+batch text/ID input, exact usage, float/base64 encodings, explicit
+dimensions/control refusal and official SDK/lifecycle coverage. Do not
+advertise the synthetic fixture as trained-model acceptance. OA-6 remains
+open; no new physical GPU or performance evidence.
+
+Logs: target/oa6a-assembled-retry.log, target/oa6b-engine-focused.log,
+target/oa6b-focused-final.log, target/oa6b-assembled.log.
+
+### Prior checkpoint — OA-6A embedding encoder candidate (27 Nov)
 
 Started from clean signed 70e9809c on sole L5 main. The cached generation
 models do not supply a qualified sentence embedding executor; no trained
@@ -73,8 +148,8 @@ passed. Assembled isolated gate stopped at the turn time boundary after
 1,844/0/95 across 255 completed Rust suites (946s), architecture,
 GPU-feature compile/finite regressions, strict CPU lint, CPU/minimal/cache
 matrices, serving shutdown and comparison self-tests passed. Remaining
-acquisition/release/installer checks were not completed; rerun full gate
-on unchanged checkpoint. No full acceptance claim.
+acquisition/release/installer checks were not completed in that turn.
+The complete unchanged checkpoint retry passed as recorded above.
 
 Next OA-6B: acquire the authorized pinned MiniLM source (model.safetensors,
 config.json, sentence_bert_config.json, modules.json, 1_Pooling/config.json,

@@ -89,6 +89,31 @@ pub trait LogitModel: PreparedModel {
     fn new_session(self: Arc<Self>) -> Result<Box<dyn TextSession>>;
 }
 
+/// A source-bound, stateless sequence encoder. A call returns only after
+/// actual completion and never retains the caller's output slice. The
+/// adapter owns tokenizer/scratch admission and validates the selected
+/// context before executing; the scheduler owns batch output and lifetime.
+pub trait EmbeddingEncoder: Send + Sync {
+    fn source(&self) -> SourceIdentity;
+    fn max_context(&self) -> usize;
+    fn vocabulary_size(&self) -> u64;
+    fn dimensions(&self) -> usize;
+    fn validate_admission(
+        &self,
+        admission: &zerogravity_core::resource_arbiter::TransferAdmission,
+    ) -> Result<()>;
+    fn describe(&self) -> Result<crate::diagnostics::ModelDetails> {
+        Ok(crate::diagnostics::ModelDetails::default())
+    }
+    fn embed_into(
+        &self,
+        input: &crate::embedding::EmbeddingInput,
+        max_tokens: usize,
+        output: &mut [f32],
+        cancelled: &std::sync::atomic::AtomicBool,
+    ) -> Result<usize>;
+}
+
 #[derive(Clone)]
 pub struct ModelInstance {
     model: Arc<dyn PreparedModel>,

@@ -136,8 +136,10 @@ pub struct ModelDetails {
 pub struct ModelCapabilities {
     pub max_context: usize,
     pub vocabulary_size: u64,
-    pub max_token_bytes: usize,
-    pub prefill: Prefill,
+    pub max_token_bytes: Option<usize>,
+    pub prefill: Option<Prefill>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub embedding_dimensions: Option<usize>,
     /// Endpoint policy only; exact input/shape validation still applies.
     pub chat_allowed: bool,
     pub details: ModelDetails,

@@ -12,7 +12,7 @@
   ];
   cpuFeatures = ["cpu" "model-qwen35" "text" "tui" "web"];
   diagnosticFeatures = cpuFeatures ++ ["diagnostic-cpu-checkpoint" "diagnostic-gdn-trace"];
-  qualityFeatures = (map (name: "zerogravity-cli/${name}") diagnosticFeatures) ++ ["zerogravity/model-gemma4" "zerogravity-artifacts/diagnostic-cache" "zerogravity-model-bert/source-binding"];
+  qualityFeatures = (map (name: "zerogravity-cli/${name}") diagnosticFeatures) ++ ["zerogravity/model-gemma4" "zerogravity-artifacts/diagnostic-cache" "zerogravity-model-bert/source-binding" "zerogravity/model-bert-cpu-candidate"];
 in {
   inherit cpuPackages;
   cliArgs = "--locked --offline --no-default-features -p zerogravity-cli --bin zerogravity --features ${lib.concatStringsSep "," cpuFeatures}";

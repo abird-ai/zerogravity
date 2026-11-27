@@ -29,6 +29,8 @@ pub struct WorkStats {
     pub(crate) fused_sampler: AtomicU64,
     pub(crate) discarded_cohorts: AtomicU64,
     pub(crate) output_tokens: AtomicU64,
+    pub(crate) embedding_requests: AtomicU64,
+    pub(crate) embedding_input_tokens: AtomicU64,
     pub(crate) parked: AtomicUsize,
 }
 
@@ -59,6 +61,8 @@ pub struct Counters {
     pub fused_sampler: u64,
     pub discarded_cohorts: u64,
     pub output_tokens: u64,
+    pub embedding_requests: u64,
+    pub embedding_input_tokens: u64,
     pub parked: usize,
 }
 impl WorkStats {
@@ -91,6 +95,8 @@ impl WorkStats {
             fused_sampler: self.fused_sampler.load(Ordering::Acquire),
             discarded_cohorts: self.discarded_cohorts.load(Ordering::Acquire),
             output_tokens: self.output_tokens.load(Ordering::Acquire),
+            embedding_requests: self.embedding_requests.load(Ordering::Acquire),
+            embedding_input_tokens: self.embedding_input_tokens.load(Ordering::Acquire),
             parked: self.parked.load(Ordering::Acquire),
         }
     }

@@ -66,6 +66,14 @@ impl Runtime {
         self.engine.request_semantic(request)
     }
 
+    /// Native encoder batch through the same engine and model registry.
+    pub fn request_embeddings(
+        &self,
+        request: crate::embedding::EmbeddingRequest,
+    ) -> std::result::Result<crate::embedding::EmbeddingReceipt, text::ServiceError> {
+        self.engine.request_embeddings(request)
+    }
+
     /// Exact original tokenizer/template count, without generation admission.
     pub fn count_input_tokens(
         &self,
