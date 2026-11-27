@@ -93,12 +93,36 @@ The initial fixtures exposed CPU-device override and v2's deliberate
 null refusal; final checks use the existing explicit-device contract
 and literal auto, not a schema relaxation.
 
-X2 locked vLLM0.33.0+rocm72 environment is absent: cached venv
-python points to missing pinned Python3.12.14 Nix path. Offline
-realization fails on pinned rust-overlay input and SSL CA path.
-Read-only inventory of L5/A1/X2 found no installed equivalent pinned
-closure. No repin, TLS bypass or new SDK download. Keep restore
-explicitly blocked until approved exact pinned closure can be recovered.
+X2 locked vLLM0.33.0+rocm72 provider restored and validated (28 Nov).
+Previously the pinned Python/venv, flake input and default CA path
+were missing. User authorized online acquisition. Existing trusted
+Nix CA bundle enabled fetching the unchanged locked inputs; the initial
+online build stopped with 359/369 derivations available. Eight large
+remaining ROCm7.2.3 binary-cache archives (2,423,034,224 bytes) were
+recovered via bounded resumable HTTPS ranges and all compressed SHA256
+hashes matched original signed cache metadata (85s). Bulk copy failed
+on dependency order; exact-path dependency-ordered Nix copy with normal
+signature validation registered all eight. Final locked offline build
+passed (70s). X2 target/p3a-vllm-rocm is an actual Nix GC root for
+/nix/store/fj4ixqrcw77mqi2wqqjkw1f1gxd6dkba-zerogravity-vllm-rocm.
+Use ZG_VLLM_CACHE_HOME=$PWD/target/p3a-vllm-validation-cache for the
+successfully prepared private Python/JIT environment. Old user cache
+untouched. No model downloads, repinning or TLS/signature bypass.
+Logs target/p3a-vllm-{cache-resume,cache-import-ordered,nix-finish,runtime-check,serving-validation}.log
+and target/p3a-vllm-serving-validation/{08,2b,27b}/.
+Actual distribution vLLM0.33.0+rocm72/Torch2.13.0+git733fca1/
+Triton3.8.0+git669b31ac; HIP7.2.53211, gfx1151, BF16 GEMM passed.
+All three original payload manifests independently verified; normal
+optimized text-only serving with torch.compile and graph capture,
+prefix caching disabled, BF16, context1024, max-num-seqs8, raw47+3
+Completions, configured envelopes24/24/75GiB. Each C1/C8 cell one
+warmup/two timed waves, 81/81 requests exact expected IDs and 47/3/50
+usage per request, 243 output tokens. Fresh standalone median tok/s:
+0.8B 53.58705/214.7124, 2B 36.32835/141.5806, 27B 3.79715/13.48045.
+Each owned provider SIGTERM exit0, socket retired, actual device
+returned to 270815232 bytes VRAM, 0% busy, no KFD owner. Private
+isolated loopback. All validation passed in 463s. These are new
+provider qualification cells, not paired comparison/parity evidence.
 Native CLR7.2.4/glibc2.44 loader and previous toolchain paths exist.
 Offline Phase2 build first lacked hyper-util sparse index; L5 actual
 locked Linux CLI/SDK graph and local cache provided 22 required
@@ -130,8 +154,9 @@ L5 target/p3a-focused*, p3a-final-focused-2.log, p3a-assembled.log.
 No additional product benchmark or scratch driver committed.
 
 Review follow-through: native public readiness accepted for these
-cells; restore exact pinned optimized vLLM and establish fresh paired
-original-source 0.8B/2B/27B baseline. Remaining HIP device-greedy
+cells; exact pinned optimized vLLM restored and qualified. Establish
+fresh paired original-source 0.8B/2B/27B baseline with the existing
+owned lifecycle/comparator and matching effective settings. Remaining HIP device-greedy
 feedback, native larger regions, ragged/paged/prefix state and
 continuous refill are substantive measured Phase3 work, not
 implemented by configuration changes. Reuse existing CUDA feedback,

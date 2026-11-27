@@ -5,6 +5,37 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 28 Nov — pinned X2 optimized vLLM restored and qualified
+
+X2 exact original Nix provider vLLM0.33.0+rocm72 restored with unchanged
+lockfiles and actual GC root target/p3a-vllm-rocm. Distribution
+Torch2.13.0+git733fca1/Triton3.8.0+git669b31ac, HIP7.2.53211/gfx1151.
+Real BF16 GPU GEMM passed. Authenticated cached original snapshots:
+all manifest file lengths and SHA256 digests independently checked.
+Private network, ordinary vLLM HTTP Completions, BF16 text-only,
+1024 context, max-num-seqs8, prefix caching disabled, generation-config
+vllm, raw47+3 greedy prompt; default optimized compile/capture (no
+enforce-eager). One warm-up and two timed waves per cell.
+
+| Original model | Configured envelope | C1 output tok/s | C8 output tok/s | C1/C8 TTFT p95 median (ms) |
+| --- | ---: | ---: | ---: | ---: |
+| Qwen3.5-0.8B | 24GiB | 53.58705 | 214.7124 | 37.67 / 76.84 |
+| Qwen3.5-2B | 24GiB | 36.32835 | 141.5806 | 42.24 / 107.92 |
+| Qwen3.8-27B | 75GiB | 3.79715 | 13.48045 | 301.24 / 1230.11 |
+
+81/81 requests expected IDs [248068,198,90700] (small) or
+[248068,198,760] (27B), exact input/output/total 47/3/50,
+243 generated tokens. Three real owned provider starts and exits0;
+model loading memory 1.5/4.05/51.53GiB, vLLM KV budget
+20.89/18.18/19.53GiB; before and after each 270815232 B VRAM,
+0% busy/no KFD owner. X2 target/p3a-vllm-serving-validation/
+per-wave JSON and server logs; runtime/import/build records in handoff.
+These standalone medians supersede the missing-provider status and
+give current optimization direction. They are not a fresh paired
+ZeroGravity comparison: next use the existing owned comparator,
+verify effective capacity and original-source equivalence, then
+measure the dominant native costs. No new production source change.
+
 ## 27 Nov — ordinary serving benchmark (functional CPU acceptance)
 
 Public tools/serve-bench.py over the ordinary canonical CPU listener

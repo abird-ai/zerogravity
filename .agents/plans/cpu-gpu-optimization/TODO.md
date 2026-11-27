@@ -43,10 +43,12 @@ Architecture: [Astra high shared/family/model boundary review](../pipeline-compo
   Signed 50f6e276; focused and full isolated assembled gate passed
   (2,603/0/112, 326 suites, 519s). Exact implementation synchronized
   to X2 and offline release build passed.
-- [ ] Recover exact approved vLLM0.33.0+rocm72 closure. Offline
-  realization blocked on absent pinned rust-overlay and CA path;
-  previous venv interpreter missing, no alternate local closure.
-  No model/SDK acquisition or pin/TLS/host change.
+- [x] Recover exact approved vLLM0.33.0+rocm72 closure, user-authorized
+  acquisition with unchanged pins; verified signed Nix cache restore,
+  final locked offline build and GC root. Actual gfx1151 BF16 GEMM,
+  optimized public original 0.8B/2B/27B C1/C8, 81/81 exact IDs/usage
+  and joined retirement. No model download or TLS/signature bypass.
+  Handoff/baseline record scope and logs.
 - [x] Actual public native 47+3 C1/C8 (0.8B/2B), 27B C1; exact
   24/24/75GiB envelopes, original IDs and full usage, joined
   retirement. Width8 actual publications at both small C8 cells;

@@ -917,16 +917,21 @@ gate (2,603/0/112; 326 suites; 519s) and actual public native
 27B C1 2.22 tok/s; exact IDs/usage/envelopes, actual width8
 publications on both small C8 cells and explicit sequential0
 control (0.8B C8 23.89 tok/s), joined retirement. See current
-handoff for scope. Pinned vLLM closure absent/offline restore
-blocked, no fresh parity claim. Retain source/numerical/ownership
+handoff for scope. Pinned vLLM0.33.0+rocm72 restored on X2,
+GC-rooted and real optimized BF16 public 47+3 C1/C8 qualified for all
+three original models, 81/81 exact IDs/usage and joined retirement.
+Fresh standalone medians 53.59/214.71, 36.33/141.58, 3.80/13.48
+tok/s; no fresh paired parity claim. Retain source/numerical/ownership
 rules. Device
 feedback and prefix/paged/ragged/region improvements remain ordered
 measured work, not inferred from configuration.
 
-- [ ] Restore the approved pinned optimized vLLM provider and establish
-  fresh matched original-source 0.8B/2B/27B baselines. Use retained V2
-  results for engineering direction, not fresh comparisons. Get quick real
-  C1/C8 feedback; extend the declared campaign after working results.
+- [x] Restore the approved pinned optimized vLLM provider and qualify
+  actual original-source 0.8B/2B/27B C1/C8 serving on X2.
+- [ ] Establish fresh paired original-source 0.8B/2B/27B baselines
+  through the existing owned comparator. Use retained V2 results and
+  fresh standalone vLLM cells for engineering direction, not paired
+  comparisons. Get quick real C1/C8 feedback; extend the campaign.
 - [ ] Native row-wise and attention regions: eliminate unnecessary intermediate
   materialization and exact-reference scalar passes within explicitly
   qualified native arithmetic. Compose complete normalization/residual,

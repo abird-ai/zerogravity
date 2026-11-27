@@ -23,8 +23,10 @@ P3A ordinary cold cohort/exact device envelope and comparator usage
 completeness implemented at 50f6e276; X2 exact commit sync and locked
 offline Cargo restore complete. Full gate 2,603/0/112 (326 suites,
 519s) and real 0.8B/2B C1/C8, 27B C1 native public cells pass;
-explicit sequential control passed. Pinned vLLM restore remains
-blocked; next fresh paired baseline and measured native optimization.
+explicit sequential control passed. Pinned vLLM restored and rooted;
+all three original models C1/C8 optimized HTTP, 81/81 exact requests
+and physical retirement pass. Next fresh paired baseline and measured
+native optimization.
 OA-9A bounded native text Realtime accepted at 4735621b. OA-10 corrected
 cold endpoint markers/help, documented actual supported routes and
 capability limits, and focused-qualified safe error/refusal behavior.
