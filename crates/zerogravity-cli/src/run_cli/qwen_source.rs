@@ -139,7 +139,11 @@ pub(super) fn run(
             vec![resolved.alias.clone()],
             resolved.cache.clone(),
             resolved.snapshot.clone(),
-            profile,
+            SourceLoadOptions {
+                profile,
+                cohort_width: None,
+                device_mib: None,
+            },
         )?;
         runtime
             .control()
@@ -205,6 +209,14 @@ pub(super) fn run(
     }
 }
 
+/// Cold overrides only; the loaded model and scheduler retain the resolved
+/// profile. No per-request policy, alternate allocator or extra worker.
+pub(crate) struct SourceLoadOptions {
+    pub profile: QwenServingProfile,
+    pub cohort_width: Option<usize>,
+    pub device_mib: Option<usize>,
+}
+
 pub(crate) fn load_request(
     request: &Request,
     inventory: &devices::Inventory,
@@ -212,17 +224,31 @@ pub(crate) fn load_request(
     aliases: Vec<String>,
     cache: CacheOptions,
     snapshot: String,
-    profile: QwenServingProfile,
+    options: SourceLoadOptions,
 ) -> Result<ModelLoadRequest> {
     zerogravity::devices::fresh(inventory)?;
+    let SourceLoadOptions {
+        profile,
+        cohort_width,
+        device_mib,
+    } = options;
     match backend {
-        SelectedBackend::Cuda => cuda_load(aliases, cache, snapshot, profile),
+        SelectedBackend::Cuda => {
+            if device_mib.is_some() {
+                return Err(Error::Unsupported(
+                    "canonical device-mib currently requires original ROCm source".into(),
+                ));
+            }
+            cuda_load(aliases, cache, snapshot, profile, cohort_width)
+        }
         SelectedBackend::Hip => hip_load(
             aliases,
             cache,
             snapshot,
-            profile,
-            hip_budget(request, inventory)?,
+            profile
+                .with_cohort(cohort_width)
+                .map_err(|e| e.into_core())?,
+            hip_budget(request, inventory, device_mib)?,
             request.numerical.as_deref() == Some("native"),
         ),
     }
@@ -363,7 +389,7 @@ pub(super) fn preflight_acquisition(
         return Err(Error::Unsupported("automatic original-source acquisition requires ordinary role-bound source execution without diagnostic overrides".into()));
     }
     if backend == SelectedBackend::Hip {
-        let _budget = hip_budget(request, inventory)?;
+        let _budget = hip_budget(request, inventory, None)?;
     }
     Ok(())
 }
@@ -468,10 +494,23 @@ fn cuda_load(
     cache: CacheOptions,
     snapshot: String,
     profile: QwenServingProfile,
+    cohort_width: Option<usize>,
 ) -> Result<ModelLoadRequest> {
-    Ok(ModelLoadRequest::qwen_cuda(
-        aliases, cache, snapshot, profile,
-    ))
+    Ok(match cohort_width {
+        None => ModelLoadRequest::qwen_cuda(aliases, cache, snapshot, profile),
+        Some(width) => ModelLoadRequest::qwen_cuda_with_smart_config(
+            aliases,
+            cache,
+            snapshot,
+            profile,
+            zerogravity::models::SmartConfig::enabled(
+                zerogravity::models::QwenCudaSmartOverrides {
+                    cohort_width: Some(width),
+                    ..Default::default()
+                },
+            ),
+        ),
+    })
 }
 #[cfg(not(feature = "cuda"))]
 fn cuda_load(
@@ -479,6 +518,7 @@ fn cuda_load(
     _: CacheOptions,
     _: String,
     _: QwenServingProfile,
+    _: Option<usize>,
 ) -> Result<ModelLoadRequest> {
     Err(Error::Unsupported("CUDA backend is not compiled".into()))
 }
@@ -516,6 +556,7 @@ fn hip_load(
 fn hip_budget(
     request: &Request,
     inventory: &devices::Inventory,
+    device_mib: Option<usize>,
 ) -> Result<zerogravity::models::HipSourceBudget> {
     let allowed = zerogravity::devices::allowed(request, inventory)?;
     let observed = zerogravity::gpu::observe_hip_device(Default::default())
@@ -545,10 +586,18 @@ fn hip_budget(
     let usable = available
         .checked_sub(margin)
         .ok_or_else(|| Error::Limit("HIP availability is below configured headroom".into()))?;
-    zerogravity::models::HipSourceBudget::new(usable)
+    let requested = device_mib
+        .map(|mib| {
+            u64::try_from(mib)
+                .ok()
+                .and_then(|n| n.checked_mul(1024 * 1024))
+                .ok_or_else(|| Error::Limit("device-mib overflow".into()))
+        })
+        .transpose()?;
+    zerogravity::models::HipSourceBudget::within_available(usable, requested)
 }
 #[cfg(not(feature = "hip"))]
-fn hip_budget(_: &Request, _: &devices::Inventory) -> Result<()> {
+fn hip_budget(_: &Request, _: &devices::Inventory, _: Option<usize>) -> Result<()> {
     Err(Error::Unsupported(
         "ROCm/HIP backend is not compiled".into(),
     ))

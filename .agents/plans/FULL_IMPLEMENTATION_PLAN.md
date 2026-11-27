@@ -905,6 +905,18 @@ Use X2 (gfx1151) as the first measured performance target, then other qualified
 AMD hardware. Source authoring on L5; execution/testing on X2/A1 per the
 handoff. Observe shared capacity and retire only our own allocations.
 
+P3A fresh readiness review: canonical original GPU profile previously
+hard-coded cohort width0 (sequential HIP). Cold automatic/explicit
+cohort and original ROCm exact device-envelope policy now implemented
+through existing config/CLI/control/SDK preparation; comparison
+requires full input/output/total usage. X2 exact Phase2 bundle
+synchronized; missing local Cargo graph restored offline from
+verified L5 cache. Final assembled and actual ordinary physical
+qualification still pending; pinned vLLM closure absent/offline
+restore blocked. Retain source/numerical/ownership rules. Device
+feedback and prefix/paged/ragged/region improvements remain ordered
+measured work, not inferred from configuration.
+
 - [ ] Restore the approved pinned optimized vLLM provider and establish
   fresh matched original-source 0.8B/2B/27B baselines. Use retained V2
   results for engineering direction, not fresh comparisons. Get quick real

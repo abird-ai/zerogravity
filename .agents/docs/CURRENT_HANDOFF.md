@@ -59,7 +59,62 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — ordinary serving benchmark / bounded Phase 2 exit (27 Nov)
+### Current checkpoint — P3A public native preparation and baseline recovery (27 Nov)
+
+Fresh review at signed Phase 2 exit 02b4fbb2 confirmed L5 clean,
+previous full gate 2,603/0/112. X2 was 62 commits behind at 450cea55;
+verified incremental bundle SHA256 and fast-forward to exact 02b4fbb2,
+single clean main. No push, new model acquisition, privilege changes,
+pin changes or unrelated work. X2 gfx1151 Ryzen AI MAX+395, 96GiB
+VRAM pool; all three approved original Qwen source manifests present.
+Use actual source verification/admission for payload qualification.
+
+Correct the critical ordinary original-source serving gap, not a second
+runtime. Shared cold Qwen profile candidate widths 8/4/0 reused by
+CUDA smart selection; ordinary HIP resolves requested/automatic
+cohort with the original explicit SDK profile, actual active capacity,
+backend admission and scheduler. Explicit SDK constructors keep their
+semantics. CLI --cohort-width auto|0|4|8 and typed serve.cohort_width
+(auto or omitted) flow through the existing CLI/config/TUI/Web preparation.
+CUDA explicit width uses existing smart overrides, otherwise existing
+auto unchanged. CPU and unqualified routes refuse GPU overrides.
+Optional original ROCm --device-mib auto|MiB / serve.device_mib:
+explicit envelope within live post-headroom availability, no clamping;
+existing HipSourceBudget owns context partition and actual admission.
+Legacy explicit local grammar unchanged. All policy resolves cold.
+Comparator requires complete input/total usage before exact matched
+usage/attested ratio; independent source/state/numerical proof still
+separate. Updated user docs. Focused policy, budget, configuration,
+comparison and owned-lifecycle checks passed on initial assembled
+source; final focused/physical/complete gate pending below.
+
+X2 locked vLLM0.33.0+rocm72 environment is absent: cached venv
+python points to missing pinned Python3.12.14 Nix path. Offline
+realization fails on pinned rust-overlay input and SSL CA path.
+Read-only inventory of L5/A1/X2 found no installed equivalent pinned
+closure. No repin, TLS bypass or new SDK download. Keep restore
+explicitly blocked until approved exact pinned closure can be recovered.
+Native CLR7.2.4/glibc2.44 loader and previous toolchain paths exist.
+Offline Phase2 build first lacked hyper-util sparse index; L5 actual
+locked Linux CLI/SDK graph and local cache provided 22 required
+crate archives (each SHA256 checked against Cargo.lock) plus 37
+missing index entries, copied via verified2.23MB archive to a
+private X2 execution Cargo home target/p3a-cargo-home. Original
+shared cache unchanged; no dependency acquisition. X2 build retry
+and native physical acceptance pending. Logs target/p3a-phase2-build*
+(X2), target/p3a-focused* (L5).
+
+Review follow-through: establish physical current ordinary HIP
+47+3 C1/C8 route with effective width, exact envelope, actual token
+IDs and retirement; then restore pinned optimized vLLM and paired
+original-source 0.8B/2B/27B baseline. Remaining HIP device-greedy
+feedback, native larger regions, ragged/paged/prefix state and
+continuous refill are substantive measured Phase3 work, not
+implemented by configuration changes. Reuse existing CUDA feedback,
+state/cache and physical owners; do not prematurely promote a
+new numerical or state path. No physical parity claim.
+
+### Prior checkpoint — ordinary serving benchmark / bounded Phase 2 exit (27 Nov)
 
 Started at clean signed 3ce1d39b (OA-10). Extended existing
 tools/serve-bench.py, not a new benchmark runtime. One bounded SSE

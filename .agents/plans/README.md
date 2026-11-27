@@ -18,7 +18,10 @@ The latest [comprehensive takeover through OA-7D](../docs/FULL_COMPREHENSIVE_HAN
 work and the recovered OA-7E work. The
 [OA-7E takeover prompt](../docs/NEXT_AGENT_2026-11-27_OA7E.md) is historical;
 OA-7E landed at signed 1585b579, actual learned SDK and assembled gate passed.
-Current unit: [Phase 3 ROCm parity](FULL_IMPLEMENTATION_PLAN.md#3-rocm--match-vllm-first) on X2 after bounded Phase 2 acceptance and [OA-10 closeout](serving-and-speculation/NEXT_ITERATION_OPENAI_COMPATIBLE_SERVING.md#oa-10--compatibility-closeout).
+Current unit: [Phase 3 ROCm readiness](FULL_IMPLEMENTATION_PLAN.md#3-rocm--match-vllm-first) on X2 after bounded Phase 2 acceptance and [OA-10 closeout](serving-and-speculation/NEXT_ITERATION_OPENAI_COMPATIBLE_SERVING.md#oa-10--compatibility-closeout).
+P3A ordinary cold cohort/exact device envelope and comparator usage
+completeness implemented; X2 Phase2 sync and local locked Cargo restore
+complete. Physical/assembled gate and pinned vLLM restore outstanding.
 OA-9A bounded native text Realtime accepted at 4735621b. OA-10 corrected
 cold endpoint markers/help, documented actual supported routes and
 capability limits, and focused-qualified safe error/refusal behavior.

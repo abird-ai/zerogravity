@@ -22,6 +22,7 @@ pub(super) fn choices(key: &str) -> Option<&'static [&'static str]> {
         "run.backend" => &["auto", "cpu", "cuda", "rocm", "vulkan"],
         "run.numerical" => &["source", "native"],
         "run.speculation" => &["auto", "off", "mtp"],
+        "serve.cohort_width" => &["auto", "0", "4", "8"],
         "run.task.raw"
         | "run.diagnostics.explain"
         | "run.diagnostics.dry_run"

@@ -106,6 +106,46 @@ settings and output are text-only; this is not voice, VAD, session
 resumption or a latency guarantee. See the SDK's `realtime.connect`
 with the same local base URL and a qualified model alias.
 
+### Original-source GPU serving policy
+
+Ordinary original-source Qwen routes use the same admitted resident
+preparation as the Rust SDK. For an already verified cached snapshot on
+a supported ROCm device:
+
+~~~sh
+zerogravity serve --offline --model local=qwen3.5-0.8b \
+    --backend rocm --numerical native --active-per-worker 8 \
+    --max-context 1024 --max-output 128
+~~~
+
+The native arithmetic profile is explicit; source arithmetic remains the
+default. Cohort width is automatic when omitted: the current aligned
+native source route selects 8 for active capacity 8, 4 for capacity
+4–7, or sequential otherwise. CUDA retains its existing capacity-aware
+smart preparation. Use --cohort-width auto|0|4|8 to override a profile
+(0 is sequential); unsupported or unfitted plans refuse. The configured
+active-session count and actual cohort widths are separate from client
+concurrency. No change to the original explicit SDK profile semantics.
+
+For a controlled ROCm comparison, optionally add --device-mib 24576
+(24 GiB) and --headroom 0 to request that exact total device envelope
+within actual allocator-reported available memory. An explicit envelope
+does not silently shrink and includes the original context partition.
+--device-mib auto restores live-capacity selection. The current canonical
+explicit device envelope applies to original ROCm source only; existing
+legacy local diagnostic flags retain their original meaning. The typed
+profile keys serve.cohort_width and serve.device_mib accept integers or
+auto (or omit for automatic). The existing health/catalog and scheduler snapshots
+report actual selected capacity and cohort width; an unsupported
+capability or capacity is not silently promoted.
+
+For matched measurements, verify the original source payload and
+tokenizer independently (for example model verify on the selected
+cached snapshot), use the same raw framed prompt/token IDs and actual
+generation controls, and compare measured effective memory envelopes.
+A utilization fraction is not itself a proof of equal capacity.
+A caller-attested throughput ratio is not an independent parity grant.
+
 ### Ordinary serving benchmarks
 
 Benchmark the same public listener rather than a separate execution

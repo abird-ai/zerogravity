@@ -29,6 +29,9 @@ fn typed_documents_and_atomic_profile_edits_share_the_same_owner() {
         set("run.task.max_tokens", "129"),
         set("serve.listen", "0.0.0.0:8000"),
         set("serve.workers", "0"),
+        set("serve.cohort_width", "3"),
+        set("serve.cohort_width", "8"),
+        set("serve.device_mib", "0"),
         set("run.api_key", "never-persist"),
         set(
             "model",
@@ -39,6 +42,18 @@ fn typed_documents_and_atomic_profile_edits_share_the_same_owner() {
         assert!(missing.change(invalid).is_err(), "{invalid:?}");
         assert!(!root.0.exists());
     }
+    let serving = b"schema: zerogravity.pipeline.v2\nserve:\n  active_per_worker: 8\n  cohort_width: 4\n  device_mib: 24576\n";
+    let doc = cfg::validate(&path, serving).unwrap().serve.unwrap();
+    assert_eq!(doc.cohort_width, Some(4));
+    assert_eq!(doc.device_mib, Some(24576));
+    let automatic = cfg::validate(
+        &path,
+        b"schema: zerogravity.pipeline.v2\nserve: {cohort_width: auto, device_mib: auto}\n",
+    )
+    .unwrap()
+    .serve
+    .unwrap();
+    assert_eq!((automatic.cohort_width, automatic.device_mib), (None, None));
     missing.create(INITIAL.as_bytes()).unwrap();
     assert!(missing.create(INITIAL.as_bytes()).is_err());
     let first = ConfigFile::open(path.clone()).unwrap();

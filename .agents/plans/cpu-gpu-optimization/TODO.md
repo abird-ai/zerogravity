@@ -31,6 +31,30 @@ Architecture: [Astra high shared/family/model boundary review](../pipeline-compo
 
 ## Uncommitted
 
+### P3A — fresh ordinary ROCm readiness review (27 Nov)
+
+- [x] Synchronize exact accepted Phase2 L5 commit to clean X2 via
+  verified incremental bundle (02b4fbb2). Restore missing locked Linux
+  crate inputs from L5 into private execution Cargo home, no network.
+- [x] Ordinary HIP cold automatic/explicit cohort selection through
+  shared existing profile; explicit device envelope within live
+  headroom. Typed CLI/config and original SDK semantics; no extra
+  engine. Strict comparison input/output/total usage completeness.
+  Final focused/assembled and actual physical public verification pending.
+- [ ] Recover exact approved vLLM0.33.0+rocm72 closure. Offline
+  realization blocked on absent pinned rust-overlay and CA path;
+  previous venv interpreter missing, no alternate local closure.
+  No model/SDK acquisition or pin/TLS/host change.
+- [ ] Actual public native 47+3 C1/C8 (0.8B/2B), 27B C1 feasible
+  envelope, original token IDs and joined retirement; then fresh
+  paired optimized vLLM baseline. No historical ratio as acceptance.
+- [ ] Measure and close largest real native costs, including device
+  feedback/greedy, row-wise and attention regions, ragged/stateful
+  cohort work, paged/prefix reuse and sustained refill. Reuse existing
+  shared primitives and original state owners; do not promote by
+  compile-only or narrow timing. No separate GPU engine.
+
+
 ### Expanded owner target — 30 Oct
 
 - [ ] After correctness: optimize CUDA `.8B`/`2B` on l5 and ROCm `.8B`/`2B`/`27B`

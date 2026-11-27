@@ -189,10 +189,10 @@ def comparison(
         baseline = signature(per["zerogravity"][0])
         baseline_usage = signature(per["zerogravity"][0], True)
         exact_text = successful and all(signature(r) == baseline for r in group)
-        exact_usage = successful and all(signature(r, True) == baseline_usage for r in group)
         input_usage_complete = successful and all(
             row["usage_reported_input_tokens"] is not None and row["usage_reported_total_tokens"] is not None
             for sample in group for row in sample["requests"])
+        exact_usage = input_usage_complete and all(signature(r, True) == baseline_usage for r in group)
         trace_complete = all(r["provider_token_trace"]["status"] == "provider_bound_complete" for r in group)
         def token_signature(sample):
             return {identity: evidence["token_ids"] for identity, evidence in
@@ -315,8 +315,10 @@ def self_test() -> None:
             docs = [
                 {"choices": [{"index": 0, "delta": {"content": "yes" if prompt == "Hi." else prompt}, "finish_reason": None}]},
                 {"choices": [{"index": 0, "delta": {}, "finish_reason": "length"}]},
-                {"choices": [], "usage": {"completion_tokens": 1}},
+                {"choices": [], "usage": {"prompt_tokens": 5, "completion_tokens": 1, "total_tokens": 6}},
             ]
+            if prompt == "no-input-usage":
+                docs[-1]["usage"] = {"completion_tokens": 1}
             if self.path == "/v1/completions":
                 for doc in docs:
                     for choice in doc["choices"]:
@@ -375,6 +377,13 @@ def self_test() -> None:
         assert raw["request_kind"] == "completions"
         assert all(row["request_kind"] == "completions" for row in raw["runs"])
         assert raw["summaries"][0]["exact_usage_and_finish_matched"]
+        missing = comparison(a,b,"fixture","fixture","no-input-usage",1,[1],1,None,None,
+            ("a"*64,"a"*64),("b"*64,"b"*64),1,10)
+        row = missing["summaries"][0]
+        assert row["completed_all_requests"] and row["exact_output_text_sha256_matched"]
+        assert not row["input_and_total_usage_complete"] and not row["exact_usage_and_finish_matched"]
+        assert not row["comparable_with_caller_supplied_source_attestation"]
+        assert row["zerogravity_over_vllm_reported_throughput_ratio"] is None
         validate_comparison_bounds(1024,[1,4,8,16,32,64],1,10,"x",object())
         for population,concurrency in [(1025,1),(64,65),(63,64)]:
             try:

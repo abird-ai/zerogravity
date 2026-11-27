@@ -258,12 +258,38 @@ pub struct ServeDoc {
     pub listen: Option<String>,
     pub workers: Option<usize>,
     pub active_per_worker: Option<usize>,
+    /// Unset selects the backend's prepared-plan policy; zero is sequential.
+    #[serde(default, deserialize_with = "auto_usize")]
+    pub cohort_width: Option<usize>,
+    /// Explicit total device admission envelope in MiB (original ROCm source).
+    #[serde(default, deserialize_with = "auto_usize")]
+    pub device_mib: Option<usize>,
     pub max_context: Option<usize>,
     pub max_output: Option<usize>,
     pub host_mib: Option<usize>,
     pub max_pending_requests: Option<usize>,
     pub enable_per_request_metrics: Option<bool>,
     pub enable_error_details: Option<bool>,
+}
+
+fn auto_usize<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> std::result::Result<Option<usize>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(rename_all = "lowercase")]
+    enum Auto {
+        Auto,
+    }
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Value {
+        Count(usize),
+        Automatic(Auto),
+    }
+    Ok(match Value::deserialize(deserializer)? {
+        Value::Count(n) => Some(n),
+        Value::Automatic(Auto::Auto) => None,
+    })
 }
 
 #[derive(Clone, Debug, Deserialize)]

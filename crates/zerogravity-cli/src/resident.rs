@@ -158,12 +158,7 @@ pub(crate) fn prepare(
         request.task.max_tokens,
         pending,
     )?;
-    if settings
-        .host_mib
-        .is_some_and(|n| !(256..=1_048_576).contains(&n))
-    {
-        return Err(invalid("host-mib must be 256..=1048576"));
-    }
+    zerogravity::configuration::validate_serving_capacity(&settings).map_err(core)?;
     if request.diagnostics.dry_run
         || request.diagnostics.audit_logits_jsonl.is_some()
         || request.diagnostics.audit_layers_jsonl.is_some()
@@ -328,6 +323,11 @@ fn prepare_routes(
                 zerogravity::models::qwen_target_for_snapshot(&digest).expect("approved digest");
             let selected =
                 qwen_source::require_source_backend(&request, &inventory, target).map_err(core)?;
+            if settings.device_mib.is_some() && selected != qwen_source::SelectedBackend::Hip {
+                return Err(invalid(
+                    "canonical device-mib currently requires original ROCm source",
+                ));
+            }
             if let Some(missing) = &missing {
                 match source::acquire_missing(
                     &request,
@@ -384,7 +384,17 @@ fn prepare_routes(
             // Keep the common policy alive through request construction.
             // Aliases are borrowed from the still-resolved declaration.
             let load = qwen_source::load_request(
-                &request, &inventory, selected, aliases, cache, digest, profile,
+                &request,
+                &inventory,
+                selected,
+                aliases,
+                cache,
+                digest,
+                qwen_source::SourceLoadOptions {
+                    profile,
+                    cohort_width: settings.cohort_width,
+                    device_mib: settings.device_mib,
+                },
             )
             .map_err(core)?;
             return Ok(Some(Plan {
@@ -403,6 +413,11 @@ fn prepare_routes(
         }
     }
 
+    if settings.cohort_width.is_some() || settings.device_mib.is_some() {
+        return Err(invalid(
+            "canonical CPU GGUF serving does not accept GPU cohort/device limits",
+        ));
+    }
     if !cfg!(feature = "cpu")
         || !matches!(request.backend, Backend::Auto | Backend::Cpu)
         || request.numerical.as_deref() == Some("native")

@@ -301,6 +301,19 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   queues; do not block ordinary supported text serving benchmarks on
   unauthorized acquisition or unimplemented capabilities.
 
+### P3A — canonical original-source serving readiness — 27 Nov
+
+- [x] Cold shared automatic/explicit physical cohort policy, optional
+  exact original ROCm device envelope and existing UI/config surface.
+  Preserve source numerical default and legacy flags; actual source
+  admission and SDK scheduler remain authoritative.
+- [x] Require complete input/output/total usage for comparable matched
+  result, preserve distinct wire/provider clocks and independent
+  numerical/source requirements.
+- [ ] Actual current physical ordinary ROCm route and complete
+  workspace gate; approved pinned vLLM restore remains blocked.
+  Device feedback/state/paged/prefix work belongs to measured Phase3.
+
 ### Ordinary serving benchmark / bounded Phase 2 exit — 27 Nov
 
 - [x] Extend existing ordinary benchmark, comparator and matrix to

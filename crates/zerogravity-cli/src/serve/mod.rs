@@ -284,6 +284,8 @@ pub(super) fn help() {
              Canonical routes: local GGUF or cached model names/digests/provider locators.\n\
              --backend auto|cpu|cuda|rocm|vulkan, --device ID, --headroom LIMIT, --pull, --offline.\n\
              Direct GGUF CPU or one approved original GPU source shared by aliases.\n\
+             Original GPU: --numerical source|native (native ROCm), --cohort-width auto|0|4|8.\n\
+             Original ROCm: optional --device-mib auto|MiB sets an exact admission envelope within live headroom.\n\
              Legacy explicit local/diagnostic serving: --model ID=MODEL.gguf [--listen 127.0.0.1:8000] \
              [--backend cpu|cuda|vulkan-nvidia|vulkan-amd|rocm] \
              [--source-profile gguf|fixed-prompt-bf16|qwen35-cuda-bf16] [--native-artifacts DIR] \

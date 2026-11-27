@@ -104,12 +104,7 @@ pub fn validate_serve(request: &Request, settings: &ServeDoc) -> Result<()> {
     if !address.ip().is_loopback() {
         return Err(Error::Unsupported("serve.listen must be loopback".into()));
     }
-    if settings
-        .host_mib
-        .is_some_and(|n| !(256..=1_048_576).contains(&n))
-    {
-        return Err(bad("serve.host_mib must be 256..=1048576"));
-    }
+    validate_serving_capacity(settings)?;
     crate::runtime::text::validate_config(
         1,
         settings.workers.unwrap_or(2),
@@ -119,6 +114,30 @@ pub fn validate_serve(request: &Request, settings: &ServeDoc) -> Result<()> {
         settings.max_pending_requests,
     )
     .map_err(|e| e.into_core())
+}
+
+/// Cold policy shared by document editing and ordinary resident preparation.
+pub fn validate_serving_capacity(settings: &ServeDoc) -> Result<()> {
+    if settings
+        .host_mib
+        .is_some_and(|n| !(256..=1_048_576).contains(&n))
+    {
+        return Err(bad("serve.host_mib must be 256..=1048576"));
+    }
+    if settings
+        .device_mib
+        .is_some_and(|n| !(1..=1_048_576).contains(&n))
+    {
+        return Err(bad("serve.device_mib must be 1..=1048576"));
+    }
+    if settings.cohort_width.is_some_and(|width| {
+        !matches!(width, 0 | 4 | 8) || width > settings.active_per_worker.unwrap_or(2)
+    }) {
+        return Err(bad(
+            "serve.cohort_width must be 0, 4 or 8 within active_per_worker",
+        ));
+    }
+    Ok(())
 }
 
 pub fn document_value(path: &Path, bytes: &[u8]) -> Result<Value> {
@@ -369,6 +388,16 @@ pub fn explain(path: &Path, bytes: &[u8]) -> Result<BTreeMap<String, Setting>> {
     add(
         "serve.active_per_worker",
         yaml(serve.active_per_worker.unwrap_or(2)),
+        None,
+    )?;
+    add(
+        "serve.cohort_width",
+        serve.cohort_width.map_or_else(|| yaml("auto"), yaml),
+        None,
+    )?;
+    add(
+        "serve.device_mib",
+        serve.device_mib.map_or_else(|| yaml("auto"), yaml),
         None,
     )?;
     let inherited = |explicit, run_value| if explicit { None } else { p.get(run_value) };

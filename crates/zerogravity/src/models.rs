@@ -289,6 +289,26 @@ impl ModelLoadRequest {
         }
     }
 
+    /// Same canonical source envelope with explicit smart configuration.
+    #[cfg(all(feature = "model-qwen35", feature = "cuda", target_os = "linux"))]
+    pub fn qwen_cuda_with_smart_config(
+        aliases: Vec<String>,
+        cache: crate::cache::CacheOptions,
+        snapshot: String,
+        profile: QwenServingProfile,
+        smart_config: SmartConfig<QwenCudaSmartOverrides>,
+    ) -> Self {
+        Self::QwenCudaWithSmartConfig {
+            aliases,
+            cache,
+            snapshot,
+            profile,
+            provider_bytes: QWEN_CUDA_PROVIDER_BYTES,
+            device_bytes: QWEN_CUDA_DEVICE_BYTES,
+            smart_config,
+        }
+    }
+
     /// Explicit native ROCm projection route, distinct from the CPU reference.
     #[cfg(all(feature = "model-qwen35", feature = "hip", target_os = "linux"))]
     pub fn qwen_hip_native(

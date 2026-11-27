@@ -49,6 +49,8 @@ fn editable(key: &str) -> bool {
             | "serve.listen"
             | "serve.workers"
             | "serve.active_per_worker"
+            | "serve.cohort_width"
+            | "serve.device_mib"
             | "serve.max_context"
             | "serve.max_output"
             | "serve.host_mib"

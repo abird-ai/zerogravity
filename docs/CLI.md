@@ -222,6 +222,9 @@ backends refuse. It is loopback-only; optional `ZEROGRAVITY_API_KEY` protects
 inference. See the [OpenAI-compatible inference guide](OPENAI.md) for the
 actual endpoint matrix, model qualification boundaries and SDK example.
 Public serving compatibility and performance qualification are separate work.
+See [original-source GPU serving policy](OPENAI.md#original-source-gpu-serving-policy)
+for automatic physical cohorts, explicit overrides and ROCm memory
+envelopes.
 The existing [ordinary benchmark client](OPENAI.md#ordinary-serving-benchmarks)
 measures Chat, Responses or raw Completions through this same listener.
 

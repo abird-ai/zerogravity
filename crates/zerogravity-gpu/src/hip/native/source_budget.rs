@@ -33,6 +33,21 @@ impl HipSourceBudget {
             admission: total_device_bytes,
         })
     }
+    /// Fit an explicit envelope or adopt the observed post-headroom capacity.
+    /// Explicit values cannot silently shrink, including during a comparison.
+    pub fn within_available(usable: u64, requested: Option<u64>) -> Result<Self> {
+        let envelope = requested.unwrap_or(usable);
+        if envelope > usable {
+            return Err(Error::resource(
+                "HIP device memory",
+                "explicit serving envelope after headroom",
+                envelope,
+                usable,
+            ));
+        }
+        Self::new(envelope)
+    }
+
     pub fn total_device_bytes(self) -> usize {
         self.total
     }
@@ -88,6 +103,24 @@ mod tests {
         for total in [0, CONTEXT_DEVICE - 1, CONTEXT_DEVICE, u64::MAX] {
             assert!(HipSourceBudget::new(total).is_err());
         }
+        let available = (96 * GIB) as u64;
+        let cap = (24 * GIB) as u64;
+        assert_eq!(
+            HipSourceBudget::within_available(available, Some(cap))
+                .unwrap()
+                .physical_admission_bytes(),
+            cap
+        );
+        assert_eq!(
+            HipSourceBudget::within_available(available, None)
+                .unwrap()
+                .physical_admission_bytes(),
+            available
+        );
+        assert!(matches!(
+            HipSourceBudget::within_available(cap - 1, Some(cap)),
+            Err(Error::Resource(_))
+        ));
         assert_eq!(HipSourceBudget::default(), legacy);
     }
 }

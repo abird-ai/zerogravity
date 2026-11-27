@@ -100,6 +100,12 @@ fn help(key: &str) -> &'static str {
         "serve.listen" => "Numeric loopback IP:PORT. Port zero requests an ephemeral port.",
         "serve.workers" => "Worker count; unset for the selected backend default.",
         "serve.active_per_worker" => "Concurrent admitted rows per worker.",
+        "serve.cohort_width" => {
+            "Original GPU cohort: unset for auto, 0 sequential, 4 or 8 within active capacity."
+        }
+        "serve.device_mib" => {
+            "Optional original ROCm device envelope in MiB, subject to live headroom."
+        }
         "serve.max_context" => "Serving context capacity; may inherit run.task.context.",
         "serve.max_output" => "Serving output capacity; may inherit run.task.max_tokens.",
         "serve.host_mib" => "Host admission envelope in MiB, not a memory availability claim.",

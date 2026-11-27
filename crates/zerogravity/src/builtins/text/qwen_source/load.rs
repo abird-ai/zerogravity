@@ -198,15 +198,6 @@ struct CudaSmartCandidate {
 }
 
 #[cfg(all(feature = "model-qwen35", feature = "cuda"))]
-fn automatic_cohort_width(active: usize) -> &'static [usize] {
-    match active {
-        8.. => &[8, 4, 0],
-        4..=7 => &[4, 0],
-        _ => &[0],
-    }
-}
-
-#[cfg(all(feature = "model-qwen35", feature = "cuda"))]
 fn resolve_cuda_smart_config(
     model: &str,
     mut profile: QwenServingProfile,
@@ -304,9 +295,9 @@ fn resolve_cuda_smart_config(
     let native_values = if mode == SmartConfigMode::Enabled {
         native_user
             .map(|rows| vec![rows])
-            .unwrap_or_else(|| automatic_cohort_width(profile.active).to_vec())
+            .unwrap_or_else(|| profile.cohort_candidates().to_vec())
     } else {
-        automatic_cohort_width(profile.active).to_vec()
+        profile.cohort_candidates().to_vec()
     };
 
     for state in &state_values {

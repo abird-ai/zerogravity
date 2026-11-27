@@ -16,8 +16,8 @@ mod execute;
 mod load;
 pub(crate) use load::{SourceBackend, load_router};
 
-/// One cold raw-text source, shared by aliases. CUDA may opt into an aligned
-/// four-row decode cohort; host/provider/context bounds remain backend-owned.
+/// One cold source shared by aliases. The selected physical cohort is
+/// bounded by active capacity; host/provider/context bounds stay backend-owned.
 #[derive(Clone, Copy, Debug)]
 pub struct QwenServingProfile {
     pub active: usize,
@@ -55,6 +55,27 @@ impl QwenServingProfile {
             self.output,
             self.max_pending,
         )
+    }
+
+    /// Candidate widths in preference order, with singleton fallback before
+    /// preparation. Shared with CUDA's capacity-aware plan selection.
+    pub(crate) fn cohort_candidates(self) -> &'static [usize] {
+        match self.active {
+            8.. => &[8, 4, 0],
+            4..=7 => &[4, 0],
+            _ => &[0],
+        }
+    }
+
+    /// Select an explicit or automatic aligned cohort. Use for native
+    /// preparation where max_sessions owns the admitted workspace and state.
+    /// The actual backend must still validate and admit the resulting plan.
+    pub fn with_cohort(mut self, requested: Option<usize>) -> Result<Self, ServiceError> {
+        self.validate_base()?;
+        let width = requested.unwrap_or_else(|| self.cohort_candidates()[0]);
+        self.validate_cohort_width(width)?;
+        self.cohort_width = width;
+        Ok(self)
     }
 
     pub(crate) fn validate_cohort_width(self, cohort_width: usize) -> Result<(), ServiceError> {
@@ -189,6 +210,19 @@ mod tests {
                 .and_then(|_| profile.validate_cohort_width(profile.cohort_width))
         };
         assert!(valid(good).is_ok());
+        for (active, width) in [(1, 0), (2, 0), (4, 4), (7, 4), (8, 8)] {
+            let profile = QwenServingProfile { active, ..good };
+            assert_eq!(profile.with_cohort(None).unwrap().cohort_width, width);
+            assert_eq!(profile.with_cohort(Some(0)).unwrap().cohort_width, 0);
+        }
+        assert!(good.with_cohort(Some(4)).is_err());
+        assert_eq!(
+            QwenServingProfile { active: 8, ..good }
+                .with_cohort(Some(4))
+                .unwrap()
+                .cohort_width,
+            4
+        );
         for context in [8192, 16384, 32768] {
             assert!(valid(QwenServingProfile { context, ..good }).is_ok());
         }

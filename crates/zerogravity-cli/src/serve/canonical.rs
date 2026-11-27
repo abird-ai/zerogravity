@@ -37,6 +37,8 @@ struct Parsed {
     overrides: RunOverrides,
     settings: ServeDoc,
     pending: Option<Option<usize>>,
+    cohort: Option<Option<usize>>,
+    device_mib: Option<Option<usize>>,
     file: Option<String>,
     profile: Option<String>,
     pull: bool,
@@ -134,6 +136,22 @@ impl Invocation {
                 "--active-per-worker" => {
                     p.settings.active_per_worker = Some(parse_usize(value, flag)?)
                 }
+                "--cohort-width" => {
+                    p.cohort = Some(if value == "auto" {
+                        None
+                    } else {
+                        Some(parse_usize(value, flag)?)
+                    });
+                    p.canonical = true;
+                }
+                "--device-mib" => {
+                    p.device_mib = Some(if value == "auto" {
+                        p.canonical = true;
+                        None
+                    } else {
+                        Some(parse_usize(value, flag)?)
+                    });
+                }
                 "--max-context" => p.overrides.task.context = Some(parse_usize(value, flag)?),
                 "--max-output" => p.overrides.task.max_tokens = Some(parse_usize(value, flag)?),
                 "--host-mib" => p.settings.host_mib = Some(parse_usize(value, flag)?),
@@ -167,7 +185,6 @@ impl Invocation {
                 "--source-profile"
                 | "--native-artifacts"
                 | "--provider-mib"
-                | "--device-mib"
                 | "--batch-mode"
                 | "--batch-rows"
                 | "--native-batch-rows" => p.advanced = true,
@@ -261,6 +278,9 @@ impl Invocation {
             enable_per_request_metrics,
             enable_error_details
         );
+        settings.cohort_width = p.cohort.unwrap_or(settings.cohort_width);
+        settings.device_mib = p.device_mib.unwrap_or(settings.device_mib);
+        zerogravity::configuration::validate_serving_capacity(&settings).map_err(core)?;
         #[cfg(not(test))]
         crate::output::install_document(preferences.0);
         Ok(Self::Canonical(Box::new(Options {
@@ -365,6 +385,46 @@ serve:
             assert_eq!(doc.request.headroom, Headroom::Bytes(0));
             assert_eq!(doc.settings.workers, Some(1));
             assert_eq!(doc.settings.max_pending_requests, Some(3));
+            let Invocation::Canonical(native) = parse(&[
+                "--config",
+                path,
+                "by-name:tiny",
+                "--backend",
+                "rocm",
+                "--device",
+                "auto",
+                "--numerical",
+                "native",
+                "--active-per-worker",
+                "8",
+                "--cohort-width",
+                "4",
+                "--device-mib",
+                "24576",
+            ])
+            .unwrap() else {
+                panic!("canonical native policy")
+            };
+            assert_eq!(native.settings.cohort_width, Some(4));
+            assert_eq!(native.settings.device_mib, Some(24576));
+            assert!(parse(&["by-name:tiny", "--cohort-width", "8"]).is_err());
+            assert!(parse(&["by-name:tiny", "--device-mib", "0"]).is_err());
+            let Invocation::Canonical(auto) = parse(&[
+                "by-name:tiny",
+                "--cohort-width",
+                "auto",
+                "--device-mib",
+                "auto",
+            ])
+            .unwrap() else {
+                panic!("canonical automatic policy")
+            };
+            assert_eq!(auto.settings.cohort_width, None);
+            assert_eq!(auto.settings.device_mib, None);
+            assert!(matches!(
+                parse(&["--model", "legacy=./model.gguf", "--device-mib", "4096"]),
+                Ok(Invocation::Legacy(_))
+            ));
             let Invocation::Canonical(overridden) = parse(&[
                 "--config",
                 path,
