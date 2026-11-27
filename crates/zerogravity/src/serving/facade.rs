@@ -6,6 +6,18 @@ use super::{
 type Result<T> = std::result::Result<T, ServiceError>;
 
 impl TextService for crate::Runtime {
+    fn embedding_dimensions(&self, alias: &str) -> Result<usize> {
+        self.engine.embedding_dimensions(alias)
+    }
+    fn request_embeddings_admitted(
+        &self,
+        request: crate::embedding::EmbeddingRequest,
+        dimensions: usize,
+        ingress: Vec<ServingCharge>,
+    ) -> Result<crate::embedding::EmbeddingReceipt> {
+        self.engine
+            .request_embeddings_admitted(request, dimensions, ingress)
+    }
     fn validate_chat(&self, model: &str) -> Result<()> {
         self.engine.validate_chat(model)
     }

@@ -95,6 +95,7 @@ sha2 = "=0.10.9"
 futures-lite = { version = "=2.6.1", optional = true }
 
 [dev-dependencies]
+base64 = "=0.22.1"
 # Existing runtime observer; explicit diagnostics only, never an execution route.
 cubecl-runtime = { version = "=0.11.0", default-features = false, features = ["std"] }
 

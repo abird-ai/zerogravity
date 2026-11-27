@@ -394,7 +394,27 @@ impl Runtime {
         request: crate::embedding::EmbeddingRequest,
     ) -> std::result::Result<crate::embedding::EmbeddingReceipt, ServiceError> {
         self.with_text_router(|router| {
-            router.request_embeddings_with(request, self.inner.limits.max_input_bytes)
+            router.request_embeddings_with(request, self.inner.limits.max_input_bytes, None)
+        })
+    }
+
+    pub fn public_embedding_dimensions(
+        &self,
+        alias: &str,
+    ) -> std::result::Result<usize, ServiceError> {
+        self.with_text_router(|router| router.public_embedding_dimensions(alias))
+    }
+    pub fn request_public_embeddings(
+        &self,
+        request: crate::embedding::EmbeddingRequest,
+        dimensions: usize,
+    ) -> std::result::Result<crate::embedding::EmbeddingReceipt, ServiceError> {
+        self.with_text_router(|router| {
+            router.request_embeddings_with(
+                request,
+                self.inner.limits.max_input_bytes,
+                Some(dimensions),
+            )
         })
     }
 

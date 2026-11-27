@@ -997,8 +997,26 @@ impl Router {
         registry::ModelIds {
             models: self.models.as_ref(),
             index: 0,
+            public: false,
         }
     }
+    /// Text aliases plus explicitly qualified public encoder aliases.
+    pub fn serving_model_ids(&self) -> impl Iterator<Item = &str> {
+        registry::ModelIds {
+            models: self.models.as_ref(),
+            index: 0,
+            public: true,
+        }
+    }
+
+    pub fn public_embedding_dimensions(&self, alias: &str) -> Result<usize, ServiceError> {
+        let (model, reader) = self.models.acquire_encoder(alias, true)?;
+        let dimensions = model.dimensions();
+        drop(model);
+        drop(reader);
+        Ok(dimensions)
+    }
+
     pub fn validate_chat(&self, alias: &str) -> Result<(), ServiceError> {
         let model = self.models.model(alias).ok_or_else(|| {
             if self.models.registration(alias).is_some() {
@@ -1204,14 +1222,37 @@ impl Router {
         &self,
         request: EmbeddingRequest,
     ) -> Result<EmbeddingReceipt, ServiceError> {
-        self.request_embeddings_with(request, MAX_INPUT_BYTES)
+        self.request_embeddings_with(request, MAX_INPUT_BYTES, None)
+    }
+
+    /// Wire adapters price the projection before admission. Recheck the
+    /// public capability and exact width on the original registry reader,
+    /// even if the alias was retired/reloaded after projection preflight.
+    pub fn request_public_embeddings(
+        &self,
+        request: EmbeddingRequest,
+        dimensions: usize,
+    ) -> Result<EmbeddingReceipt, ServiceError> {
+        self.request_embeddings_with(request, MAX_INPUT_BYTES, Some(dimensions))
     }
     pub(crate) fn request_embeddings_with(
         &self,
         request: EmbeddingRequest,
         input_limit: usize,
+        public_dimensions: Option<usize>,
     ) -> Result<EmbeddingReceipt, ServiceError> {
-        let (model, reader) = self.models.acquire_encoder(&request.model)?;
+        let (model, reader) = self
+            .models
+            .acquire_encoder(&request.model, public_dimensions.is_some())?;
+        let reader = reader;
+        let model = model;
+        if public_dimensions.is_some_and(|width| width != model.dimensions()) {
+            return Err(ServiceError::new(
+                409,
+                "model_changed",
+                "embedding model dimensions changed",
+            ));
+        }
         let context = self.config.context.min(model.max_context());
         request.validate(
             input_limit.min(MAX_INPUT_BYTES),

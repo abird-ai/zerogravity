@@ -6,7 +6,7 @@ scaffolding), CLI/TUI/Web and serving, ROCm, CUDA, Vulkan, then concrete
 compiled providers. Native Hugging Face/Safetensors and GGUF are primary.
 Older ordering below is context; valid owner constraints remain authoritative.
 
-Status: **OA-1–5 accepted** (27 Nov), scoped to actual supported text capabilities. OA-6A native BERT candidate workspace-qualified; OA-6B native shared Runtime/SDK workspace-qualified; OA-6C trained-source/wire qualification remains open. Later units remain ordered.
+Status: **OA-1–5 accepted** (27 Nov), scoped to actual supported text capabilities. OA-6A native BERT candidate workspace-qualified; OA-6B native shared Runtime/SDK workspace-qualified; OA-6C gated wire/SDK workspace-qualified; trained-source and built-in eligibility remain open. Later units remain ordered.
 
 26 Nov user decision: [UX-P native TUI polish](../cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md)
 was the prerequisite. The assembled P4B gate passed on ad7a4178;
@@ -1617,15 +1617,34 @@ mixed scheduling/lifecycle tests pass, 246/0/1 focused, strict lint.
 Actual loopback embedding refusal verified. Assembled gate:
 2,584/0/109 (321 Rust suites, 834s), complete isolated gate passed.
 
-**OA-6C:** acquire only authorized original pinned weights/config/vocab
-and pooling/module files; no learned payload present in current cache.
-Qualify real tokenizer IDs/usage and vector parity with an independent
-Hugging Face/SentenceTransformers reference and actual resource bounds.
-Bind actual qualified source to native and serving capability policy.
-Expose /v1/embeddings only after actual capability qualification. Verify
-single/batch strings and supported token-ID forms, ordering, exact usage,
-float/base64 encoding, explicit dimension/unsupported control refusal,
-and official OpenAI SDK on actual model. OA-6 remains open.
+**OA-6C (27 Nov): capability-gated wire integration.** Original
+registry captures explicit trusted EmbeddingEncoder public capability at
+registration, default false. Native candidate remains ineligible.
+Serving model list includes only original text and explicitly eligible
+encoder aliases. Actual ingress admission rechecks gate and projected
+width with original model reader. Existing service defaults refuse;
+no new execution owner. Authenticated strict JSON fixed/chunked input:
+string, string array, ID sequence or array of ID sequences (max 16 rows);
+original Runtime/selected encoder limits still apply. Dimensions omitted,
+null or exact fixed width; explicit unsupported reduction and non-null
+user refusal. Float or base64 little-endian F32, ordered rows and exact
+prompt/total usage. Original async receipt and cancellation/deadline,
+shared bounded response writer and independent retained wire credit.
+No partial successful projection, no HTTP-side math. Actual source-bound
+synthetic BERT with test-only explicit public declaration and native-only
+owner, real socket and installed OpenAI SDK 2.33.0 checks pass.
+Focused 246/0/1 (26 suites), strict lint. Assembled gate:
+2,585/0/109 (322 Rust suites, 575s), complete isolated gate passed. Built-in candidate remains unqualified for public
+serving; no learned payload acquired.
+
+**Remaining OA-6 acceptance:** authorize acquisition of the exact
+pinned original MiniLM weights (~90.9 MB) and config/vocab/tokenizer/
+module closure only. Compare actual IDs and trained vectors to
+independent reference with source-specific limits and actual admission,
+cancellation/retirement; bind qualified loader/catalog eligibility and
+rerun official SDK with trained source. No synthetic fixture or protocol
+pass is sufficient for trained-model acceptance. No automatic download,
+fake vectors or second execution owner. OA-6 remains open.
 
 ### OA-7 — Audio
 

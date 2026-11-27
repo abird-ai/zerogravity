@@ -1,5 +1,6 @@
 //! Transport seam over the caller's existing scheduler; never owns shutdown.
 use serde_json::Value;
+pub use zerogravity_engine::embedding::{EmbeddingReceipt, EmbeddingRequest};
 pub use zerogravity_engine::router::{
     Request, RequestEvents, SemanticRequest, ServiceError, TextInput, pending::ServingCharge,
 };
@@ -60,6 +61,27 @@ pub trait TextService: Send + Sync + 'static {
             "text service does not support input token counting",
         ))
     }
+    /// Only actual qualified adapters opt into this wire route. Legacy
+    /// services remain unsupported, without an extra scheduler or model map.
+    fn embedding_dimensions(&self, _alias: &str) -> Result<usize> {
+        Err(ServiceError::new(
+            404,
+            "not_found",
+            "embedding endpoint unavailable",
+        ))
+    }
+    fn request_embeddings_admitted(
+        &self,
+        _request: EmbeddingRequest,
+        _dimensions: usize,
+        _ingress: Vec<ServingCharge>,
+    ) -> Result<EmbeddingReceipt> {
+        Err(ServiceError::new(
+            404,
+            "not_found",
+            "embedding endpoint unavailable",
+        ))
+    }
     fn charge_ingress(&self, session: &str, bytes: u64) -> Result<ServingCharge>;
     fn model_ids(&self) -> Result<Vec<String>>;
     fn max_output(&self) -> Result<usize>;
@@ -75,6 +97,22 @@ pub trait TextService: Send + Sync + 'static {
 }
 
 impl TextService for Runtime {
+    fn embedding_dimensions(&self, alias: &str) -> Result<usize> {
+        self.public_embedding_dimensions(alias)
+    }
+    fn request_embeddings_admitted(
+        &self,
+        request: EmbeddingRequest,
+        dimensions: usize,
+        ingress: Vec<ServingCharge>,
+    ) -> Result<EmbeddingReceipt> {
+        // Native admission prices the actual owned input capacities. Keep
+        // the ingress owner through that handoff, then retire the JSON/copy
+        // allowance. No transport-owned inference work.
+        let receipt = self.request_public_embeddings(request, dimensions);
+        drop(ingress);
+        receipt
+    }
     fn count_input_tokens(&self, model: &str, input: &TextInput) -> Result<usize> {
         Runtime::count_input_tokens(self, model, input)
     }
@@ -130,6 +168,19 @@ impl TextService for Runtime {
 }
 
 impl TextService for Router {
+    fn embedding_dimensions(&self, alias: &str) -> Result<usize> {
+        self.public_embedding_dimensions(alias)
+    }
+    fn request_embeddings_admitted(
+        &self,
+        request: EmbeddingRequest,
+        dimensions: usize,
+        ingress: Vec<ServingCharge>,
+    ) -> Result<EmbeddingReceipt> {
+        let receipt = self.request_public_embeddings(request, dimensions);
+        drop(ingress);
+        receipt
+    }
     fn count_input_tokens(&self, model: &str, input: &TextInput) -> Result<usize> {
         Router::count_input_tokens(self, model, input)
     }
@@ -171,7 +222,7 @@ impl TextService for Router {
         Router::charge_ingress(self, session, bytes)
     }
     fn model_ids(&self) -> Result<Vec<String>> {
-        Ok(Router::model_ids(self).map(str::to_owned).collect())
+        Ok(Router::serving_model_ids(self).map(str::to_owned).collect())
     }
     fn max_output(&self) -> Result<usize> {
         Ok(Router::max_output(self))

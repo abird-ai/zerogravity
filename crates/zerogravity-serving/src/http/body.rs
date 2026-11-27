@@ -124,6 +124,37 @@ impl Body for Reply {
         matches!(self, Self::Full(None))
     }
 }
+pub(super) struct BoundedWriter {
+    pub(super) bytes: Vec<u8>,
+    pub(super) limit: usize,
+}
+impl io::Write for BoundedWriter {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        let end = self
+            .bytes
+            .len()
+            .checked_add(bytes.len())
+            .filter(|end| *end <= self.limit)
+            .ok_or_else(|| io::Error::other("response output byte limit"))?;
+        if end > self.bytes.capacity() {
+            let capacity = self
+                .bytes
+                .capacity()
+                .saturating_mul(2)
+                .max(end)
+                .min(self.limit);
+            self.bytes
+                .try_reserve_exact(capacity - self.bytes.len())
+                .map_err(io::Error::other)?;
+        }
+        self.bytes.extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
 /// The Bytes owner can itself retain a protocol record; projected lists
 /// carry their independent serialization reservation until the last write.
 pub(super) fn retained_json(bytes: Bytes, charge: Option<Arc<ServingCharge>>) -> Response<Reply> {
@@ -158,9 +189,7 @@ pub(super) fn json_response(
         .expect("fixed HTTP response headers")
 }
 
-pub(super) async fn next(
-    events: &RequestEvents,
-) -> Result<ResponseEvent, std::sync::mpsc::RecvError> {
+pub(super) async fn next<E>(events: &RequestEvents<E>) -> Result<E, std::sync::mpsc::RecvError> {
     poll_fn(|cx| events.events.poll_recv(cx)).await
 }
 pub(super) async fn completion(

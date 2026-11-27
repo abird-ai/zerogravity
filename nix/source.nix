@@ -34,6 +34,7 @@ in
       ];
       testFixture = builtins.elem relative [
         "crates/zerogravity-cli/tests/fixtures/serve_shutdown.py"
+        "crates/zerogravity/tests/fixtures/embedding_sdk.py"
         "crates/zerogravity-cli/tests/fixtures/tui_shell.py"
         "crates/zerogravity-cli/tests/fixtures/web_shell.py"
         "crates/zerogravity-artifacts/tests/fixtures/azure_wire.py"

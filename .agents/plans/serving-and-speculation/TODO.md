@@ -205,12 +205,18 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   and loopback refusal pass. Focused 246/0/1 (26 suites), strict lint.
   Explicit candidate feature; no trained-model or public eligibility.
 - [x] OA-6B full workspace acceptance: 2,584/0/109 (321 Rust suites, 834s), complete isolated gate passed.
-- [ ] OA-6C: authorize/acquire pinned MiniLM-L6-v2 original weights and
-  config/vocab/module closure; actual tokenizer and trained-vector
-  reference parity, memory and cancellation qualification. Bind qualified
-  source/catalog eligibility and expose /v1/embeddings only on that
-  actual capability, with exact input/usage/float/base64 projections,
-  dimensions/control refusal, official SDK and joined retirement.
+- [x] OA-6C wire implementation: original registry public-capability
+  gate (default false), original typed receipt, strict four input forms,
+  fixed-width controls, float/LE-F32 base64 and exact usage; bounded
+  projection, cancellation, catalog and changed-width admission refusal.
+  Actual source-bound synthetic BERT/installed OpenAI SDK 2.33.0 pass,
+  focused 246/0/1 (26 suites), strict lint. Candidate remains native-only.
+- [x] OA-6C workspace gate: 2,585/0/109 (322 Rust suites, 575s), complete isolated gate passed.
+- [ ] OA-6 final trained-model acceptance: authorize/acquire only pinned
+  MiniLM-L6-v2 original Safetensors (~90.9 MB) and exact config/tokenizer/
+  vocab/module closure, qualify actual learned vectors and tokenizer IDs
+  against independent reference and real memory/cancellation. Bind
+  qualified built-in loader/public eligibility and rerun actual SDK.
   No fabricated embedding or separate execution owner. OA-6 remains open.
 
 ### Current continuation — 22 Nov 2026

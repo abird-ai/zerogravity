@@ -7,6 +7,7 @@ pub(super) use background::{Jobs, start as start_background};
 pub(super) use input::{count, parse};
 pub(super) use store::{Pending, Store, conversation_route, route as resource_route};
 
+use super::body::BoundedWriter;
 use super::{
     ErrorReporting, TextUsage,
     body::{self, Data, Reply},
@@ -73,37 +74,6 @@ impl Wire {
         serde_json::to_writer(&mut buffer, value).map_err(io::Error::other)?;
         self.remaining -= buffer.bytes.len();
         Ok(Data::projected(buffer.bytes, owner, &self.charge))
-    }
-}
-
-struct BoundedWriter {
-    bytes: Vec<u8>,
-    limit: usize,
-}
-impl Write for BoundedWriter {
-    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-        let end = self
-            .bytes
-            .len()
-            .checked_add(bytes.len())
-            .filter(|end| *end <= self.limit)
-            .ok_or_else(|| io::Error::other("Responses output byte limit"))?;
-        if end > self.bytes.capacity() {
-            let capacity = self
-                .bytes
-                .capacity()
-                .saturating_mul(2)
-                .max(end)
-                .min(self.limit);
-            self.bytes
-                .try_reserve_exact(capacity - self.bytes.len())
-                .map_err(io::Error::other)?;
-        }
-        self.bytes.extend_from_slice(bytes);
-        Ok(bytes.len())
-    }
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
     }
 }
 

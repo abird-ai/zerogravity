@@ -12,8 +12,10 @@ OA-4A–E and OA-5 current-capability Chat/legacy Completions accepted.
 OA-6A source-bound native BERT candidate passed full workspace revalidation.
 OA-6B native embedding tasks, shared worker/registry lifecycle and the
 actual source-bound Rust SDK consumer passed focused and assembled
-workspace qualification. OA-6 remains open for trained-source and embedding wire
-acceptance. No learned payload acquired.
+workspace qualification. OA-6C capability-gated embedding wire adapter
+and actual installed SDK against the source-bound synthetic fixture
+passed focused and assembled workspace qualification. OA-6 remains open
+for authorized trained-source parity and built-in model eligibility.
 Appendix D preserves every post-M1 landing narrative, changed paths and
 exact engineering prose delta; Appendix B records unresolved markers.
 The preceding [UX-P-M1 pack](FULL_COMPREHENSIVE_HANDOFF_2026-11-26_UX_PM1.md),
@@ -41,7 +43,82 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — OA-6B shared native embedding Runtime (27 Nov)
+### Current checkpoint — OA-6C embedding wire integration (27 Nov)
+
+Started from clean signed 6603dfae on sole L5 main. Reused accepted OA-6A/B
+workspace evidence. No trained MiniLM checkpoint found; no acquisition or
+SDK download authorized/performed. The published original MiniLM config
+and WordPiece profile agree with the candidate profile. Actual trained
+geometry/tensors/tokenizer parity remains unqualified.
+
+EmbeddingEncoder::public_embeddings defaults false. The original Route
+captures the trusted adapter declaration once at registration; never infer
+public capability from dimension, source identity, model name or a request
+flag. Candidate remains native-only. Serving catalog enumerates the
+original text aliases plus explicit public encoder owners; text-only
+native handle listing remains unchanged. Public dimension lookup and
+actual admission use original registry readers; recheck qualification and
+width before request-ID/queue admission, including retirement/reload races.
+No new loader, public alias registry, runtime, scheduler or worker.
+Legacy TextService implementations explicitly refuse the optional route.
+
+POST /v1/embeddings uses the existing authenticated strict JSON and
+fixed/chunked ingress. Accept single nonempty string, homogeneous string
+batch, exact u32 ID sequence or homogeneous token-sequence batch (max 16
+rows). Existing Runtime checks aggregate input/context/vocabulary and
+native source semantics. Fixed dimensions only: omitted/null or exact
+width; no dimension shortening. Float default, explicit float/base64
+(little-endian F32). Non-null user and unknown/active unsupported controls
+refuse. Borrow input before pricing copies; existing native queue prices
+the retained input and output, then temporary ingress charges retire.
+One typed terminal on original async receipt with deadline; disconnect
+or listener shutdown cancels it. Reuse bounded response writer and
+retained JSON wire credit; output length/width/usage/finiteness checked,
+ordered embedding objects and truthful prompt/total tokens. No partial
+success JSON on serialization limit. Projection holds only charged bytes
+after result/receipt retire. Static cold endpoint marker is not model
+eligibility.
+
+Actual BERT synthetic fixture: deliberately explicit public test adapter
+and native-only owner with equal source identity verify per-registration
+visibility, direct admission gate and changed-width refusal. Actual socket
+fixed/chunked, bearer, four input forms, float/LE-F32 base64, usage,
+invalid controls, projection limit, shutdown cancellation, model/result
+retirement. Installed official OpenAI SDK 2.33.0 used against this same
+source-bound fixture, strict float schema and ordinary base64/default
+decoder (SDK declares list[float] even for explicit base64). JSON shortest
+F32 decimal vs Python F64 comparison initially failed; compare original
+F32 bits instead. Corrected fixture passes. All focused tests 246/0/1
+(26 suites), strict Clippy passed after collapsing one validation branch.
+No trained numerical/semantic, physical GPU or throughput claim.
+Full isolated gate: 2,585/0/109 (322 Rust suites, 575s), complete isolated gate passed.
+
+Next: **explicit acquisition authorization is the only external blocker
+for trained-source qualification.** Original pinned
+sentence-transformers/all-MiniLM-L6-v2 model.safetensors (~90.9 MB) and
+the exact config/tokenizer/pooling/module closure; published revision
+1110a243fdf4706b3f48f1d95db1a4f5529b4d41, upstream Safetensors SHA256
+53aa51172d142c89d9012cce15ae4d6cc0ca6895895114379cacb4fab128d9db
+(official Hugging Face metadata, not locally verified payload).
+Use existing acquisition/manifest authentication and bounded file selection,
+not the entire
+repository, pickle, alternate weight formats or SDK downloads. Cached
+independent reference imports verified: PyTorch 2.11.0, Transformers
+5.5.4 BertModel/BertConfig/BertTokenizerFast, Safetensors 0.7.0,
+Tokenizers 0.22.2; include cached sympy 1.14.0 closure (initial missing
+sympy corrected, no downloads). Log target/oa6c-reference-env-retry.log.
+Qualify actual tokenizer IDs and learned vectors against that offline
+reference, including Unicode, length/usage,
+cancellation and memory bounds. Bind qualified source/loader and actual
+public eligibility, rerun SDK with trained source, complete OA-6. Do not
+mark built-in candidate qualified by the synthetic wire fixture. Later
+OA-7 through OA-10 remain ordered.
+
+Logs: target/oa6c-compile.log, target/oa6c-sdk.log (fixture-only F64
+comparison failure), target/oa6c-sdk-retry.log, target/oa6c-focused.log,
+target/oa6c-clippy.log, target/oa6c-assembled.log.
+
+### Prior checkpoint — OA-6B shared native embedding Runtime (27 Nov)
 
 Started from clean signed 6a5e3518 on sole L5 main. Retried the complete
 isolated quality gate on that exact unchanged OA-6A source before applying

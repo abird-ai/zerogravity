@@ -818,7 +818,12 @@ owner, synthetic numerical/ownership qualification and complete unchanged
 workspace gate (2,581/0/109). OA-6B native shared Runtime/registry/FIFO/workers
 and typed charged receipt integrated; actual synthetic source-bound SDK,
 mixed scheduling and refusal tests pass (246/0/1 focused, strict lint).
-Assembled gate: 2,584/0/109 (321 Rust suites, 834s), complete isolated gate passed. OA-6 remains open for authorized actual
+Assembled gate: 2,584/0/109 (321 Rust suites, 834s), complete isolated gate
+passed. OA-6C public embedding wire adapter implemented over the same
+registered encoder and receipt; explicit qualification gate, four input
+forms, exact usage/float/base64, bounded projection and actual synthetic
+BERT/installed SDK consumer passed (246/0/1 focused, strict lint).
+Assembled gate: 2,585/0/109 (322 Rust suites, 575s), complete isolated gate passed. OA-6 remains open for authorized actual
 MiniLM trained source, independent tokenizer/vector parity and SDK wire
 acceptance.
 Preserve the original runtime, admission and listener owner.

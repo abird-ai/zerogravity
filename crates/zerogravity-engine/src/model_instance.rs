@@ -98,6 +98,12 @@ pub trait EmbeddingEncoder: Send + Sync {
     fn max_context(&self) -> usize;
     fn vocabulary_size(&self) -> u64;
     fn dimensions(&self) -> usize;
+    /// Trusted adapter declaration of a qualified serving capability.
+    /// Captured once at registration. Candidates and native-only encoders
+    /// do not become public merely because they can calculate vectors.
+    fn public_embeddings(&self) -> bool {
+        false
+    }
     fn validate_admission(
         &self,
         admission: &zerogravity_core::resource_arbiter::TransferAdmission,

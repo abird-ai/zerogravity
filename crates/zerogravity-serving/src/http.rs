@@ -17,6 +17,7 @@ use zerogravity_engine::router::{FailureDetails, SemanticRequest, ServiceError};
 
 mod body;
 mod completions;
+mod embeddings;
 use completions::{completion_response, parse_body};
 mod ingress_body;
 // Dormant until a real modality route consumes admitted forms.

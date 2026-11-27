@@ -21,8 +21,9 @@ historical; read the live current handoff for accepted OA-4A–E
 and OA-5 current-capability text compatibility.
 Current unit: [OA-6 Embeddings](serving-and-speculation/NEXT_ITERATION_OPENAI_COMPATIBLE_SERVING.md#oa-6--embeddings):
 OA-6A source-bound BERT candidate workspace-qualified; OA-6B shared
-native embedding Runtime/SDK workspace-qualified; OA-6C trained-source
-and public embedding wire qualification remain open.
+native embedding Runtime/SDK workspace-qualified; OA-6C capability-gated
+wire/SDK workspace-qualified; authorized trained-source parity and built-in
+public eligibility remain open.
 OA-4 fully accepted after the serial resident lifecycle retry; OA-5
 focused/SDK/assembled qualified. Deeper M2 inspection stays optional and
 capability-bound. §10.2 records remaining packaging and physical

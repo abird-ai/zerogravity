@@ -146,6 +146,7 @@ if [[ "$(uname -s)" == Linux ]]; then
   echo "Checking serving shutdown and owned provider stop evidence..."
   cargo clippy --locked --offline -p zerogravity-cli --no-default-features --features serve --all-targets -- -D warnings
   cargo test --locked --offline -p zerogravity-cli --no-default-features --features serve --all-targets
+  cargo test --locked --offline -p zerogravity --no-default-features --features model-bert-cpu-candidate,serve --test embedding_candidate
   python3 -B tools/test-serve-lifecycle.py
   python3 -B tools/serve-compare.py --self-test
   python3 -B tools/serve-matrix.py --self-test

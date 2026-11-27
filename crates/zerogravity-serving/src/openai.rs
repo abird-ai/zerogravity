@@ -1,4 +1,5 @@
-//! Endpoint names do not imply protocol or model implementation.
+//! Legacy cold endpoint markers do not assert loaded-model capability.
+//! Actual embedding eligibility is checked on the original registry at ingress/admission.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Endpoint {
     Health,

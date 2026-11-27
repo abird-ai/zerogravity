@@ -5,6 +5,18 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 27 Nov — OA-6C embedding protocol integration
+
+Explicit public encoder registration gate, original catalog and native
+typed receipt, strict four-form input, fixed-width control, float/LE-F32
+base64 output, actual usage, bounded response and cancellation. Actual
+source-bound synthetic BERT socket and installed OpenAI SDK 2.33.0 pass;
+246/0/1 focused (26 suites), strict lint. Assembled gate:
+2,585/0/109 (322 Rust suites, 575s), complete isolated gate passed. Built-in candidate stays native-only. No trained
+MiniLM weights acquired, numerical/semantic/performance qualification or
+automatic public model eligibility. Authorization for pinned original
+weights and independent trained-vector parity remain the OA-6 blocker.
+
 ## 27 Nov — OA-6B native embedding Runtime
 
 Original registry/queue/worker/receipt admits bounded native encoder batches

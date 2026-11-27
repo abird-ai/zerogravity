@@ -60,12 +60,15 @@ pub(super) struct Route<A: Executor> {
     drained: Condvar,
     retire: Option<ModelRetirement<A::Model>>,
     independent_retirement: bool,
+    public_embeddings: bool,
     performance: RegistrationPerformance,
 }
 impl<A: Executor> Route<A> {
     fn new(model: RouteModel<A::Model>) -> Result<Self> {
         let retire = A::selective_retirement();
         let independent_retirement = matches!(&model, RouteModel::Encoder(_)) || retire.is_some();
+        let public_embeddings =
+            matches!(&model, RouteModel::Encoder(encoder) if encoder.public_embeddings());
         let id = NEXT_REGISTRATION
             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |next| {
                 next.checked_add(1)
@@ -84,6 +87,7 @@ impl<A: Executor> Route<A> {
             drained: Condvar::new(),
             retire,
             independent_retirement,
+            public_embeddings,
             performance: RegistrationPerformance::new(std::time::Instant::now()),
         })
     }
@@ -341,6 +345,7 @@ pub(crate) trait Models: Send + Sync {
     fn acquire_encoder(
         &self,
         alias: &str,
+        public: bool,
     ) -> std::result::Result<(Arc<dyn EmbeddingEncoder>, ModelRead), ServiceError>;
     fn begin_unload_registration(
         &self,
@@ -350,7 +355,7 @@ pub(crate) trait Models: Send + Sync {
     fn alias_slots(&self) -> usize;
     fn ready_counts(&self) -> (usize, usize);
     fn catalog_snapshot(&self, registrations: Option<&[u64]>) -> Result<Vec<ModelSnapshot>>;
-    fn alias(&self, index: usize) -> Option<&str>;
+    fn alias(&self, index: usize, public: bool) -> Option<&str>;
     fn begin_unload(&self, model: &ModelInstance) -> Result<Option<SelectiveRetirement>>;
     fn admission(
         &self,
@@ -397,16 +402,19 @@ impl<A: Executor> Models for Registry<A> {
     fn acquire_encoder(
         &self,
         alias: &str,
+        public: bool,
     ) -> std::result::Result<(Arc<dyn EmbeddingEncoder>, ModelRead), ServiceError> {
-        let (model, reader) = self
-            .routes
-            .get(alias)
-            .ok_or_else(missing_model)?
-            .acquire()?;
+        let route = self.routes.get(alias).ok_or_else(missing_model)?;
+        let (model, reader) = route.acquire()?;
         let reader = reader;
         let model = model;
         match model {
-            RouteModel::Encoder(model) => Ok((model, reader)),
+            RouteModel::Encoder(model) if !public || route.public_embeddings => Ok((model, reader)),
+            RouteModel::Encoder(_) => Err(ServiceError::new(
+                404,
+                "not_found",
+                "encoder is not qualified for public serving",
+            )),
             RouteModel::Text(_) => Err(ServiceError::new(
                 400,
                 "unsupported_task",
@@ -516,12 +524,13 @@ impl<A: Executor> Models for Registry<A> {
         }
         Ok(entries)
     }
-    fn alias(&self, index: usize) -> Option<&str> {
+    fn alias(&self, index: usize, public: bool) -> Option<&str> {
         let (alias, route) = self.routes.iter().nth(index)?;
         let state = route.state();
         (state.lifecycle == ModelLifecycle::Ready
-            && matches!(state.model.as_ref(), Some(RouteModel::Text(_))))
-        .then_some(alias.as_str())
+            && (matches!(state.model.as_ref(), Some(RouteModel::Text(_)))
+                || (public && route.public_embeddings)))
+            .then_some(alias.as_str())
     }
     fn begin_unload(&self, model: &ModelInstance) -> Result<Option<SelectiveRetirement>> {
         let route = self
@@ -553,6 +562,7 @@ impl<A: Executor> Models for Registry<A> {
 pub struct ModelIds<'a> {
     pub(crate) models: &'a dyn Models,
     pub(crate) index: usize,
+    pub(crate) public: bool,
 }
 impl<'a> Iterator for ModelIds<'a> {
     type Item = &'a str;
@@ -560,7 +570,7 @@ impl<'a> Iterator for ModelIds<'a> {
         while self.index < self.models.alias_slots() {
             let index = self.index;
             self.index += 1;
-            if let Some(alias) = self.models.alias(index) {
+            if let Some(alias) = self.models.alias(index, self.public) {
                 return Some(alias);
             }
         }

@@ -1,7 +1,8 @@
 //! Owned HTTP/1 transport. Hyper owns protocol framing; the existing service
 //! owns all model admission, events and cancellation. No detached tasks.
 use super::{
-    ErrorReporting, bind_token_metrics, body, ingress_body, parse_body, responses, websocket,
+    ErrorReporting, bind_token_metrics, body, embeddings, ingress_body, parse_body, responses,
+    websocket,
 };
 use crate::{TextService, ingress::IngressLimits, metrics::Counters};
 use hyper::{
@@ -389,6 +390,7 @@ impl Connection {
                     | "/v1/chat/completions"
                     | "/v1/responses"
                     | "/v1/responses/input_tokens"
+                    | "/v1/embeddings"
             ) || path == "/v1/conversations"
                 || path.starts_with("/v1/conversations/");
             let length = validate_headers(&parts, host.config.limits.body_bytes, accepts_chunked)?;
@@ -521,8 +523,9 @@ impl Connection {
             let chat = path == "/v1/chat/completions";
             let responses = path == "/v1/responses";
             let counting = path == "/v1/responses/input_tokens";
+            let embedding = path == "/v1/embeddings";
             if parts.method != Method::POST
-                || !(chat || responses || counting || path == "/v1/completions")
+                || !(chat || responses || counting || embedding || path == "/v1/completions")
             {
                 return Err(ServiceError::new(404, "not_found", "unsupported endpoint"));
             }
@@ -535,6 +538,22 @@ impl Connection {
                     "unsupported_media_type",
                     "JSON Content-Type required",
                 ));
+            }
+            if embedding {
+                let (request, wire) = embeddings::parse(
+                    &raw[..used],
+                    host.service.as_ref(),
+                    &mut ingress,
+                    host.config.limits.output_bytes,
+                )?;
+                drop(raw);
+                drop(parts);
+                host.shutdown.check()?;
+                let events = host
+                    .service
+                    .request_embeddings_admitted(request, wire.dimensions(), ingress)
+                    .map_err(embeddings::parameter_error)?;
+                return embeddings::completion(events, wire).await;
             }
             if counting {
                 let input_tokens = responses::count(
