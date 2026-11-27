@@ -218,6 +218,21 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   against independent reference and real memory/cancellation. Bind
   qualified built-in loader/public eligibility and rerun actual SDK.
   No fabricated embedding or separate execution owner. OA-6 remains open.
+- [x] OA-7A: cached original Gemma4 E2B native audio frontend, complete
+  12-layer learned USM encoder and language projection (F32 reference,
+  BF16 coefficients), reusable CPU FFT/conv and original source/credit.
+  Actual independent Transformers/PyTorch parity: 4/16 x1536 rows,
+  max abs 2.5749e-5/4.3988e-5, relL2 1.039e-6/1.594e-6; log-mel
+  max abs 4.77e-7, cancellation and ownership pass (28.20s). Focused
+  125/0/13, strict lint. No download, ASR or public audio eligibility.
+- [x] OA-7A assembled workspace gate: 2,587/0/110 (322 Rust suites, 570s), complete isolated gate passed.
+- [ ] OA-7B: reuse one original authenticated source for audio/language;
+  model-owned multimodal placeholder/per-layer input/attention and state,
+  qualified actual audio-conditioned text execution and genuine speech
+  through shared Runtime/registry/scheduler/receipt. Then native
+  transcription endpoint via existing bounded multipart. Translation,
+  speech synthesis and streaming remain gated by real capability.
+  No second source/runtime, fake transcript or HTTP-only model math.
 
 ### Current continuation — 22 Nov 2026
 

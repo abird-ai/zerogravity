@@ -825,7 +825,13 @@ forms, exact usage/float/base64, bounded projection and actual synthetic
 BERT/installed SDK consumer passed (246/0/1 focused, strict lint).
 Assembled gate: 2,585/0/109 (322 Rust suites, 575s), complete isolated gate passed. OA-6 remains open for authorized actual
 MiniLM trained source, independent tokenizer/vector parity and SDK wire
-acceptance.
+acceptance. Continue ready OA-7 audio work using existing original Gemma
+4 E2B checkpoint: OA-7A native CPU F32 waveform frontend, all 12 learned
+audio layers and language projector; actual independent Transformers
+parity (4/16 x1536 rows), cancellation and ownership pass. Focused
+125/0/13, strict lint. Assembled: 2,587/0/110 (322 Rust suites, 570s), complete isolated gate passed. Next shared original
+source + actual multimodal decoder/Runtime transcription; no audio
+endpoint or ASR claim until real completion.
 Preserve the original runtime, admission and listener owner.
 
 - [ ] Close the [OpenAI-compatible serving iteration](serving-and-speculation/NEXT_ITERATION_OPENAI_COMPATIBLE_SERVING.md):

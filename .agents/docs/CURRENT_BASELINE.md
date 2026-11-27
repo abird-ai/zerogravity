@@ -5,6 +5,19 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 27 Nov — OA-7A original Gemma 4 audio encoder
+
+Native waveform-to-language-token F32 CPU reference over original
+cached E2B BF16 audio tower/projector. Full 10,246,621,918-byte source
+authenticated/owned; 752 original audio tensors (614,368,768 bytes).
+Independent installed Transformers/PyTorch reference, actual 2720/
+10240 sample waveforms, 4/16 x1536 rows; log-mel max abs 4.77e-7,
+projection max abs 2.5749e-5/4.3988e-5, relL2 1.039e-6/1.594e-6.
+Actual cancellation and physical result retirement pass, 28.20s.
+Focused 125/0/13 (6 suites), strict lint; assembled:
+2,587/0/110 (322 Rust suites, 570s), complete isolated gate passed. No new model downloads, full ASR/TTS/streaming
+or physical GPU/performance claim. OA-6 final trained acceptance open.
+
 ## 27 Nov — OA-6C embedding protocol integration
 
 Explicit public encoder registration gate, original catalog and native

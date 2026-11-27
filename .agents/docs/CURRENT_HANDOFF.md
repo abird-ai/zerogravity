@@ -16,6 +16,10 @@ workspace qualification. OA-6C capability-gated embedding wire adapter
 and actual installed SDK against the source-bound synthetic fixture
 passed focused and assembled workspace qualification. OA-6 remains open
 for authorized trained-source parity and built-in model eligibility.
+OA-7A advanced on the already cached complete Gemma 4 E2B learned audio
+source: native F32 CPU waveform-to-language-soft-token reference and
+independent actual trained-source parity and full workspace gate passed;
+no ASR/TTS/public audio eligibility.
 Appendix D preserves every post-M1 landing narrative, changed paths and
 exact engineering prose delta; Appendix B records unresolved markers.
 The preceding [UX-P-M1 pack](FULL_COMPREHENSIVE_HANDOFF_2026-11-26_UX_PM1.md),
@@ -43,7 +47,114 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — OA-6C embedding wire integration (27 Nov)
+### Current checkpoint — OA-7A original Gemma 4 audio encoder (27 Nov)
+
+Started from clean signed fa269df1 on sole L5 main. OA-6C accepted
+workspace/SDK fixture evidence reused. MiniLM remains absent; continuation
+"next" is not explicit download authorization. Read-only L5/A1/X2 visible
+model-cache inventory found no independent trained embedding/speech
+checkpoint. Chose the already present original Gemma 4 E2B audio tower
+and language projection rather than another download or fake speech
+response. OA-6 final trained acceptance stays open.
+
+Exact source already cached: google/gemma-4-E2B-it at
+3e22461f65e89153144f8adb70e3b8c2cc9845a7, full cache snapshot
+ba32b7693d0f7dcbdf4f00f94d13bd61c838e2d7a927f1879817cd5e74fca8b1,
+original model.safetensors 10,246,621,918 bytes (trusted digest
+2db5482b20d746879bb3ef79b5203e9075a2e2b98f54ec7c2f281c1477ddc550).
+752 original audio/projector tensors, 614,368,768 BF16 learned bytes.
+No model/SDK acquisition, new source identity scheme, cache mutation,
+separate runtime, HTTP-only model, or borrowed mutable source map.
+
+New explicit model-gemma4 audio-reference feature in original family.
+Verified same-snapshot config/processor and complete Safetensors owner,
+physical cold fit and caller byte bound before source copy, exact
+audio-tensor dtype/shape/closure, finite learned coefficients, original
+clipped-linear scalar bounds (allow signed infinities, reject NaN/inverted
+bounds). Retain whole original source in this reference path; matrices
+borrow exact BF16 bytes and use shared source projection F32 arithmetic;
+decode only small conv/norm/scalar parameters. Reusable CPU magnitude FFT
+plan, NHWC 3x3 stride-two subsampling cross-correlation and causal
+depthwise convolution, original RMSNorm/LayerNorm/SiLU/softmax/GEMV.
+Family-owned 16 kHz normalized mono PCM, semicausal periodic-Hann
+320-sample/160-hop/512-FFT magnitude log-mel with HTK 128 filters and
+source floor; one unpadded utterance, no silent resampling or truncation.
+Two stride-2 conv + affine LayerNorm/ReLU stages, projection to hidden
+1024, 12 USM Conformer layers (two residual-weighted clipped SiLU FFNs,
+8-head causal relative-position attention, GLU/light causal convolution,
+RMSNorm and clipping), biased audio output projection to 1536, unscaled
+RMSNorm and learned language-space projection. Original supported
+attention profile chunk=12, left=13/right=0, visible distances 0..11;
+direct finite causal window equivalent to blocked relative shift, not
+decoder RoPE. AudioFeatures and AudioTokens are source-bound immutable
+rows with original resource credit. Cancellation checkpoints through
+frontend, convolution, projections and layers. Source-independent
+result allocation survives model retirement. Config maximum 480k samples
+(30s) is a bound, not tested full-window throughput/accuracy.
+
+Independent reference tool tools/gemma4-audio-reference/reference.py
+uses cached PyTorch 2.11.0 / Transformers 5.5.4 / Safetensors 0.7.0,
+strict actual original tensor closure, F32 activations/weights widened
+from BF16. Single-utterance batch convention required by installed
+feature extractor; padded/valid-row equality verified. Initial
+diagnostic forced eager additive text mask and audio logical_not consumed
+it incorrectly; observed mismatch relL2 .288. Corrected independent
+reference to SDPA boolean mask builder, assert first valid self key
+and no future key; actual audio attention remains original blocked
+implementation. No native math/tolerance changed to fit bad mask.
+Initial native test cache policy mismatch refused before loading; use
+existing persistent 96 GiB disk policy (103079215104), no policy changes.
+
+Actual isolated release test passed in 28.20s:
+- full source authentication/binding 16.775s, retained 10,254,953,566
+  bytes (whole original checkpoint + metadata/small params);
+- 2720 samples/16 frames/4 language rows: log-mel max abs 4.77e-7,
+  6144 projected values max abs 2.5749e-5, relL2 1.039e-6;
+- 10240 samples/63 frames/16 rows (crosses 12-token block): log-mel
+  max abs 4.77e-7, 24576 projected values max abs 4.3988e-5,
+  relL2 1.594e-6;
+- all coordinates passed predeclared abs2e-3 + rel2e-4*abs(ref), relL2
+  <=2e-4 (actual much tighter); actual cancellation after scratch
+  admission and model/result independent retirement, invalid PCM rate/
+  nonfinite/short refusal passed. F32 reference only; not BF16 physical
+  backend parity, speech accuracy or production performance claim.
+
+Focused CPU/Gemma 125/0/13 (6 suites), strict Clippy passed; learned
+ignored test separately executed above. New audio primitive/config
+coverage wired into CPU/Nix quality features; no default inference
+catalog eligibility. Assembled isolated gate: 2,587/0/110 (322 Rust suites, 570s), complete isolated gate passed.
+
+Next OA-7B: consume actual learned audio rows in original Gemma4
+language execution with one shared verified source owner, not a second
+10 GB checkpoint allocation. Inspect original multimodal placeholder
+replacement, tokenizer/template, per-layer inputs and attention/state
+semantics. Installed original Gemma4Model.forward replaces multimodal
+placeholder IDs with text PAD IDs, computes per-layer inputs using
+the original PAD embedding before scattering valid projected audio
+rows into the main input embedding, then applies the model's ordinary
+position/attention policy. Preserve those two distinct inputs; do not
+treat audio rows as lookup IDs or derive PLE from audio vectors. Qualify
+exact audio-conditioned prefill/decode against independent original
+model and a genuine local speech sample. Only
+after real native transcription completion through existing Runtime/
+registry/scheduler/receipt expose supported multipart /v1/audio/
+transcriptions. Translation, TTS and streaming remain separately
+capability-gated. Do not claim the encoder alone transcribes speech.
+OA-6 actual MiniLM still needs explicit acquisition authorization.
+
+Logs: target/oa7-reference-mask.log, target/oa7-learned-mask.log,
+target/oa7-focused.log, target/oa7-assembled.log. Earlier failed
+reference/test attempts retained under oa7-reference*, oa7-learned*.
+Diagnostic command: original offline reference script takes cache
+snapshot files directory and run-local JSON path; set
+ZG_GEMMA4_AUDIO_REFERENCE, ZG_GEMMA4_AUDIO_SNAPSHOT,
+ZG_GEMMA4_AUDIO_CACHE_BYTES (and optional ZG_GEMMA4_AUDIO_CACHE).
+Use isolated release cargo test -p zerogravity-model-gemma4
+--features audio-reference audio::tests::actual_original_audio_tower_matches_transformers_and_retires
+-- --ignored --exact --nocapture --test-threads=1, offline/locked,
+RAYON_NUM_THREADS=4. Existing HF/torch/sympy closure from OA-6C.
+
+### Prior checkpoint — OA-6C embedding wire integration (27 Nov)
 
 Started from clean signed 6603dfae on sole L5 main. Reused accepted OA-6A/B
 workspace evidence. No trained MiniLM checkpoint found; no acquisition or

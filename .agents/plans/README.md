@@ -19,11 +19,12 @@ OA-1–3/OA-4A/B, actual evidence, limitations and next coherent work.
 The [OA-4C takeover prompt](../docs/NEXT_AGENT_2026-11-27_OA4C.md) is
 historical; read the live current handoff for accepted OA-4A–E
 and OA-5 current-capability text compatibility.
-Current unit: [OA-6 Embeddings](serving-and-speculation/NEXT_ITERATION_OPENAI_COMPATIBLE_SERVING.md#oa-6--embeddings):
-OA-6A source-bound BERT candidate workspace-qualified; OA-6B shared
-native embedding Runtime/SDK workspace-qualified; OA-6C capability-gated
-wire/SDK workspace-qualified; authorized trained-source parity and built-in
-public eligibility remain open.
+Current unit: [OA-7 Audio](serving-and-speculation/NEXT_ITERATION_OPENAI_COMPATIBLE_SERVING.md#oa-7--audio):
+OA-7A original cached Gemma 4 E2B waveform-to-language-token CPU reference
+and actual learned numerical parity passed; native multimodal decoder/
+Runtime/transcription integration next. OA-6A/B/C workspace-qualified;
+MiniLM trained-source authorization/parity and built-in public eligibility
+remain open. No new model download.
 OA-4 fully accepted after the serial resident lifecycle retry; OA-5
 focused/SDK/assembled qualified. Deeper M2 inspection stays optional and
 capability-bound. §10.2 records remaining packaging and physical

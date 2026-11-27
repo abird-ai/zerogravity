@@ -6,7 +6,7 @@ scaffolding), CLI/TUI/Web and serving, ROCm, CUDA, Vulkan, then concrete
 compiled providers. Native Hugging Face/Safetensors and GGUF are primary.
 Older ordering below is context; valid owner constraints remain authoritative.
 
-Status: **OA-1–5 accepted** (27 Nov), scoped to actual supported text capabilities. OA-6A native BERT candidate workspace-qualified; OA-6B native shared Runtime/SDK workspace-qualified; OA-6C gated wire/SDK workspace-qualified; trained-source and built-in eligibility remain open. Later units remain ordered.
+Status: **OA-1–5 accepted** (27 Nov), scoped to actual supported text capabilities. OA-6A native BERT candidate workspace-qualified; OA-6B native shared Runtime/SDK workspace-qualified; OA-6C gated wire/SDK workspace-qualified; trained-source and built-in eligibility remain open. OA-7A original cached Gemma4 audio encoder actual reference parity passed; native multimodal decoder/ASR integration remains open. Later units remain ordered.
 
 26 Nov user decision: [UX-P native TUI polish](../cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md)
 was the prerequisite. The assembled P4B gate passed on ad7a4178;
@@ -1648,13 +1648,36 @@ fake vectors or second execution owner. OA-6 remains open.
 
 ### OA-7 — Audio
 
-Add:
+**OA-7A (27 Nov): original trained audio encoder.** OA-6 final MiniLM
+acquisition not authorized; advance independent ready work on cached
+complete google/gemma-4-E2B-it source. Explicit audio-reference feature,
+original authenticated checkpoint/processor, source-shape/clip closure.
+Shared CPU FFT, convolution, norm, softmax and source projection;
+model-owned 16 kHz mono unpadded semicausal Hann magnitude log-mel,
+two stride-2 subsampling convs and projection, complete 12-layer
+USM Conformer with causal relative attention and light convolution,
+learned 1536-dimensional language-space projection. No waveform
+truncation/resampling, separate runtime or model-derived dummy text.
+Finite source-bound feature/output owners and original resource
+admission/cancellation; full original 10.25 GB source retained.
+Actual cached learned source and independent installed PyTorch 2.11/
+Transformers 5.5.4 F32 reference: 4/16 x1536 projected values, max
+absolute 2.5749e-5/4.3988e-5, relL2 1.039e-6/1.594e-6; log-mel
+4.77e-7 max abs. Reference explicitly boolean SDPA mask, original
+blocked attention and padded/valid row equivalence. Cancellation and
+result retirement pass. Focused 125/0/13, strict lint. Assembled:
+2,587/0/110 (322 Rust suites, 570s), complete isolated gate passed. This is encoder/projector evidence, not ASR/TTS or
+public eligibility.
 
-- transcription;
-- translation;
-- speech;
-
-over common ASR/TTS runtime capabilities.
+**OA-7B:** one original source owner for audio and language, actual
+model-owned multimodal input/template/placeholder insertion,
+per-layer input/attention/state semantics, audio-conditioned prefill
+and decode through common Runtime/registry/scheduler/receipt. Qualify
+real learned source and genuine speech, actual transcript and joined
+lifecycle before public audio transcription. Do not attach audio rows
+to a fake decoder or duplicate source bytes. Reuse existing multipart
+and bounded transport. Translation/speech/streaming only over
+actual qualified ASR/TTS runtime capabilities.
 
 ### OA-8 — Images
 

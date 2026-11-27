@@ -18,3 +18,6 @@ pub mod plan;
 
 #[cfg(all(feature = "execution", target_os = "linux"))]
 pub mod execution;
+
+#[cfg(all(feature = "audio-reference", target_os = "linux"))]
+pub mod audio;
