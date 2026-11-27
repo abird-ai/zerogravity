@@ -838,7 +838,11 @@ retirement pass; focused222/0/14 strict lint. Assembled:
 through existing Runtime; independent local synthesized speech transcript
 and exact native prompt. Native learned: actual native SDK "Hello world", input=41, output=3 including stop, finish=Stop; 263.484s completion, full real test passed 292.62s (including cancellation/retirement).
 Focused247/0/2 strict lint. Assembled: 2,593/0/112 (324 Rust suites, 617s), complete isolated gate passed.
-OA-7D public wire remains open; no natural-speech quality claim.
+OA-7D capability-gated multipart PCM16 WAV, original public registration
+and receipt, JSON exact usage/text, strict controls/length and output
+limits. Focused249/0/3 strict lint. Actual learned: actual installed OpenAI SDK2.33.0 strict JSON "Hello world", input41/output3/total44, exact independent reference; 264.264s SDK completion, real learned wire test passed292.73s including retirement.
+Assembled: 2,595/0/112 (324 Rust suites, 904s), complete isolated gate passed. OA-7E actual source-supported translation
+next; no natural-speech quality, TTS or streaming claim.
 Preserve the original runtime, admission and listener owner.
 
 - [ ] Close the [OpenAI-compatible serving iteration](serving-and-speculation/NEXT_ITERATION_OPENAI_COMPATIBLE_SERVING.md):

@@ -1296,16 +1296,85 @@ impl Router {
         &self,
         request: TranscriptionRequest,
     ) -> Result<TranscriptionReceipt, ServiceError> {
-        self.request_transcription_with(request, MAX_INPUT_BYTES)
+        self.request_transcription_with(request, MAX_INPUT_BYTES, None)
+    }
+    fn speech_limits(
+        &self,
+        alias: &str,
+        model: &dyn SpeechRecognizer,
+        input_limit: usize,
+    ) -> Result<crate::transcription::TranscriptionLimits, ServiceError> {
+        let registration = self
+            .models
+            .registration(alias)
+            .ok_or_else(|| ServiceError::new(404, "model_not_found", "model is not registered"))?;
+        let context = self.config.context.min(model.max_context());
+        let limits = crate::transcription::TranscriptionLimits {
+            registration_id: registration.id,
+            max_samples: model
+                .max_samples()
+                .min(input_limit.min(MAX_INPUT_BYTES) / 4),
+            max_tokens: model
+                .max_output_tokens()
+                .min(self.config.output)
+                .min(context.saturating_sub(1)),
+            max_output_bytes: model.max_output_bytes(),
+        };
+        if limits.max_samples == 0 || limits.max_tokens == 0 {
+            return Err(ServiceError::new(
+                400,
+                "unsupported_task",
+                "no admitted speech input/output capacity",
+            ));
+        }
+        Ok(limits)
+    }
+    pub fn public_transcription_limits(
+        &self,
+        alias: &str,
+    ) -> Result<crate::transcription::TranscriptionLimits, ServiceError> {
+        self.public_transcription_limits_with(alias, MAX_INPUT_BYTES)
+    }
+    pub(crate) fn public_transcription_limits_with(
+        &self,
+        alias: &str,
+        input_limit: usize,
+    ) -> Result<crate::transcription::TranscriptionLimits, ServiceError> {
+        let (model, reader) = self.models.acquire_speech(alias, true)?;
+        let reader = reader;
+        let model = model;
+        let limits = self.speech_limits(alias, model.as_ref(), input_limit);
+        drop(model);
+        drop(reader);
+        limits
+    }
+    pub fn request_public_transcription(
+        &self,
+        request: TranscriptionRequest,
+        limits: crate::transcription::TranscriptionLimits,
+    ) -> Result<TranscriptionReceipt, ServiceError> {
+        self.request_transcription_with(request, MAX_INPUT_BYTES, Some(limits))
     }
     pub(crate) fn request_transcription_with(
         &self,
         request: TranscriptionRequest,
         input_limit: usize,
+        expected: Option<crate::transcription::TranscriptionLimits>,
     ) -> Result<TranscriptionReceipt, ServiceError> {
-        let (model, reader) = self.models.acquire_speech(&request.model)?;
+        let (model, reader) = self
+            .models
+            .acquire_speech(&request.model, expected.is_some())?;
         let reader = reader;
         let model = model;
+        if let Some(expected) = expected
+            && self.speech_limits(&request.model, model.as_ref(), input_limit)? != expected
+        {
+            return Err(ServiceError::new(
+                409,
+                "model_changed",
+                "speech model capability changed",
+            ));
+        }
         let context = self.config.context.min(model.max_context());
         request.validate(
             model.as_ref(),

@@ -1,8 +1,8 @@
 //! Owned HTTP/1 transport. Hyper owns protocol framing; the existing service
 //! owns all model admission, events and cancellation. No detached tasks.
 use super::{
-    ErrorReporting, bind_token_metrics, body, embeddings, ingress_body, parse_body, responses,
-    websocket,
+    ErrorReporting, bind_token_metrics, body, embeddings, ingress_body, multipart, parse_body,
+    responses, transcription, websocket,
 };
 use crate::{TextService, ingress::IngressLimits, metrics::Counters};
 use hyper::{
@@ -275,7 +275,7 @@ pub(super) fn validate_headers(
             return Err(ServiceError::new(
                 400,
                 "unsupported_transfer",
-                "only chunked JSON text requests are supported",
+                "chunked input is not supported on this endpoint",
             ));
         }
         return Ok(None);
@@ -391,6 +391,7 @@ impl Connection {
                     | "/v1/responses"
                     | "/v1/responses/input_tokens"
                     | "/v1/embeddings"
+                    | "/v1/audio/transcriptions"
             ) || path == "/v1/conversations"
                 || path.starts_with("/v1/conversations/");
             let length = validate_headers(&parts, host.config.limits.body_bytes, accepts_chunked)?;
@@ -437,6 +438,42 @@ impl Connection {
                 host.config.limits.body_bytes,
                 READ_TIMEOUT,
             )?;
+            if parts.method == Method::POST && path == "/v1/audio/transcriptions" {
+                let content_type =
+                    header_value(&parts.headers, "content-type").ok_or_else(|| {
+                        ServiceError::new(
+                            415,
+                            "unsupported_media_type",
+                            "multipart/form-data required",
+                        )
+                    })?;
+                let form = multipart::collect(
+                    reader,
+                    content_type,
+                    host.service.as_ref(),
+                    multipart::Limits {
+                        parts: 12,
+                        part_bytes: host.config.limits.body_bytes,
+                    },
+                )
+                .await?;
+                authorized = host.config.api_key.is_some();
+                host.shutdown.check()?;
+                let (task, limits, wire) = transcription::parse(
+                    &form,
+                    host.service.as_ref(),
+                    &mut ingress,
+                    host.config.limits.output_bytes,
+                )?;
+                drop(form);
+                drop(parts);
+                host.shutdown.check()?;
+                let receipt = host
+                    .service
+                    .request_transcription_admitted(task, limits, ingress)
+                    .map_err(transcription::parameter_error)?;
+                return transcription::completion(receipt, wire).await;
+            }
             let (raw, used, body_charge) = ingress_body::collect(reader, host.service.as_ref())
                 .await?
                 .into_parts();

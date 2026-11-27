@@ -174,3 +174,155 @@ fn actual_spoken_transcription_through_runtime() {
     assert_eq!(host.snapshot().unwrap().1, baseline);
     runtime.shutdown().unwrap();
 }
+
+// Explicit test-only public declaration over the actual learned candidate.
+// Built-in candidate remains native-only until broader source qualification.
+#[cfg(feature = "serve")]
+mod wire {
+    use super::*;
+    use std::sync::atomic::AtomicBool;
+    use zerogravity::transcription::SpeechSession;
+    use zerogravity_core::{identity::SourceIdentity, resource_arbiter::TransferAdmission};
+
+    struct PublicFixture(Arc<Gemma4SpeechCandidate>);
+    impl SpeechRecognizer for PublicFixture {
+        fn source(&self) -> SourceIdentity {
+            self.0.source()
+        }
+        fn max_samples(&self) -> usize {
+            self.0.max_samples()
+        }
+        fn max_context(&self) -> usize {
+            self.0.max_context()
+        }
+        fn vocabulary_size(&self) -> u64 {
+            self.0.vocabulary_size()
+        }
+        fn max_output_tokens(&self) -> usize {
+            self.0.max_output_tokens()
+        }
+        fn max_output_bytes(&self) -> usize {
+            self.0.max_output_bytes()
+        }
+        fn public_transcription(&self) -> bool {
+            true
+        }
+        fn validate_admission(&self, a: &TransferAdmission) -> zerogravity::Result<()> {
+            self.0.validate_admission(a)
+        }
+        fn start(
+            self: Arc<Self>,
+            samples: &[f32],
+            rate: u32,
+            context: usize,
+            max_tokens: usize,
+            cancelled: &AtomicBool,
+        ) -> zerogravity::Result<Box<dyn SpeechSession>> {
+            self.0
+                .clone()
+                .start(samples, rate, context, max_tokens, cancelled)
+        }
+    }
+
+    #[test]
+    #[ignore = "requires actual cached E2B speech checkpoint, independent reference, and installed OpenAI SDK"]
+    fn actual_spoken_transcription_through_openai_sdk() {
+        let path =
+            std::env::var_os("ZG_GEMMA4_SPEECH_REFERENCE").expect("independent speech reference");
+        let wav = std::env::var_os("ZG_GEMMA4_SPEECH_WAV").expect("original spoken PCM16 WAV");
+        let python = std::env::var_os("ZG_TEST_OPENAI_PYTHON").expect("installed OpenAI SDK");
+        let reference: Reference = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        let store = CacheStore::open_existing(CacheOptions::new(
+            std::env::var_os("ZG_GEMMA4_AUDIO_CACHE").map(Into::into),
+            std::env::var("ZG_GEMMA4_AUDIO_CACHE_BYTES")
+                .unwrap()
+                .parse()
+                .unwrap(),
+        ))
+        .unwrap();
+        let snapshot = store
+            .open_snapshot(&std::env::var("ZG_GEMMA4_AUDIO_SNAPSHOT").unwrap())
+            .unwrap();
+        let host = ServingHost::new(512).unwrap();
+        let baseline = host.snapshot().unwrap().1;
+        let runtime = Runtime::builder().build().unwrap();
+        runtime
+            .models()
+            .load_transcribers(
+                TranscriptionConfig {
+                    host_mib: 512,
+                    max_context: 128,
+                    max_output_tokens: 8,
+                    ..Default::default()
+                },
+                |host| {
+                    let model = Gemma4SpeechCandidate::prepare(&snapshot, host, "speech", None)
+                        .map_err(zerogravity::runtime::text::ServiceError::inference)?;
+                    assert_eq!(
+                        model
+                            .prompt_tokens(reference.samples.len(), 120)
+                            .unwrap()
+                            .ids(),
+                        reference.prompt
+                    );
+                    let public: Arc<dyn SpeechRecognizer> = Arc::new(PublicFixture(model.clone()));
+                    let private: Arc<dyn SpeechRecognizer> = model;
+                    Ok(BTreeMap::from([
+                        ("speech".into(), public.clone()),
+                        ("speech-alias".into(), public),
+                        ("private".into(), private),
+                    ]))
+                },
+            )
+            .unwrap();
+        let server = runtime
+            .server()
+            .bind("127.0.0.1:0".parse().unwrap())
+            .api_key(Some("secret".into()))
+            .build()
+            .unwrap()
+            .start()
+            .unwrap();
+        let script = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/transcription_sdk.py");
+        let start = Instant::now();
+        let status = std::process::Command::new(python)
+            .arg("-B")
+            .arg(script)
+            .arg(server.local_addr().to_string())
+            .arg(wav)
+            .arg(path)
+            .env(
+                "PYTHONPATH",
+                std::env::var_os("ZG_TEST_OPENAI_PYTHONPATH").unwrap_or_default(),
+            )
+            .status()
+            .unwrap();
+        assert!(status.success(), "actual learned OpenAI SDK speech failed");
+        println!(
+            "SPEECH_OPENAI_SDK_COMPLETE {:.3}s",
+            start.elapsed().as_secs_f64()
+        );
+        let stats = runtime.scheduler_snapshot().unwrap().unwrap().counters;
+        assert_eq!(stats.transcription_requests, 1);
+        assert_eq!(
+            stats.transcription_input_tokens,
+            reference.prompt.len() as u64
+        );
+        assert_eq!(
+            stats.transcription_output_tokens,
+            reference.tokens.len() as u64
+        );
+        server.shutdown().unwrap();
+        // The listener did not create or retire another runtime.
+        for model in runtime.models().snapshot().unwrap() {
+            runtime
+                .models()
+                .unload_registration(&model.aliases[0], model.registration_id)
+                .unwrap();
+        }
+        assert!(runtime.models().snapshot().unwrap().is_empty());
+        assert_eq!(host.snapshot().unwrap().1, baseline);
+        runtime.shutdown().unwrap();
+    }
+}

@@ -4,6 +4,9 @@ pub use zerogravity_engine::embedding::{EmbeddingReceipt, EmbeddingRequest};
 pub use zerogravity_engine::router::{
     Request, RequestEvents, SemanticRequest, ServiceError, TextInput, pending::ServingCharge,
 };
+pub use zerogravity_engine::transcription::{
+    TranscriptionLimits, TranscriptionReceipt, TranscriptionRequest,
+};
 use zerogravity_engine::{Runtime, router::Router, state_cache::PrefixSharingScope};
 
 type Result<T> = std::result::Result<T, ServiceError>;
@@ -82,6 +85,25 @@ pub trait TextService: Send + Sync + 'static {
             "embedding endpoint unavailable",
         ))
     }
+    fn transcription_limits(&self, _alias: &str) -> Result<TranscriptionLimits> {
+        Err(ServiceError::new(
+            404,
+            "not_found",
+            "transcription endpoint unavailable",
+        ))
+    }
+    fn request_transcription_admitted(
+        &self,
+        _request: TranscriptionRequest,
+        _limits: TranscriptionLimits,
+        _ingress: Vec<ServingCharge>,
+    ) -> Result<TranscriptionReceipt> {
+        Err(ServiceError::new(
+            404,
+            "not_found",
+            "transcription endpoint unavailable",
+        ))
+    }
     fn charge_ingress(&self, session: &str, bytes: u64) -> Result<ServingCharge>;
     fn model_ids(&self) -> Result<Vec<String>>;
     fn max_output(&self) -> Result<usize>;
@@ -97,6 +119,19 @@ pub trait TextService: Send + Sync + 'static {
 }
 
 impl TextService for Runtime {
+    fn transcription_limits(&self, alias: &str) -> Result<TranscriptionLimits> {
+        self.public_transcription_limits(alias)
+    }
+    fn request_transcription_admitted(
+        &self,
+        request: TranscriptionRequest,
+        limits: TranscriptionLimits,
+        ingress: Vec<ServingCharge>,
+    ) -> Result<TranscriptionReceipt> {
+        let receipt = self.request_public_transcription(request, limits);
+        drop(ingress);
+        receipt
+    }
     fn embedding_dimensions(&self, alias: &str) -> Result<usize> {
         self.public_embedding_dimensions(alias)
     }
@@ -168,6 +203,19 @@ impl TextService for Runtime {
 }
 
 impl TextService for Router {
+    fn transcription_limits(&self, alias: &str) -> Result<TranscriptionLimits> {
+        self.public_transcription_limits(alias)
+    }
+    fn request_transcription_admitted(
+        &self,
+        request: TranscriptionRequest,
+        limits: TranscriptionLimits,
+        ingress: Vec<ServingCharge>,
+    ) -> Result<TranscriptionReceipt> {
+        let receipt = self.request_public_transcription(request, limits);
+        drop(ingress);
+        receipt
+    }
     fn embedding_dimensions(&self, alias: &str) -> Result<usize> {
         self.public_embedding_dimensions(alias)
     }

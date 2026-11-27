@@ -64,6 +64,7 @@ pub(super) struct Route<A: Executor> {
     retire: Option<ModelRetirement<A::Model>>,
     independent_retirement: bool,
     public_embeddings: bool,
+    public_transcription: bool,
     performance: RegistrationPerformance,
 }
 impl<A: Executor> Route<A> {
@@ -72,6 +73,8 @@ impl<A: Executor> Route<A> {
         let independent_retirement = !matches!(&model, RouteModel::Text(_)) || retire.is_some();
         let public_embeddings =
             matches!(&model, RouteModel::Encoder(encoder) if encoder.public_embeddings());
+        let public_transcription =
+            matches!(&model, RouteModel::Speech(speech) if speech.public_transcription());
         let id = NEXT_REGISTRATION
             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |next| {
                 next.checked_add(1)
@@ -91,6 +94,7 @@ impl<A: Executor> Route<A> {
             retire,
             independent_retirement,
             public_embeddings,
+            public_transcription,
             performance: RegistrationPerformance::new(std::time::Instant::now()),
         })
     }
@@ -361,6 +365,7 @@ pub(crate) trait Models: Send + Sync {
     fn acquire_speech(
         &self,
         alias: &str,
+        public: bool,
     ) -> std::result::Result<(Arc<dyn SpeechRecognizer>, ModelRead), ServiceError>;
     fn begin_unload_registration(
         &self,
@@ -440,16 +445,21 @@ impl<A: Executor> Models for Registry<A> {
     fn acquire_speech(
         &self,
         alias: &str,
+        public: bool,
     ) -> std::result::Result<(Arc<dyn SpeechRecognizer>, ModelRead), ServiceError> {
-        let (model, reader) = self
-            .routes
-            .get(alias)
-            .ok_or_else(missing_model)?
-            .acquire()?;
+        let route = self.routes.get(alias).ok_or_else(missing_model)?;
+        let (model, reader) = route.acquire()?;
         let reader = reader;
         let model = model;
         match model {
-            RouteModel::Speech(model) => Ok((model, reader)),
+            RouteModel::Speech(model) if !public || route.public_transcription => {
+                Ok((model, reader))
+            }
+            RouteModel::Speech(_) => Err(ServiceError::new(
+                404,
+                "not_found",
+                "speech recognizer is not qualified for public serving",
+            )),
             _ => Err(ServiceError::new(
                 400,
                 "unsupported_task",
@@ -576,7 +586,7 @@ impl<A: Executor> Models for Registry<A> {
         let state = route.state();
         (state.lifecycle == ModelLifecycle::Ready
             && (matches!(state.model.as_ref(), Some(RouteModel::Text(_)))
-                || (public && route.public_embeddings)))
+                || (public && (route.public_embeddings || route.public_transcription))))
             .then_some(alias.as_str())
     }
     fn begin_unload(&self, model: &ModelInstance) -> Result<Option<SelectiveRetirement>> {

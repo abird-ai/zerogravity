@@ -20,13 +20,9 @@ mod completions;
 mod embeddings;
 use completions::{completion_response, parse_body};
 mod ingress_body;
-// Dormant until a real modality route consumes admitted forms.
-#[allow(
-    dead_code,
-    reason = "reusable multipart transport primitive qualified by real socket tests"
-)]
 mod multipart;
 mod responses;
+mod transcription;
 mod transport;
 mod websocket;
 pub(crate) use transport::{SERVER_HEADROOM, ServeConfig, Shutdown, serve};

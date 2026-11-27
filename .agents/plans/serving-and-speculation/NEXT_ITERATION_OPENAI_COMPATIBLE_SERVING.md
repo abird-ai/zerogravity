@@ -1699,10 +1699,23 @@ Independent original HF on local synthesized "Hello world" (12186
 samples,19 audio rows,41 prompt IDs,3 generated incl stop); actual
 native prompt exact match. Native learned: actual native SDK "Hello world", input=41, output=3 including stop, finish=Stop; 263.484s completion, full real test passed 292.62s (including cancellation/retirement).
 Focused247/0/2 strict lint; assembled: 2,593/0/112 (324 Rust suites, 617s), complete isolated gate passed.
-**OA-7D:** bounded multipart transcription and supported controls
-through same native receipt with explicit eligibility, never fake
-transcript. Natural speech/general quality qualification before built-in
-production capability; translation/synthesis/streaming only real support.
+**OA-7D (27 Nov): capability-gated transcription wire.** Explicit
+SpeechRecognizer public declaration captured on original registration,
+default false; public catalog/limits check and admission recheck exact
+registration+effective bounds. Original authenticated fixed/chunked
+multipart collector, PCM16 WAV mono16k actual RIFF/chunk/fmt/data
+geometry, bounded decoded F32 copy and original queue admission.
+JSON exact input/output/total tokens or plain text; neutral deterministic
+temperature/stream controls only; unsupported formats/control refusal
+before enqueue. Original typed receipt with speech-only600s deadline,
+independent charged bounded projection, length422, output413, original
+disconnect cancellation and joined lifecycle. Focused249/0/3 strict
+lint, real socket control tests pass. Actual learned SDK:
+actual installed OpenAI SDK2.33.0 strict JSON "Hello world", input41/output3/total44, exact independent reference; 264.264s SDK completion, real learned wire test passed292.73s including retirement. Assembled: 2,595/0/112 (324 Rust suites, 904s), complete isolated gate passed.
+Built-in candidate stays native-only. **OA-7E:** original model-card
+supported audio translation with real source and non-English speech
+qualification; TTS and streaming only actual capability. Natural
+speech/general quality before built-in production model promotion.
 
 ### OA-8 — Images
 

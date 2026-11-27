@@ -26,7 +26,10 @@ match the independent original text model; full workspace gate passed.
 OA-7C native transcription task, model-owned audio prompt and tokenizer
 through original Runtime implemented; focused checks pass. Actual
 speech reference and native learned SDK transcription/cancellation pass;
-complete assembled gate passed. No public audio eligibility.
+complete assembled gate passed. OA-7D public transcription wire adapter
+implemented over original native receipt and explicit eligibility; focused
+checks, actual learned SDK and complete assembled workspace gate passed.
+Built-in Gemma candidate stays native-only.
 Appendix D preserves every post-M1 landing narrative, changed paths and
 exact engineering prose delta; Appendix B records unresolved markers.
 The preceding [UX-P-M1 pack](FULL_COMPREHENSIVE_HANDOFF_2026-11-26_UX_PM1.md),
@@ -54,7 +57,89 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — OA-7C native transcription through Runtime (27 Nov)
+### Current checkpoint — OA-7D capability-gated transcription wire (27 Nov)
+
+Started from clean signed 83c79f1e on sole L5 main. Prior native learned
+transcript and decoder/encoder evidence reused. No new model, source
+or SDK download. OA-6 trained MiniLM acquisition remains open.
+
+Original SpeechRecognizer::public_transcription defaults false, captured
+once on the existing registration. Native speech availability alone
+never grants wire exposure. Public model list/retrieve includes only
+explicit eligible speech aliases (in addition to prior text/embedding
+capabilities). Public TranscriptionLimits describes exact registration
+ID and admitted max_samples, max_tokens and max_output_bytes. Original
+registry reader checks eligibility during preflight and again at actual
+request admission, with equal exact registration/limits; no second map,
+scheduler, state or listener. Legacy services refuse. Built-in
+Gemma4SpeechCandidate remains native-only; learned wire qualification
+uses explicit test-only adapter over the exact real candidate.
+
+POST /v1/audio/transcriptions uses authenticated existing Hyper listener
+and bounded Multer form collector, fixed length/chunked input, actual
+HTTP EOF, original connection/ingress/deadline policy. Max12 parts,
+existing 1MiB body cap, no nested decoding or filenames as paths. File
+must be RIFF/WAVE PCM16 little-endian mono16k; verify actual RIFF length,
+bounded chunks (64), fmt geometry/byte rate/alignment, one fmt before one
+nonempty even data chunk, padding/extent and effective native sample
+limit. Skip bounded ancillary chunks. No implicit resampling, compressed
+codec or raw ambiguous PCM. Decode exact i16/32768 F32 under charged
+copy allowance, release form before original native queue handoff.
+Input cap is min(model max, runtime input bytes/4, native 1MiB ceiling).
+Model alias required; json(default)/text only; omitted or zero
+temperature (deterministic policy; no sampling fallback), omitted or
+false stream. Duplicate/unknown controls and unsupported language,
+prompt, logprobs, diarization, timestamps, chunking etc explicitly
+refuse before inference. Output token budget selected by original
+router/model, not transport-invented IDs.
+
+Original typed receipt awaited with explicit speech-only hard600s
+deadline (CPU reference ~263s on 0.762s speech); text180s unchanged.
+Original disconnect/shutdown drops receipt/cancels execution; no
+detached HTTP inference work. JSON text and actual token usage
+(type=tokens, input/output/total; no invented breakdown/timestamps).
+Plain UTF8 text content type with independent output credit. Length
+terminal ->422 transcription_incomplete, never partial success;
+output limit413 before emitting any partial successful body.
+Shared bounded writer and retained protocol bytes, original hard
+socket output limit still applies. No public speech synthesis,
+translation or streaming claim.
+
+Focused249/0/3 (26 suites), strict Clippy. Real socket control adapter
+covers WAV geometry/corruption, fixed/chunked form, filename opaque,
+normalization, exact usage, JSON/text, auth, native-only and stale
+registration refusal, unsupported controls/duplicate fields before
+admission, oversize audio, length refusal, output byte limit, disconnect
+cancellation/retirement. First WAV test failed because test byte28 was
+already zero; corrected fixture mutation, no production relaxation.
+All56 serving unit tests pass. Native actual source evidence from
+OA-7C unchanged. Actual installed OpenAI SDK2.33.0 against real cached
+Gemma4 speech with explicit test-only public eligibility and original
+0.762s synthesized WAV: actual installed OpenAI SDK2.33.0 strict JSON "Hello world", input41/output3/total44, exact independent reference; 264.264s SDK completion, real learned wire test passed292.73s including retirement. Assembled:
+2,595/0/112 (324 Rust suites, 904s), complete isolated gate passed.
+
+Logs target/oa7d-compile.log, target/oa7d-serving.log (initial one
+fixture-only failure), target/oa7d-focused.log, target/oa7d-sdk.log,
+target/oa7d-assembled.log. Actual learned wire test uses original
+OA-7C cache/ref env plus ZG_GEMMA4_SPEECH_WAV and installed
+ZG_TEST_OPENAI_PYTHON/PYTHONPATH closure. Release locked/offline
+-p zerogravity --no-default-features --features
+model-gemma4-audio-candidate,serve --test transcription_candidate
+wire::actual_spoken_transcription_through_openai_sdk
+-- --ignored --exact --nocapture --test-threads=1.
+
+Next: OA-7E source-supported audio translation (cached Gemma4 model
+card documents AST prompt; qualify actual native English translation
+from non-English speech, preserve one original task/receipt and
+truthful translation semantics). TTS needs actual learned synthesizer
+source/qualification, never external shell or dummy waveform in HTTP.
+Natural speech/general quality and latency remain unqualified; do not
+promote built-in candidate automatically. OA-8 generation/edit/variation
+requires actual eligible image generator, not Gemma vision encoder
+alone. Continue ready work without unauthorized downloads; OA-9
+realtime must reuse actual session/task capabilities.
+
+### Prior checkpoint — OA-7C native transcription through Runtime (27 Nov)
 
 Started clean signed 642b72f3 on sole L5 main. Reused cached original
 Gemma4 E2B and OA-7A/B learned encoder/decoder evidence. No new model,

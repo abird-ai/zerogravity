@@ -242,10 +242,20 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   Focused247/0/2, strict lint. No new download or public eligibility.
 - [x] OA-7C native learned consumer: actual native SDK "Hello world", input=41, output=3 including stop, finish=Stop; 263.484s completion, full real test passed 292.62s (including cancellation/retirement).
 - [x] OA-7C assembled workspace gate: 2,593/0/112 (324 Rust suites, 617s), complete isolated gate passed.
-- [ ] OA-7D bounded multipart public transcription through original
-  receipt with explicit actual adapter eligibility; natural speech/general
-  quality qualification before built-in production model promotion.
-  Translation/synthesis/streaming only actual supported capability.
+- [x] OA-7D implementation: original public registration/limits gate,
+  authenticated bounded multipart fixed/chunked PCM16 mono16k WAV,
+  JSON truthful token usage/plain text and explicit unsupported controls,
+  length/output refusal, original receipt/deadline/cancellation.
+  Focused249/0/3, strict lint, actual TCP control tests. Candidate remains
+  native-only; explicit test-only learned adapter for wire qualification.
+- [x] OA-7D actual learned installed SDK: actual installed OpenAI SDK2.33.0 strict JSON "Hello world", input41/output3/total44, exact independent reference; 264.264s SDK completion, real learned wire test passed292.73s including retirement.
+- [x] OA-7D assembled workspace gate: 2,595/0/112 (324 Rust suites, 904s), complete isolated gate passed.
+- [ ] OA-7E: source-supported audio translation using original Gemma4 AST
+  semantics and actual non-English speech reference; shared Runtime
+  receipt, truthful public translation only on qualification.
+- [ ] Remaining OA-7: natural speech/general quality qualification before
+  built-in production model promotion; synthesis/streaming only actual
+  supported capability, no new model acquisition without authorization.
   No second source/runtime or fake text.
 
 ### Current continuation — 22 Nov 2026

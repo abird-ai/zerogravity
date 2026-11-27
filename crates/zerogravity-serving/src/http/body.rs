@@ -158,9 +158,16 @@ impl io::Write for BoundedWriter {
 /// The Bytes owner can itself retain a protocol record; projected lists
 /// carry their independent serialization reservation until the last write.
 pub(super) fn retained_json(bytes: Bytes, charge: Option<Arc<ServingCharge>>) -> Response<Reply> {
+    retained_body(bytes, charge, "application/json")
+}
+pub(super) fn retained_body(
+    bytes: Bytes,
+    charge: Option<Arc<ServingCharge>>,
+    content_type: &'static str,
+) -> Response<Reply> {
     Response::builder()
         .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, "application/json")
+        .header(header::CONTENT_TYPE, content_type)
         .header(header::CACHE_CONTROL, "no-store")
         .header("x-content-type-options", "nosniff")
         .body(Reply::Full(Some(Data {

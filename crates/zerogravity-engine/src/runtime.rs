@@ -394,7 +394,28 @@ impl Runtime {
         request: crate::transcription::TranscriptionRequest,
     ) -> std::result::Result<crate::transcription::TranscriptionReceipt, ServiceError> {
         self.with_text_router(|router| {
-            router.request_transcription_with(request, self.inner.limits.max_input_bytes)
+            router.request_transcription_with(request, self.inner.limits.max_input_bytes, None)
+        })
+    }
+    pub fn public_transcription_limits(
+        &self,
+        alias: &str,
+    ) -> std::result::Result<crate::transcription::TranscriptionLimits, ServiceError> {
+        self.with_text_router(|router| {
+            router.public_transcription_limits_with(alias, self.inner.limits.max_input_bytes)
+        })
+    }
+    pub fn request_public_transcription(
+        &self,
+        request: crate::transcription::TranscriptionRequest,
+        limits: crate::transcription::TranscriptionLimits,
+    ) -> std::result::Result<crate::transcription::TranscriptionReceipt, ServiceError> {
+        self.with_text_router(|router| {
+            router.request_transcription_with(
+                request,
+                self.inner.limits.max_input_bytes,
+                Some(limits),
+            )
         })
     }
     pub fn request_embeddings(

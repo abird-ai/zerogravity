@@ -945,7 +945,7 @@ fn chunked_ingress_refuses_bad_framing_auth_and_bounds_before_model_admission() 
     assert!(response.starts_with("HTTP/1.1 401"));
     assert_eq!(document(&response)["error"]["code"], "unauthorized");
     let response = exchange(address, &chunked_head("/v1/audio/transcriptions", auth));
-    assert!(response.starts_with("HTTP/1.1 400"));
+    assert!(response.starts_with("HTTP/1.1 415"));
 
     // Actual decoded aggregate overflow, malformed chunks and trailers
     // cannot publish a request, even after receiving valid initial bytes.
@@ -1025,7 +1025,7 @@ fn multipart_foundation_does_not_publish_media_or_bypass_text_content_policy() {
         .unwrap()
         .start()
         .unwrap();
-    let form = "--example\r\nContent-Disposition: form-data; name=\"file\"; filename=\"audio.bin\"\r\n\r\nhello\r\n--example--\r\n";
+    let form = "--example\r\nContent-Disposition: form-data; name=\"model\"\r\n\r\nno-speech-model\r\n--example\r\nContent-Disposition: form-data; name=\"file\"; filename=\"audio.wav\"\r\n\r\nhello\r\n--example--\r\n";
     for (path, status) in [("/v1/audio/transcriptions", 404), ("/v1/completions", 415)] {
         let raw = format!(
             "POST {path} HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer secret\r\nContent-Type: multipart/form-data; boundary=example\r\nContent-Length: {}\r\n\r\n{form}",

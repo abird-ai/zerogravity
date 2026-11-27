@@ -23,7 +23,7 @@ Current unit: [OA-7 Audio](serving-and-speculation/NEXT_ITERATION_OPENAI_COMPATI
 OA-7A original cached Gemma 4 E2B waveform-to-language-token CPU reference
 and actual learned numerical parity passed; OA-7B shared original source
 and native audio-conditioned F32 decoder prefill/continuation parity passed.
-OA-7C native model prompt/Runtime transcription implemented and focused-qualified; actual learned SDK and assembled workspace gate passed. OA-7D public wire next. OA-6A/B/C workspace-qualified;
+OA-7C native model prompt/Runtime transcription implemented and focused-qualified; actual learned SDK and assembled workspace gate passed. OA-7D explicit capability-gated multipart transcription wire focused-qualified; actual learned SDK and assembled workspace gate passed. OA-7E source-supported translation next. OA-6A/B/C workspace-qualified;
 MiniLM trained-source authorization/parity and built-in public eligibility
 remain open. No new model download.
 OA-4 fully accepted after the serial resident lifecycle retry; OA-5

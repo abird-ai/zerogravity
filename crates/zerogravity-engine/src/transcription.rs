@@ -19,6 +19,16 @@ type Result<T> = std::result::Result<T, ServiceError>;
 pub const MAX_TRANSCRIPT_BYTES: usize = 65536;
 pub const SAMPLE_RATE: u32 = 16000;
 
+/// Actual admitted public capability envelope. The wire adapter prices
+/// this before decoding PCM; admission rechecks the same registration.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TranscriptionLimits {
+    pub registration_id: u64,
+    pub max_samples: usize,
+    pub max_tokens: usize,
+    pub max_output_bytes: usize,
+}
+
 pub struct TranscriptionRequest {
     pub model: String,
     pub samples: Vec<f32>,
@@ -45,6 +55,11 @@ pub trait SpeechRecognizer: Send + Sync {
     fn vocabulary_size(&self) -> u64;
     fn max_output_tokens(&self) -> usize;
     fn max_output_bytes(&self) -> usize;
+    /// Trusted explicit wire qualification, captured at registration.
+    /// Native candidates never become public just by calculating text.
+    fn public_transcription(&self) -> bool {
+        false
+    }
     fn validate_admission(&self, admission: &TransferAdmission) -> crate::Result<()>;
     fn describe(&self) -> crate::Result<crate::diagnostics::ModelDetails> {
         Ok(Default::default())

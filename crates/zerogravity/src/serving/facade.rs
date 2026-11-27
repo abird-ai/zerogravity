@@ -6,6 +6,21 @@ use super::{
 type Result<T> = std::result::Result<T, ServiceError>;
 
 impl TextService for crate::Runtime {
+    fn transcription_limits(
+        &self,
+        alias: &str,
+    ) -> Result<zerogravity_serving::service::TranscriptionLimits> {
+        self.engine.transcription_limits(alias)
+    }
+    fn request_transcription_admitted(
+        &self,
+        request: crate::transcription::TranscriptionRequest,
+        limits: zerogravity_serving::service::TranscriptionLimits,
+        ingress: Vec<ServingCharge>,
+    ) -> Result<crate::transcription::TranscriptionReceipt> {
+        self.engine
+            .request_transcription_admitted(request, limits, ingress)
+    }
     fn embedding_dimensions(&self, alias: &str) -> Result<usize> {
         self.engine.embedding_dimensions(alias)
     }

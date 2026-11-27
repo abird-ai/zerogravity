@@ -5,6 +5,16 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 27 Nov — OA-7D transcription protocol
+
+Explicit public speech registration gate and exact effective admission
+limits, bounded fixed/chunked multipart PCM16 WAV mono16k, JSON exact
+token usage/text projection, strict control/length/byte-limit refusal.
+Focused249/0/3, strict lint and real socket control tests pass.
+Actual learned wire: actual installed OpenAI SDK2.33.0 strict JSON "Hello world", input41/output3/total44, exact independent reference; 264.264s SDK completion, real learned wire test passed292.73s including retirement.
+Assembled: 2,595/0/112 (324 Rust suites, 904s), complete isolated gate passed. Built-in Gemma candidate remains native-only;
+no general speech quality, streaming, translation/TTS or production speed.
+
 ## 27 Nov — OA-7C native transcription
 
 Actual source-authenticated audio prompt, deterministic greedy native
