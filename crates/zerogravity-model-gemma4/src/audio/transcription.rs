@@ -27,6 +27,37 @@ pub enum TranscriptFinish {
     Length,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SpeechTask {
+    Transcribe,
+    TranslateEnglish,
+}
+impl SpeechTask {
+    fn instruction(self) -> &'static str {
+        match self {
+            Self::Transcribe => "Transcribe the following speech segment in its original language.",
+            Self::TranslateEnglish => {
+                "Transcribe the following speech segment, then translate it into English. Output the transcription, then a newline and 'English: ' followed by the translation."
+            }
+        }
+    }
+}
+
+/// The original AST prompt asks for two lines. Only the explicitly marked
+/// target line is a translation. Never return an unlabelled source transcript.
+fn translation_range(text: &str) -> Option<std::ops::Range<usize>> {
+    let (source, english) = text.split_once("\nEnglish: ")?;
+    if source.trim().is_empty()
+        || source.contains('\n')
+        || english.trim().is_empty()
+        || english.contains('\n')
+    {
+        return None;
+    }
+    let start = source.len() + "\nEnglish: ".len();
+    Some(start..text.len())
+}
+
 pub struct Gemma4Transcriber {
     model: Arc<Gemma4AudioLanguage>,
     tokenizer: Mutex<Gemma4TextTokenizer>,
@@ -93,14 +124,41 @@ impl Gemma4Transcriber {
         limit: usize,
         cancelled: Option<&AtomicBool>,
     ) -> Result<Gemma4EncodedText> {
+        self.prompt_tokens_for(SpeechTask::Transcribe, samples, limit, cancelled)
+    }
+    pub fn prompt_tokens_for(
+        &self,
+        task: SpeechTask,
+        samples: usize,
+        limit: usize,
+        cancelled: Option<&AtomicBool>,
+    ) -> Result<Gemma4EncodedText> {
         let rows = self.model.encoder().token_count(samples)?;
         self.tokenizer
             .lock()
             .map_err(|_| Error::State("Gemma tokenizer mutex".into()))?
-            .transcription_prompt(rows, limit, cancelled)
+            .speech_prompt(rows, limit, task.instruction(), cancelled)
     }
     pub fn start(
         self: &Arc<Self>,
+        samples: &[f32],
+        sample_rate: u32,
+        context: usize,
+        max_tokens: usize,
+        cancelled: Option<&AtomicBool>,
+    ) -> Result<Gemma4Transcription> {
+        self.start_task(
+            SpeechTask::Transcribe,
+            samples,
+            sample_rate,
+            context,
+            max_tokens,
+            cancelled,
+        )
+    }
+    pub fn start_task(
+        self: &Arc<Self>,
+        task: SpeechTask,
         samples: &[f32],
         sample_rate: u32,
         context: usize,
@@ -115,7 +173,7 @@ impl Gemma4Transcriber {
         let prompt_limit = context
             .checked_sub(max_tokens)
             .ok_or_else(|| Error::Limit("Gemma transcription context".into()))?;
-        let prompt = self.prompt_tokens(samples.len(), prompt_limit, cancelled)?;
+        let prompt = self.prompt_tokens_for(task, samples.len(), prompt_limit, cancelled)?;
         let prompt_tokens = prompt.ids().len();
         let memory = self.admission.arbiter.admit(
             &self.admission.resource,
@@ -133,6 +191,7 @@ impl Gemma4Transcriber {
         let logits = session.prefill(prompt.ids(), &audio, cancelled)?;
         Ok(Gemma4Transcription {
             model: self.clone(),
+            task,
             session,
             logits: Some(logits),
             ids: Vec::with_capacity(max_tokens),
@@ -145,13 +204,14 @@ impl Gemma4Transcriber {
 
 pub struct Gemma4Transcript {
     text: Gemma4DecodedText,
+    range: std::ops::Range<usize>,
     input_tokens: usize,
     output_tokens: usize,
     finish: TranscriptFinish,
 }
 impl Gemma4Transcript {
     pub fn text(&self) -> &str {
-        self.text.as_str()
+        &self.text.as_str()[self.range.clone()]
     }
     pub fn input_tokens(&self) -> usize {
         self.input_tokens
@@ -168,6 +228,7 @@ impl Gemma4Transcript {
 /// worker or retry loop; the caller schedules these bounded quanta.
 pub struct Gemma4Transcription {
     model: Arc<Gemma4Transcriber>,
+    task: SpeechTask,
     session: AudioLanguageSession,
     logits: Option<ReferenceTextValue>,
     ids: Vec<u32>,
@@ -221,9 +282,22 @@ impl Gemma4Transcription {
                 .lock()
                 .map_err(|_| Error::State("Gemma tokenizer mutex".into()))?
                 .decode(content, true, cancelled)?;
+            let range =
+                match self.task {
+                    SpeechTask::Transcribe => 0..text.as_str().len(),
+                    SpeechTask::TranslateEnglish => match translation_range(text.as_str()) {
+                        Some(range) => range,
+                        None if finish == TranscriptFinish::Length => 0..0,
+                        None => return Err(Error::Malformed(
+                            "Gemma translation missing the required bilingual terminal structure"
+                                .into(),
+                        )),
+                    },
+                };
             check_cancel(cancelled)?;
             return Ok(Some(Gemma4Transcript {
                 text,
+                range,
                 input_tokens: self.prompt_tokens,
                 output_tokens: self.ids.len(),
                 finish,
@@ -231,5 +305,28 @@ impl Gemma4Transcription {
         }
         self.logits = Some(self.session.decode(token, cancelled)?);
         Ok(None)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn translation_is_exact_target_line_or_refusal() {
+        let text = "Hola mundo\nEnglish: Hello world";
+        assert_eq!(&text[translation_range(text).unwrap()], "Hello world");
+        let text = "こんにちは\nEnglish: Hello";
+        assert_eq!(&text[translation_range(text).unwrap()], "Hello");
+        for wrong in [
+            "Hola mundo",
+            "Hello world",
+            "English: Hello world",
+            "\nEnglish: Hello",
+            "Hola\nEnglish: ",
+            "Hola\nEnglish: Hello\nOther: World",
+            "Hola\nEnglish: Hello\nEnglish: World",
+        ] {
+            assert!(translation_range(wrong).is_none(), "{wrong:?}");
+        }
     }
 }

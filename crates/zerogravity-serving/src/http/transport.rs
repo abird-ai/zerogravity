@@ -392,6 +392,7 @@ impl Connection {
                     | "/v1/responses/input_tokens"
                     | "/v1/embeddings"
                     | "/v1/audio/transcriptions"
+                    | "/v1/audio/translations"
             ) || path == "/v1/conversations"
                 || path.starts_with("/v1/conversations/");
             let length = validate_headers(&parts, host.config.limits.body_bytes, accepts_chunked)?;
@@ -438,7 +439,15 @@ impl Connection {
                 host.config.limits.body_bytes,
                 READ_TIMEOUT,
             )?;
-            if parts.method == Method::POST && path == "/v1/audio/transcriptions" {
+            if parts.method == Method::POST
+                && matches!(path, "/v1/audio/transcriptions" | "/v1/audio/translations")
+            {
+                use zerogravity_engine::transcription::SpeechTask;
+                let speech_task = if path == "/v1/audio/translations" {
+                    SpeechTask::Translation
+                } else {
+                    SpeechTask::Transcription
+                };
                 let content_type =
                     header_value(&parts.headers, "content-type").ok_or_else(|| {
                         ServiceError::new(
@@ -460,6 +469,7 @@ impl Connection {
                 authorized = host.config.api_key.is_some();
                 host.shutdown.check()?;
                 let (task, limits, wire) = transcription::parse(
+                    speech_task,
                     &form,
                     host.service.as_ref(),
                     &mut ingress,
@@ -468,10 +478,15 @@ impl Connection {
                 drop(form);
                 drop(parts);
                 host.shutdown.check()?;
-                let receipt = host
-                    .service
-                    .request_transcription_admitted(task, limits, ingress)
-                    .map_err(transcription::parameter_error)?;
+                let receipt = match speech_task {
+                    SpeechTask::Transcription => host
+                        .service
+                        .request_transcription_admitted(task, limits, ingress),
+                    SpeechTask::Translation => host
+                        .service
+                        .request_translation_admitted(task, limits, ingress),
+                }
+                .map_err(transcription::parameter_error)?;
                 return transcription::completion(receipt, wire).await;
             }
             let (raw, used, body_charge) = ingress_body::collect(reader, host.service.as_ref())

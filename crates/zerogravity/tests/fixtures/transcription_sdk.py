@@ -10,7 +10,7 @@ import httpx
 import openai
 
 
-def main(address, wav, reference_path):
+def main(address, wav, reference_path, task="transcription"):
     reference = json.loads(pathlib.Path(reference_path).read_text())
     with openai.OpenAI(
         base_url=f"http://{address}/v1", api_key="secret", max_retries=0,
@@ -20,6 +20,27 @@ def main(address, wav, reference_path):
         assert {m.id for m in client.models.list().data} == {"speech", "speech-alias"}
         assert client.models.retrieve("speech-alias").id == "speech-alias"
         audio = pathlib.Path(wav).read_bytes()
+        if task == "translation":
+            for model, extra, error_type in [
+                ("private", {}, openai.NotFoundError),
+                ("speech", {"prompt": "unsupported custom prompt"}, openai.BadRequestError),
+                ("speech", {"temperature": 0.5}, openai.BadRequestError),
+                ("speech", {"response_format": "verbose_json"}, openai.BadRequestError),
+            ]:
+                try:
+                    client.audio.translations.create(model=model, file=("speech.wav", audio, "audio/wav"), **extra)
+                    raise AssertionError("unsupported translation capability admitted")
+                except error_type as error:
+                    assert error.request_id
+            reply = client.audio.translations.create(
+                model="speech-alias", file=("speech.wav", audio, "audio/wav"),
+                response_format="json", temperature=0.0,
+            )
+            source, target = reference["text"].split("\nEnglish: ")
+            assert source == "Hola mundo" and target == "Hello world", reference
+            assert reply.model_dump() == {"text": target}, reply
+            print("OpenAI SDK learned translation PASS:", reply.model_dump(), flush=True)
+            return
         for model, extra, error_type in [
             ("private", {}, openai.NotFoundError),
             ("speech", {"language": "en"}, openai.BadRequestError),

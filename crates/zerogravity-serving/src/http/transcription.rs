@@ -15,7 +15,7 @@ use zerogravity_engine::{
         validate_alias,
     },
     transcription::{
-        MAX_TRANSCRIPT_BYTES, SAMPLE_RATE, TranscriptionFinish, TranscriptionLimits,
+        MAX_TRANSCRIPT_BYTES, SAMPLE_RATE, SpeechTask, TranscriptionFinish, TranscriptionLimits,
         TranscriptionReceipt, TranscriptionRequest,
     },
 };
@@ -139,12 +139,14 @@ enum Format {
     Text,
 }
 pub(super) struct Wire {
+    task: SpeechTask,
     format: Format,
     limit: usize,
     text_bytes: usize,
     charge: Arc<ServingCharge>,
 }
 pub(super) fn parse(
+    task: SpeechTask,
     form: &Form,
     service: &dyn TextService,
     ingress: &mut Vec<ServingCharge>,
@@ -234,10 +236,13 @@ pub(super) fn parse(
     let model = model.ok_or_else(|| invalid("model", "model required"))?;
     validate_alias(model).map_err(|e| e.with_parameter("model"))?;
     let file = file.ok_or_else(|| audio_error("file required"))?;
-    let limits = service
-        .transcription_limits(model)
-        .map_err(parameter_error)?;
-    if limits.max_samples == 0
+    let limits = match task {
+        SpeechTask::Transcription => service.transcription_limits(model),
+        SpeechTask::Translation => service.translation_limits(model),
+    }
+    .map_err(parameter_error)?;
+    if limits.task != task
+        || limits.max_samples == 0
         || limits.max_tokens == 0
         || !(1..=MAX_TRANSCRIPT_BYTES).contains(&limits.max_output_bytes)
     {
@@ -277,6 +282,7 @@ pub(super) fn parse(
         },
         limits,
         Wire {
+            task,
             format,
             limit,
             text_bytes: limits.max_output_bytes,
@@ -314,8 +320,11 @@ pub(super) async fn completion(
     if usage.finish == TranscriptionFinish::Length {
         return Err(ServiceError::new(
             422,
-            "transcription_incomplete",
-            "transcription reached its admitted token limit",
+            match wire.task {
+                SpeechTask::Transcription => "transcription_incomplete",
+                SpeechTask::Translation => "translation_incomplete",
+            },
+            "speech result reached its admitted token limit",
         ));
     }
     let total = usage
@@ -324,7 +333,8 @@ pub(super) async fn completion(
         .ok_or_else(|| {
             ServiceError::new(500, "invalid_transcript", "transcription usage overflow")
         })?;
-    if transcript.text().len() > wire.text_bytes
+    if transcript.task() != wire.task
+        || transcript.text().len() > wire.text_bytes
         || usage.input_tokens == 0
         || usage.output_tokens == 0
     {
@@ -338,8 +348,8 @@ pub(super) async fn completion(
         bytes: Vec::new(),
         limit: wire.limit,
     };
-    let encoded = match wire.format {
-        Format::Json => serde_json::to_writer(
+    let encoded = match (wire.task, wire.format) {
+        (SpeechTask::Transcription, Format::Json) => serde_json::to_writer(
             &mut buffer,
             &Projection {
                 text: transcript.text(),
@@ -352,7 +362,20 @@ pub(super) async fn completion(
             },
         )
         .map_err(std::io::Error::other),
-        Format::Text => buffer.write_all(transcript.text().as_bytes()),
+        (SpeechTask::Translation, Format::Json) => {
+            #[derive(Serialize)]
+            struct Translation<'a> {
+                text: &'a str,
+            }
+            serde_json::to_writer(
+                &mut buffer,
+                &Translation {
+                    text: transcript.text(),
+                },
+            )
+            .map_err(std::io::Error::other)
+        }
+        (_, Format::Text) => buffer.write_all(transcript.text().as_bytes()),
     };
     encoded.map_err(|_| {
         ServiceError::new(

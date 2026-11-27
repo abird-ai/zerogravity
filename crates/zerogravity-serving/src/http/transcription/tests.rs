@@ -81,6 +81,8 @@ struct Probe {
     source: SourceIdentity,
     memory: GlobalResourceLease,
     public: bool,
+    translation: bool,
+    public_translation: bool,
     starts: Arc<AtomicUsize>,
     entered: Arc<AtomicBool>,
     cancelled: Arc<AtomicBool>,
@@ -107,6 +109,12 @@ impl SpeechRecognizer for Probe {
     fn public_transcription(&self) -> bool {
         self.public
     }
+    fn supports_translation(&self) -> bool {
+        self.translation
+    }
+    fn public_translation(&self) -> bool {
+        self.public_translation
+    }
     fn validate_admission(&self, a: &TransferAdmission) -> zerogravity_engine::Result<()> {
         self.memory
             .bytes_in_domain(&a.arbiter, &a.resource)
@@ -114,6 +122,43 @@ impl SpeechRecognizer for Probe {
     }
     fn start(
         self: Arc<Self>,
+        samples: &[f32],
+        rate: u32,
+        context: usize,
+        max_tokens: usize,
+        cancelled: &AtomicBool,
+    ) -> zerogravity_engine::Result<Box<dyn SpeechSession>> {
+        self.start_for(
+            SpeechTask::Transcription,
+            samples,
+            rate,
+            context,
+            max_tokens,
+            cancelled,
+        )
+    }
+    fn start_translation(
+        self: Arc<Self>,
+        samples: &[f32],
+        rate: u32,
+        context: usize,
+        max_tokens: usize,
+        cancelled: &AtomicBool,
+    ) -> zerogravity_engine::Result<Box<dyn SpeechSession>> {
+        self.start_for(
+            SpeechTask::Translation,
+            samples,
+            rate,
+            context,
+            max_tokens,
+            cancelled,
+        )
+    }
+}
+impl Probe {
+    fn start_for(
+        &self,
+        task: SpeechTask,
         samples: &[f32],
         rate: u32,
         context: usize,
@@ -141,10 +186,15 @@ impl SpeechRecognizer for Probe {
                 "controlled cancellation".into(),
             ));
         }
-        Ok(Box::new(Session { mode, steps: 0 }))
+        Ok(Box::new(Session {
+            task,
+            mode,
+            steps: 0,
+        }))
     }
 }
 struct Session {
+    task: SpeechTask,
     mode: u8,
     steps: usize,
 }
@@ -163,7 +213,10 @@ impl SpeechSession for Session {
                 output.push('x');
             }
         } else {
-            output.push_str("wire probe");
+            output.push_str(match self.task {
+                SpeechTask::Transcription => "wire probe",
+                SpeechTask::Translation => "translated probe",
+            });
         }
         Ok(Some(TranscriptionUsage {
             input_tokens: 5,
@@ -192,11 +245,24 @@ fn form(model: &str, audio: &[u8], extras: &[(&str, &str)]) -> Vec<u8> {
     out
 }
 fn open(address: SocketAddr, data: &[u8], auth: bool, chunked: bool) -> TcpStream {
+    open_task(SpeechTask::Transcription, address, data, auth, chunked)
+}
+fn open_task(
+    task: SpeechTask,
+    address: SocketAddr,
+    data: &[u8],
+    auth: bool,
+    chunked: bool,
+) -> TcpStream {
+    let path = match task {
+        SpeechTask::Transcription => "/v1/audio/transcriptions",
+        SpeechTask::Translation => "/v1/audio/translations",
+    };
     let mut socket = TcpStream::connect(address).unwrap();
     socket
         .set_read_timeout(Some(Duration::from_secs(10)))
         .unwrap();
-    write!(socket,"POST /v1/audio/transcriptions HTTP/1.1\r\nHost: localhost\r\nContent-Type: multipart/form-data; boundary=zg-speech\r\nConnection: close\r\n").unwrap();
+    write!(socket,"POST {path} HTTP/1.1\r\nHost: localhost\r\nContent-Type: multipart/form-data; boundary=zg-speech\r\nConnection: close\r\n").unwrap();
     if auth {
         write!(socket, "Authorization: Bearer secret\r\n").unwrap();
     }
@@ -215,7 +281,16 @@ fn open(address: SocketAddr, data: &[u8], auth: bool, chunked: bool) -> TcpStrea
     socket
 }
 fn call(address: SocketAddr, data: &[u8], auth: bool, chunked: bool) -> (u16, String, String) {
-    let mut socket = open(address, data, auth, chunked);
+    call_task(SpeechTask::Transcription, address, data, auth, chunked)
+}
+fn call_task(
+    task: SpeechTask,
+    address: SocketAddr,
+    data: &[u8],
+    auth: bool,
+    chunked: bool,
+) -> (u16, String, String) {
+    let mut socket = open_task(task, address, data, auth, chunked);
     let mut response = String::new();
     socket.read_to_string(&mut response).unwrap();
     let (head, body) = response.split_once("\r\n\r\n").expect("HTTP response");
@@ -244,7 +319,7 @@ fn multipart_wire_uses_original_speech_registration_and_receipt() {
     let starts = Arc::new(AtomicUsize::new(0));
     let entered = Arc::new(AtomicBool::new(false));
     let cancelled = Arc::new(AtomicBool::new(false));
-    let model = |public| -> Arc<dyn SpeechRecognizer> {
+    let model = |public, translation, public_translation| -> Arc<dyn SpeechRecognizer> {
         Arc::new(Probe {
             source: SourceIdentity::for_new_allocation().unwrap(),
             memory: host
@@ -256,18 +331,22 @@ fn multipart_wire_uses_original_speech_registration_and_receipt() {
                 )
                 .unwrap(),
             public,
+            translation,
+            public_translation,
             starts: starts.clone(),
             entered: entered.clone(),
             cancelled: cancelled.clone(),
         })
     };
-    let public = model(true);
+    let public = model(true, true, true);
     let router = Arc::new(
         Router::with_transcription(
             BTreeMap::from([
                 ("fixture".into(), public.clone()),
                 ("alias".into(), public),
-                ("private".into(), model(false)),
+                ("private".into(), model(false, true, false)),
+                ("asr-only".into(), model(true, false, false)),
+                ("ast-only".into(), model(false, true, true)),
             ]),
             host.clone(),
             WorkerConfig {
@@ -283,11 +362,15 @@ fn multipart_wire_uses_original_speech_registration_and_receipt() {
     );
     assert_eq!(
         router.serving_model_ids().collect::<Vec<_>>(),
-        ["alias", "fixture"]
+        ["alias", "asr-only", "ast-only", "fixture"]
     );
     let limits = router.public_transcription_limits("alias").unwrap();
     let mut wrong = limits;
     wrong.registration_id += 1;
+    let translation_limits = router.public_translation_limits("alias").unwrap();
+    assert_eq!(translation_limits.registration_id, limits.registration_id);
+    assert_ne!(translation_limits, limits);
+    assert_eq!(translation_limits.task, SpeechTask::Translation);
     let request = |model: &str| TranscriptionRequest {
         model: model.into(),
         samples: vec![-1., 0., 32767. / 32768.],
@@ -305,6 +388,38 @@ fn multipart_wire_uses_original_speech_registration_and_receipt() {
     assert_eq!(
         router
             .request_public_transcription(request("private"), limits)
+            .err()
+            .unwrap()
+            .code,
+        "not_found"
+    );
+    assert_eq!(
+        router
+            .request_public_translation(request("fixture"), limits)
+            .err()
+            .unwrap()
+            .code,
+        "model_changed"
+    );
+    assert_eq!(
+        router
+            .request_translation(request("asr-only"))
+            .err()
+            .unwrap()
+            .code,
+        "unsupported_task"
+    );
+    assert_eq!(
+        router
+            .request_public_translation(request("private"), translation_limits)
+            .err()
+            .unwrap()
+            .code,
+        "not_found"
+    );
+    assert_eq!(
+        router
+            .public_transcription_limits("ast-only")
             .err()
             .unwrap()
             .code,
@@ -364,7 +479,72 @@ fn multipart_wire_uses_original_speech_registration_and_receipt() {
         .0,
         413
     );
+    let translate = |form: &[u8], auth, chunked| {
+        call_task(SpeechTask::Translation, address, form, auth, chunked)
+    };
+    assert_eq!(translate(&valid, false, false).0, 401);
+    assert_eq!(translate(&form("private", &audio, &[]), true, false).0, 404);
+    assert_eq!(
+        translate(&form("asr-only", &audio, &[]), true, false).0,
+        400
+    );
+    assert_eq!(
+        translate(
+            &form("fixture", &audio, &[("prompt", "custom")]),
+            true,
+            false
+        )
+        .0,
+        400
+    );
+    assert_eq!(
+        translate(
+            &form("fixture", &audio, &[("response_format", "srt")]),
+            true,
+            false
+        )
+        .0,
+        400
+    );
+    assert_eq!(
+        translate(&form("fixture", &audio, &[("stream", "true")]), true, false).0,
+        400
+    );
     assert_eq!(starts.load(Ordering::Acquire), 0);
+    let (status, head, body) = translate(&valid, true, false);
+    assert_eq!(status, 200, "{body}");
+    assert!(head.to_ascii_lowercase().contains("application/json"));
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&body).unwrap(),
+        serde_json::json!({"text":"translated probe"})
+    );
+    let (status, head, body) = translate(
+        &form(
+            "ast-only",
+            &audio,
+            &[("response_format", "text"), ("temperature", "0")],
+        ),
+        true,
+        true,
+    );
+    assert_eq!(status, 200, "{body}");
+    assert!(head.to_ascii_lowercase().contains("text/plain"));
+    assert_eq!(body, "translated probe");
+    let (status, _, body) = translate(&form("fixture", &wav(&[8192]), &[]), true, false);
+    assert_eq!(status, 422, "{body}");
+    assert!(body.contains("translation_incomplete"));
+    assert!(!body.contains("translated probe"));
+    // A native request is the same typed job, even for a native-only alias.
+    let native = router.request_translation(request("private")).unwrap();
+    let result = native
+        .events
+        .recv_timeout(Duration::from_secs(5))
+        .unwrap()
+        .unwrap();
+    assert_eq!(result.task(), SpeechTask::Translation);
+    assert_eq!(result.text(), "translated probe");
+    assert_eq!(result.usage().input_tokens, 5);
+    drop((result, native));
     let (status, head, json) = call(address, &valid, true, false);
     assert_eq!(status, 200, "{json}");
     assert!(head.to_ascii_lowercase().contains("application/json"));
@@ -400,6 +580,18 @@ fn multipart_wire_uses_original_speech_registration_and_receipt() {
     wait(&entered);
     drop(socket);
     wait(&cancelled);
+    entered.store(false, Ordering::Release);
+    cancelled.store(false, Ordering::Release);
+    let socket = open_task(
+        SpeechTask::Translation,
+        address,
+        &form("fixture", &wav(&[16384]), &[]),
+        true,
+        true,
+    );
+    wait(&entered);
+    drop(socket);
+    wait(&cancelled);
     server.shutdown().unwrap();
     let small = ServerBuilder::from_service(router.clone())
         .bind("127.0.0.1:0".parse().unwrap())
@@ -421,10 +613,11 @@ fn multipart_wire_uses_original_speech_registration_and_receipt() {
     assert_eq!(status, 413, "{body}");
     assert!(body.contains("output_too_large"));
     small.shutdown().unwrap();
-    assert_eq!(
-        router.scheduler_snapshot().counters.transcription_requests,
-        4
-    );
+    let counters = router.scheduler_snapshot().counters;
+    assert_eq!(counters.transcription_requests, 4);
+    assert_eq!(counters.translation_requests, 4);
+    assert_eq!(counters.translation_input_tokens, 20);
+    assert_eq!(counters.translation_output_tokens, 8);
     let mut router = Arc::try_unwrap(router).ok().unwrap();
     router.shutdown().unwrap();
     drop(router);

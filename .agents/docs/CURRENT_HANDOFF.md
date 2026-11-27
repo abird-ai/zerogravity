@@ -29,7 +29,10 @@ speech reference and native learned SDK transcription/cancellation pass;
 complete assembled gate passed. OA-7D public transcription wire adapter
 implemented over original native receipt and explicit eligibility; focused
 checks, actual learned SDK and complete assembled workspace gate passed.
-Built-in Gemma candidate stays native-only.
+OA-7E adds native speech-to-English translation and the same multipart
+wire with distinct registration/task qualification. Independent learned
+Spanish speech reference, focused checks, actual learned SDK and
+complete assembled workspace gate passed. Built-in Gemma stays native-only.
 Appendix D preserves every post-M1 landing narrative, changed paths and
 exact engineering prose delta; Appendix B records unresolved markers.
 The preceding [UX-P-M1 pack](FULL_COMPREHENSIVE_HANDOFF_2026-11-26_UX_PM1.md),
@@ -57,7 +60,92 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — OA-7D capability-gated transcription wire (27 Nov)
+### Current checkpoint — OA-7E source-supported speech translation (27 Nov)
+
+Started clean signed 05c54e5d on sole L5 main. Reused original cached
+Gemma4 E2B audio/language source, native model, tokenizer, existing
+worker/registry/receipt and strict multipart/WAV route. No model or SDK
+download. OA-6 actual trained MiniLM acquisition remains open.
+
+One explicit SpeechTask (Transcription/Translation) on existing SpeechJob,
+same typed receipt and physical owner; existing native transcription
+request shape is unchanged, request_translation uses the shared input
+shape. Terminal identifies its task; usage counts actual generation
+including the bilingual source line, English delimiter and stop token.
+SpeechRecognizer opt-in native supports_translation and independent
+public_translation (default false), with captured registration policy.
+Public TranscriptionLimits now includes task as well as exact original
+registration ID and bounds; no ASR grant can authorize AST or vice versa.
+Catalog native translation fact, public visibility only on actual public
+ASR or AST grant. Separate translation counters, no fake text-generator
+tokens/second scheduler. Existing adapters default to explicit refusal.
+
+Gemma source-family SpeechTask, exact same authenticated non-thinking
+single audio turn and actual placeholder rows, model-card AST structure:
+"Transcribe the following speech segment, then translate it into English.
+Output the transcription, then a newline and 'English: ' followed by the
+translation." (one space between sentences in actual rendered prompt).
+This is compact automatic source-language prompt, fixed target English;
+no arbitrary prompt/language control or claim of language detection.
+Same greedy finite decoder and stop IDs. Model emits source + exactly
+one newline + English-labelled target. Family projects target using a
+range into original charged decoded text, requires nonempty source and
+target single lines; malformed completed output refuses, incomplete
+length remains explicitly incomplete. Does not infer correctness from
+a label. Native request_translation and translation_prompt_tokens
+exposed on original candidate; public candidate defaults remain false.
+
+POST /v1/audio/translations: same authenticated fixed/chunked multipart
+collector, strict PCM16 mono16k WAV and physical F32 copy, limits,
+original receipt/cancellation and hard600s speech deadline. Only
+supported json(default)/text, deterministic zero/omitted temperature,
+neutral stream=false or omitted (no streaming); unsupported controls
+refuse. Translation JSON is exact SDK Translation schema {text}, not
+ASR usage schema; native receipt/counters retain all actual usage.
+Length422 translation_incomplete, bounded projection and retained bytes.
+Task mismatched terminal cannot be successful. No translation-only
+HTTP mathematics, separate listener or inference owner.
+
+Independent original HF/PyTorch speech.py --translate, using existing
+locally synthesized Spanish "Hola mundo." (eSpeak NG es, speed200,
+same ffmpeg PCM16 mono16k and amplitude trim as OA-7C). 9558 samples,
+0.597375s, 15 real audio rows,56 prompt IDs; actual generated IDs
+[21529,13812,107,27832,236787,26352,1902,106], stop, exact raw output
+"Hola mundo\nEnglish: Hello world". This qualifies only a synthesized
+single-utterance case, not broad multilingual accuracy or performance.
+Actual learned installed OpenAI SDK: actual installed OpenAI SDK2.33.0 strict JSON {"text":"Hello world"}, exact independent English target and native input56/output8 usage; SDK completion378.481s, real learned test passed399.51s including retirement.
+Focused314/0/6 (33 suites) and strict Clippy passed. Existing socket
+fixture expanded for native-only, ASR-only, AST-public-only and dual
+public registrations, crossed task preflight refusal, native translation
+receipt, fixed/chunked JSON/text, incomplete result refusal, separate
+usage and cancellation. Family malformed bilingual output test passed.
+Assembled: 2,596/0/112 (324 Rust suites, 698s), complete isolated gate passed.
+Logs target/oa7e-reference.log, target/oa7e-compile.log,
+target/oa7e-focused.log, target/oa7e-sdk.log, target/oa7e-assembled.log.
+Prior actual SDK fixture generalized, retains original ASR test.
+Translation test uses existing cache and SDK env plus
+ZG_GEMMA4_TRANSLATION_REFERENCE and ZG_GEMMA4_TRANSLATION_WAV, release
+locked/offline -p zerogravity --no-default-features --features
+model-gemma4-audio-candidate,serve --test transcription_candidate
+wire::actual_spoken_translation_through_openai_sdk
+-- --ignored --exact --nocapture --test-threads=1.
+
+Next: investigate existing approved source/cache inventory for a real
+learned speech synthesizer. Read-only L5 inventory found installed
+python3.13-kokoro-0-unstable-2025-06-16 but no learned tensor/voice files
+in package or visible model cache roots. The reference package defaults
+to hexgrad/Kokoro-82M and downloads weights when absent; do not invoke
+that acquisition. No authorized new model downloads; do not
+use eSpeak/ffmpeg as production TTS or treat the audio encoder as a
+synthesizer. If no eligible cached source, retain explicit synthesis
+blocker and advance next ready capability in OA-8/OA-9. Image
+generation/edit/variation requires actual image generator weights, not
+a vision encoder or procedural dummy image. Realtime must reuse actual
+native session/task semantics. Natural speech, production latency and
+built-in ASR/AST public promotion remain unqualified. No new source
+download or fabricated capability.
+
+### Prior checkpoint — OA-7D capability-gated transcription wire (27 Nov)
 
 Started from clean signed 83c79f1e on sole L5 main. Prior native learned
 transcript and decoder/encoder evidence reused. No new model, source

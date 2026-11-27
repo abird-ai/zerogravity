@@ -16,7 +16,7 @@ from reference import bind
 from language import load_text
 
 
-def run(snapshot, wav, output):
+def run(snapshot, wav, output, translate=False):
     torch.set_num_threads(4)
     torch.set_num_interop_threads(1)
     torch.set_default_dtype(torch.float32)
@@ -39,7 +39,12 @@ def run(snapshot, wav, output):
     del tower, projector, encoded, features
     gc.collect()
     template = (snapshot / "chat_template.jinja").read_text()
-    rendered, _ = render_jinja_template(conversations=[[{"role":"user","content":[{"type":"text","text":"Transcribe the following speech segment in its original language."},{"type":"audio"}]}]], chat_template=template, add_generation_prompt=True, bos_token="<bos>", enable_thinking=False)
+    instruction = (
+        "Transcribe the following speech segment, then translate it into English. "
+        "Output the transcription, then a newline and 'English: ' followed by the translation."
+        if translate else "Transcribe the following speech segment in its original language."
+    )
+    rendered, _ = render_jinja_template(conversations=[[{"role":"user","content":[{"type":"text","text":instruction},{"type":"audio"}]}]], chat_template=template, add_generation_prompt=True, bos_token="<bos>", enable_thinking=False)
     rendered = rendered[0].replace("<|audio|>", "<|audio>" + "<|audio|>" * rows.shape[0] + "<audio|>")
     tokenizer = Tokenizer.from_file(str(snapshot / "tokenizer.json"))
     ids = tokenizer.encode(rendered, add_special_tokens=False).ids
@@ -55,7 +60,8 @@ def run(snapshot, wav, output):
         result = model(inputs_embeds=embedded, per_layer_inputs=ple, use_cache=True, return_dict=True)
         generated = []
         finish = "length"
-        for i in range(8):
+        limit = 32 if translate else 8
+        for i in range(limit):
             logits = torch.nn.functional.linear(result.last_hidden_state[:,-1,:],model.embed_tokens.weight)
             cap = text.final_logit_softcapping
             if cap:
@@ -66,7 +72,7 @@ def run(snapshot, wav, output):
             if token in (1,106,50):
                 finish = "stop"
                 break
-            if i < 7:
+            if i + 1 < limit:
                 result = model(input_ids=torch.tensor([[token]]),past_key_values=result.past_key_values,use_cache=True,return_dict=True)
         transcript = tokenizer.decode(generated[:-1] if finish=="stop" else generated, skip_special_tokens=True)
         print("REFERENCE transcript",repr(transcript),"ids",generated,"finish",finish,flush=True)
@@ -77,5 +83,6 @@ if __name__=="__main__":
     parser.add_argument("snapshot",type=pathlib.Path)
     parser.add_argument("wav",type=pathlib.Path)
     parser.add_argument("output",type=pathlib.Path)
+    parser.add_argument("--translate", action="store_true")
     args=parser.parse_args()
-    run(args.snapshot,args.wav,args.output)
+    run(args.snapshot,args.wav,args.output,args.translate)

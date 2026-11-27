@@ -2,8 +2,8 @@
 //! original Runtime's admission, registry, worker and terminal receipt.
 use std::{collections::BTreeMap, sync::Arc};
 pub use zerogravity_engine::transcription::{
-    SpeechRecognizer, SpeechSession, Transcript, TranscriptionFinish, TranscriptionReceipt,
-    TranscriptionRequest, TranscriptionUsage,
+    SpeechRecognizer, SpeechSession, SpeechTask, Transcript, TranscriptionFinish,
+    TranscriptionReceipt, TranscriptionRequest, TranscriptionUsage,
 };
 use zerogravity_engine::{
     model_instance::execution::WorkerConfig, router::ServiceError, scheduler::SchedulerLimits,
@@ -53,7 +53,7 @@ mod gemma {
     use zerogravity_core::{identity::SourceIdentity, resource_arbiter::TransferAdmission};
     use zerogravity_engine::diagnostics::{ArtifactDescription, ModelDetails};
     use zerogravity_model_gemma4::audio::{
-        Gemma4Transcriber, Gemma4Transcription, TranscriptFinish,
+        Gemma4Transcriber, Gemma4Transcription, SpeechTask as GemmaSpeechTask, TranscriptFinish,
     };
 
     /// Explicit CPU F32 candidate, not an automatic trained ASR catalog or
@@ -84,6 +84,14 @@ mod gemma {
             limit: usize,
         ) -> Result<zerogravity_model_gemma4::text::tokenizer::Gemma4EncodedText> {
             self.model.prompt_tokens(samples, limit, None)
+        }
+        pub fn translation_prompt_tokens(
+            &self,
+            samples: usize,
+            limit: usize,
+        ) -> Result<zerogravity_model_gemma4::text::tokenizer::Gemma4EncodedText> {
+            self.model
+                .prompt_tokens_for(GemmaSpeechTask::TranslateEnglish, samples, limit, None)
         }
     }
     impl SpeechRecognizer for Gemma4SpeechCandidate {
@@ -118,6 +126,26 @@ mod gemma {
                 }),
                 ..Default::default()
             })
+        }
+        fn supports_translation(&self) -> bool {
+            true
+        }
+        fn start_translation(
+            self: Arc<Self>,
+            samples: &[f32],
+            sample_rate: u32,
+            context: usize,
+            max_tokens: usize,
+            cancelled: &AtomicBool,
+        ) -> Result<Box<dyn SpeechSession>> {
+            Ok(Box::new(Session(self.model.start_task(
+                GemmaSpeechTask::TranslateEnglish,
+                samples,
+                sample_rate,
+                context,
+                max_tokens,
+                Some(cancelled),
+            )?)))
         }
         fn start(
             self: Arc<Self>,

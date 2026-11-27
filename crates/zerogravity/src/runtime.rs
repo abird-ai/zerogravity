@@ -75,6 +75,14 @@ impl Runtime {
         self.engine.request_transcription(request)
     }
 
+    /// Translate a finite audio input into English using the selected
+    /// source's actual translation task on the original Runtime.
+    pub fn request_translation(
+        &self,
+        request: crate::transcription::TranscriptionRequest,
+    ) -> std::result::Result<crate::transcription::TranscriptionReceipt, text::ServiceError> {
+        self.engine.request_translation(request)
+    }
     pub fn request_embeddings(
         &self,
         request: crate::embedding::EmbeddingRequest,

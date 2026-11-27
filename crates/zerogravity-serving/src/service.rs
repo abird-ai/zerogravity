@@ -104,6 +104,25 @@ pub trait TextService: Send + Sync + 'static {
             "transcription endpoint unavailable",
         ))
     }
+    fn translation_limits(&self, _alias: &str) -> Result<TranscriptionLimits> {
+        Err(ServiceError::new(
+            404,
+            "not_found",
+            "translation endpoint unavailable",
+        ))
+    }
+    fn request_translation_admitted(
+        &self,
+        _request: TranscriptionRequest,
+        _limits: TranscriptionLimits,
+        _ingress: Vec<ServingCharge>,
+    ) -> Result<TranscriptionReceipt> {
+        Err(ServiceError::new(
+            404,
+            "not_found",
+            "translation endpoint unavailable",
+        ))
+    }
     fn charge_ingress(&self, session: &str, bytes: u64) -> Result<ServingCharge>;
     fn model_ids(&self) -> Result<Vec<String>>;
     fn max_output(&self) -> Result<usize>;
@@ -119,6 +138,19 @@ pub trait TextService: Send + Sync + 'static {
 }
 
 impl TextService for Runtime {
+    fn translation_limits(&self, alias: &str) -> Result<TranscriptionLimits> {
+        self.public_translation_limits(alias)
+    }
+    fn request_translation_admitted(
+        &self,
+        request: TranscriptionRequest,
+        limits: TranscriptionLimits,
+        ingress: Vec<ServingCharge>,
+    ) -> Result<TranscriptionReceipt> {
+        let receipt = self.request_public_translation(request, limits);
+        drop(ingress);
+        receipt
+    }
     fn transcription_limits(&self, alias: &str) -> Result<TranscriptionLimits> {
         self.public_transcription_limits(alias)
     }
@@ -203,6 +235,19 @@ impl TextService for Runtime {
 }
 
 impl TextService for Router {
+    fn translation_limits(&self, alias: &str) -> Result<TranscriptionLimits> {
+        self.public_translation_limits(alias)
+    }
+    fn request_translation_admitted(
+        &self,
+        request: TranscriptionRequest,
+        limits: TranscriptionLimits,
+        ingress: Vec<ServingCharge>,
+    ) -> Result<TranscriptionReceipt> {
+        let receipt = self.request_public_translation(request, limits);
+        drop(ingress);
+        receipt
+    }
     fn transcription_limits(&self, alias: &str) -> Result<TranscriptionLimits> {
         self.public_transcription_limits(alias)
     }

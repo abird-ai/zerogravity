@@ -10,7 +10,7 @@ use crate::model_instance::{
     execution::{Executor, ModelHandle, ModelRetirement},
 };
 use crate::state_cache::{PrefixCacheEviction, PrefixSharingScope};
-use crate::transcription::SpeechRecognizer;
+use crate::transcription::{SpeechRecognizer, SpeechTask};
 use crate::{
     Error, Result,
     diagnostics::{ModelCapabilities, ModelLifecycle, ModelSnapshot},
@@ -65,6 +65,8 @@ pub(super) struct Route<A: Executor> {
     independent_retirement: bool,
     public_embeddings: bool,
     public_transcription: bool,
+    translation: bool,
+    public_translation: bool,
     performance: RegistrationPerformance,
 }
 impl<A: Executor> Route<A> {
@@ -75,6 +77,10 @@ impl<A: Executor> Route<A> {
             matches!(&model, RouteModel::Encoder(encoder) if encoder.public_embeddings());
         let public_transcription =
             matches!(&model, RouteModel::Speech(speech) if speech.public_transcription());
+        let translation =
+            matches!(&model, RouteModel::Speech(speech) if speech.supports_translation());
+        let public_translation = translation
+            && matches!(&model, RouteModel::Speech(speech) if speech.public_translation());
         let id = NEXT_REGISTRATION
             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |next| {
                 next.checked_add(1)
@@ -95,6 +101,8 @@ impl<A: Executor> Route<A> {
             independent_retirement,
             public_embeddings,
             public_transcription,
+            translation,
+            public_translation,
             performance: RegistrationPerformance::new(std::time::Instant::now()),
         })
     }
@@ -365,6 +373,7 @@ pub(crate) trait Models: Send + Sync {
     fn acquire_speech(
         &self,
         alias: &str,
+        task: SpeechTask,
         public: bool,
     ) -> std::result::Result<(Arc<dyn SpeechRecognizer>, ModelRead), ServiceError>;
     fn begin_unload_registration(
@@ -445,6 +454,7 @@ impl<A: Executor> Models for Registry<A> {
     fn acquire_speech(
         &self,
         alias: &str,
+        task: SpeechTask,
         public: bool,
     ) -> std::result::Result<(Arc<dyn SpeechRecognizer>, ModelRead), ServiceError> {
         let route = self.routes.get(alias).ok_or_else(missing_model)?;
@@ -452,7 +462,20 @@ impl<A: Executor> Models for Registry<A> {
         let reader = reader;
         let model = model;
         match model {
-            RouteModel::Speech(model) if !public || route.public_transcription => {
+            RouteModel::Speech(_) if task == SpeechTask::Translation && !route.translation => {
+                Err(ServiceError::new(
+                    400,
+                    "unsupported_task",
+                    "model does not support speech translation",
+                ))
+            }
+            RouteModel::Speech(model)
+                if !public
+                    || match task {
+                        SpeechTask::Transcription => route.public_transcription,
+                        SpeechTask::Translation => route.public_translation,
+                    } =>
+            {
                 Ok((model, reader))
             }
             RouteModel::Speech(_) => Err(ServiceError::new(
@@ -536,6 +559,7 @@ impl<A: Executor> Models for Registry<A> {
                                 prefill: Some(A::prefill(&model)),
                                 embedding_dimensions: None,
                                 transcription: false,
+                                translation: false,
                                 chat_allowed: prepared.validate_chat().is_ok(),
                                 details: A::describe_model(&model)?,
                             }
@@ -547,6 +571,7 @@ impl<A: Executor> Models for Registry<A> {
                             prefill: None,
                             embedding_dimensions: Some(model.dimensions()),
                             transcription: false,
+                            translation: false,
                             chat_allowed: false,
                             details: model.describe()?,
                         },
@@ -557,6 +582,7 @@ impl<A: Executor> Models for Registry<A> {
                             prefill: None,
                             embedding_dimensions: None,
                             transcription: true,
+                            translation: route.translation,
                             chat_allowed: false,
                             details: model.describe()?,
                         },
@@ -586,7 +612,10 @@ impl<A: Executor> Models for Registry<A> {
         let state = route.state();
         (state.lifecycle == ModelLifecycle::Ready
             && (matches!(state.model.as_ref(), Some(RouteModel::Text(_)))
-                || (public && (route.public_embeddings || route.public_transcription))))
+                || (public
+                    && (route.public_embeddings
+                        || route.public_transcription
+                        || route.public_translation))))
             .then_some(alias.as_str())
     }
     fn begin_unload(&self, model: &ModelInstance) -> Result<Option<SelectiveRetirement>> {

@@ -841,8 +841,13 @@ Focused247/0/2 strict lint. Assembled: 2,593/0/112 (324 Rust suites, 617s), comp
 OA-7D capability-gated multipart PCM16 WAV, original public registration
 and receipt, JSON exact usage/text, strict controls/length and output
 limits. Focused249/0/3 strict lint. Actual learned: actual installed OpenAI SDK2.33.0 strict JSON "Hello world", input41/output3/total44, exact independent reference; 264.264s SDK completion, real learned wire test passed292.73s including retirement.
-Assembled: 2,595/0/112 (324 Rust suites, 904s), complete isolated gate passed. OA-7E actual source-supported translation
-next; no natural-speech quality, TTS or streaming claim.
+Assembled: 2,595/0/112 (324 Rust suites, 904s), complete isolated gate passed. OA-7E source-supported AST through same speech task/receipt and
+capability-gated multipart translations, original model-owned bilingual
+prompt and target projection, independent Spanish "Hola mundo" ->
+"Hello world" reference. Actual learned SDK: actual installed OpenAI SDK2.33.0 strict JSON {"text":"Hello world"}, exact independent English target and native input56/output8 usage; SDK completion378.481s, real learned test passed399.51s including retirement.
+Focused314/0/6 strict lint. Assembled: 2,596/0/112 (324 Rust suites, 698s), complete isolated gate passed.
+Next real synthesis source inventory or next ready modality. No
+natural-speech quality, TTS or streaming claim.
 Preserve the original runtime, admission and listener owner.
 
 - [ ] Close the [OpenAI-compatible serving iteration](serving-and-speculation/NEXT_ITERATION_OPENAI_COMPATIBLE_SERVING.md):

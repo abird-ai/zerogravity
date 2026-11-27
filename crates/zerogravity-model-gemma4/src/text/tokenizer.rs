@@ -339,10 +339,11 @@ impl Gemma4TextTokenizer {
     /// authenticated E2B chat template. The processor's one audio marker
     /// is expanded to the actual number of completed soft-token rows.
     #[cfg(feature = "audio-transcription")]
-    pub(crate) fn transcription_prompt(
+    pub(crate) fn speech_prompt(
         &self,
         rows: usize,
         limit: usize,
+        instruction: &'static str,
         cancelled: Option<&AtomicBool>,
     ) -> Result<Gemma4EncodedText> {
         let _operation = operation(&self.busy)?;
@@ -352,7 +353,7 @@ impl Gemma4TextTokenizer {
         }
         let admission = admit(&self.host, OUTPUT_BYTES, AllocationClass::Output)?;
         let rendered = format!(
-            "<bos><|turn>user\nTranscribe the following speech segment in its original language.<|audio>{}<audio|><turn|>\n<|turn>model\n",
+            "<bos><|turn>user\n{instruction}<|audio>{}<audio|><turn|>\n<|turn>model\n",
             "<|audio|>".repeat(rows)
         );
         let encoded = self

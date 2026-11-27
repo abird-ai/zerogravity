@@ -250,9 +250,15 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   native-only; explicit test-only learned adapter for wire qualification.
 - [x] OA-7D actual learned installed SDK: actual installed OpenAI SDK2.33.0 strict JSON "Hello world", input41/output3/total44, exact independent reference; 264.264s SDK completion, real learned wire test passed292.73s including retirement.
 - [x] OA-7D assembled workspace gate: 2,595/0/112 (324 Rust suites, 904s), complete isolated gate passed.
-- [ ] OA-7E: source-supported audio translation using original Gemma4 AST
-  semantics and actual non-English speech reference; shared Runtime
-  receipt, truthful public translation only on qualification.
+- [x] OA-7E implementation: explicit AST task in original SpeechJob/
+  registry/receipt, distinct native/public capability and usage counters,
+  task-bound admission, actual model-owned bilingual prompt and strict
+  English target projection. Shared multipart PCM16 mono16k WAV
+  /v1/audio/translations, JSON {text}/text, length422 and cancellation.
+  Independent original F32 synthesized Spanish "Hola mundo" ->
+  "Hello world",56 prompt/8 output IDs. Focused314/0/6 strict lint.
+- [x] OA-7E actual learned installed SDK: actual installed OpenAI SDK2.33.0 strict JSON {"text":"Hello world"}, exact independent English target and native input56/output8 usage; SDK completion378.481s, real learned test passed399.51s including retirement.
+- [x] OA-7E assembled workspace gate: 2,596/0/112 (324 Rust suites, 698s), complete isolated gate passed.
 - [ ] Remaining OA-7: natural speech/general quality qualification before
   built-in production model promotion; synthesis/streaming only actual
   supported capability, no new model acquisition without authorization.

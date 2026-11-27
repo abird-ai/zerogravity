@@ -181,7 +181,7 @@ fn actual_spoken_transcription_through_runtime() {
 mod wire {
     use super::*;
     use std::sync::atomic::AtomicBool;
-    use zerogravity::transcription::SpeechSession;
+    use zerogravity::transcription::{SpeechSession, SpeechTask};
     use zerogravity_core::{identity::SourceIdentity, resource_arbiter::TransferAdmission};
 
     struct PublicFixture(Arc<Gemma4SpeechCandidate>);
@@ -207,6 +207,24 @@ mod wire {
         fn public_transcription(&self) -> bool {
             true
         }
+        fn supports_translation(&self) -> bool {
+            self.0.supports_translation()
+        }
+        fn public_translation(&self) -> bool {
+            true
+        }
+        fn start_translation(
+            self: Arc<Self>,
+            samples: &[f32],
+            rate: u32,
+            context: usize,
+            max_tokens: usize,
+            cancelled: &AtomicBool,
+        ) -> zerogravity::Result<Box<dyn SpeechSession>> {
+            self.0
+                .clone()
+                .start_translation(samples, rate, context, max_tokens, cancelled)
+        }
         fn validate_admission(&self, a: &TransferAdmission) -> zerogravity::Result<()> {
             self.0.validate_admission(a)
         }
@@ -227,9 +245,26 @@ mod wire {
     #[test]
     #[ignore = "requires actual cached E2B speech checkpoint, independent reference, and installed OpenAI SDK"]
     fn actual_spoken_transcription_through_openai_sdk() {
+        exercise(SpeechTask::Transcription);
+    }
+
+    #[test]
+    #[ignore = "requires actual cached E2B, independent spoken translation, and installed OpenAI SDK"]
+    fn actual_spoken_translation_through_openai_sdk() {
+        exercise(SpeechTask::Translation);
+    }
+
+    fn exercise(task: SpeechTask) {
+        let translation = task == SpeechTask::Translation;
+        let prefix = if translation {
+            "ZG_GEMMA4_TRANSLATION"
+        } else {
+            "ZG_GEMMA4_SPEECH"
+        };
         let path =
-            std::env::var_os("ZG_GEMMA4_SPEECH_REFERENCE").expect("independent speech reference");
-        let wav = std::env::var_os("ZG_GEMMA4_SPEECH_WAV").expect("original spoken PCM16 WAV");
+            std::env::var_os(format!("{prefix}_REFERENCE")).expect("independent speech reference");
+        let wav = std::env::var_os(format!("{prefix}_WAV")).expect("original spoken PCM16 WAV");
+        let output_limit = if translation { 32 } else { 8 };
         let python = std::env::var_os("ZG_TEST_OPENAI_PYTHON").expect("installed OpenAI SDK");
         let reference: Reference = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
         let store = CacheStore::open_existing(CacheOptions::new(
@@ -252,19 +287,20 @@ mod wire {
                 TranscriptionConfig {
                     host_mib: 512,
                     max_context: 128,
-                    max_output_tokens: 8,
+                    max_output_tokens: output_limit,
                     ..Default::default()
                 },
                 |host| {
                     let model = Gemma4SpeechCandidate::prepare(&snapshot, host, "speech", None)
                         .map_err(zerogravity::runtime::text::ServiceError::inference)?;
-                    assert_eq!(
-                        model
-                            .prompt_tokens(reference.samples.len(), 120)
-                            .unwrap()
-                            .ids(),
-                        reference.prompt
-                    );
+                    let prompt = if translation {
+                        model.translation_prompt_tokens(reference.samples.len(), 128 - output_limit)
+                    } else {
+                        model.prompt_tokens(reference.samples.len(), 128 - output_limit)
+                    }
+                    .unwrap();
+                    assert_eq!(prompt.ids(), reference.prompt);
+                    drop(prompt);
                     let public: Arc<dyn SpeechRecognizer> = Arc::new(PublicFixture(model.clone()));
                     let private: Arc<dyn SpeechRecognizer> = model;
                     Ok(BTreeMap::from([
@@ -292,6 +328,11 @@ mod wire {
             .arg(server.local_addr().to_string())
             .arg(wav)
             .arg(path)
+            .arg(if translation {
+                "translation"
+            } else {
+                "transcription"
+            })
             .env(
                 "PYTHONPATH",
                 std::env::var_os("ZG_TEST_OPENAI_PYTHONPATH").unwrap_or_default(),
@@ -304,15 +345,25 @@ mod wire {
             start.elapsed().as_secs_f64()
         );
         let stats = runtime.scheduler_snapshot().unwrap().unwrap().counters;
-        assert_eq!(stats.transcription_requests, 1);
-        assert_eq!(
-            stats.transcription_input_tokens,
-            reference.prompt.len() as u64
-        );
-        assert_eq!(
-            stats.transcription_output_tokens,
-            reference.tokens.len() as u64
-        );
+        let (requests, input, output, other) = if translation {
+            (
+                stats.translation_requests,
+                stats.translation_input_tokens,
+                stats.translation_output_tokens,
+                stats.transcription_requests,
+            )
+        } else {
+            (
+                stats.transcription_requests,
+                stats.transcription_input_tokens,
+                stats.transcription_output_tokens,
+                stats.translation_requests,
+            )
+        };
+        assert_eq!(requests, 1);
+        assert_eq!(input, reference.prompt.len() as u64);
+        assert_eq!(output, reference.tokens.len() as u64);
+        assert_eq!(other, 0);
         server.shutdown().unwrap();
         // The listener did not create or retire another runtime.
         for model in runtime.models().snapshot().unwrap() {

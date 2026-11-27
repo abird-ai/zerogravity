@@ -1712,10 +1712,26 @@ independent charged bounded projection, length422, output413, original
 disconnect cancellation and joined lifecycle. Focused249/0/3 strict
 lint, real socket control tests pass. Actual learned SDK:
 actual installed OpenAI SDK2.33.0 strict JSON "Hello world", input41/output3/total44, exact independent reference; 264.264s SDK completion, real learned wire test passed292.73s including retirement. Assembled: 2,595/0/112 (324 Rust suites, 904s), complete isolated gate passed.
-Built-in candidate stays native-only. **OA-7E:** original model-card
-supported audio translation with real source and non-English speech
-qualification; TTS and streaming only actual capability. Natural
-speech/general quality before built-in production model promotion.
+Built-in candidate stays native-only.
+
+**OA-7E (27 Nov): source-supported speech translation.** Explicit AST
+task in same native SpeechJob/receipt/registry, independent native/public
+translation declaration, task-bound exact admission limits and separate
+usage counters. Model-owned instruction-first automatic source language
+to English, same audio rows, tokenizer, decoder and original stop IDs.
+Gemma AST bilingual terminal parsed only at actual family boundary:
+source line + newline + English-labelled target. Native result carries
+task and actual input/output usage, including generated source and stop.
+Same authenticated fixed/chunked multipart PCM16 mono16k WAV route
+/v1/audio/translations, exact SDK JSON {text} or text output, strict
+unsupported controls, length422 and original cancellation/deadline.
+Independent actual original F32 Spanish synthesized "Hola mundo" ->
+"Hello world", 9558 samples,15 audio rows,56 prompt IDs,8 output IDs.
+Actual learned SDK: actual installed OpenAI SDK2.33.0 strict JSON {"text":"Hello world"}, exact independent English target and native input56/output8 usage; SDK completion378.481s, real learned test passed399.51s including retirement.
+Focused314/0/6 strict lint. Assembled: 2,596/0/112 (324 Rust suites, 698s), complete isolated gate passed.
+Natural speech/general quality before built-in production model
+promotion. TTS and streaming only actual qualified capability; if no
+approved source cached, keep explicit blocker and advance ready work.
 
 ### OA-8 — Images
 

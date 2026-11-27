@@ -413,6 +413,9 @@ pub(super) fn details(model: &ModelSnapshot) -> Vec<String> {
         if let Some(prefill) = cap.prefill {
             lines.push(format!("Prefill: {prefill:?}"));
         }
+        if cap.translation {
+            lines.push("Speech translation: native".into());
+        }
         if cap.transcription {
             lines.push("Transcription: native".into());
         }

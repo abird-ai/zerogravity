@@ -16,7 +16,8 @@ use crate::model_instance::{EmbeddingEncoder, LogitModel, ModelInstance};
 #[cfg(test)]
 use crate::model_instance::{PreparedModel, TextSession};
 use crate::transcription::{
-    MAX_TRANSCRIPT_BYTES, SpeechJob, SpeechRecognizer, TranscriptionReceipt, TranscriptionRequest,
+    MAX_TRANSCRIPT_BYTES, SpeechJob, SpeechRecognizer, SpeechTask, TranscriptionReceipt,
+    TranscriptionRequest,
 };
 use std::collections::{BTreeMap, VecDeque};
 use std::sync::Arc;
@@ -1296,12 +1297,19 @@ impl Router {
         &self,
         request: TranscriptionRequest,
     ) -> Result<TranscriptionReceipt, ServiceError> {
-        self.request_transcription_with(request, MAX_INPUT_BYTES, None)
+        self.request_speech_with(SpeechTask::Transcription, request, MAX_INPUT_BYTES, None)
+    }
+    pub fn request_translation(
+        &self,
+        request: TranscriptionRequest,
+    ) -> Result<TranscriptionReceipt, ServiceError> {
+        self.request_speech_with(SpeechTask::Translation, request, MAX_INPUT_BYTES, None)
     }
     fn speech_limits(
         &self,
         alias: &str,
         model: &dyn SpeechRecognizer,
+        task: SpeechTask,
         input_limit: usize,
     ) -> Result<crate::transcription::TranscriptionLimits, ServiceError> {
         let registration = self
@@ -1311,6 +1319,7 @@ impl Router {
         let context = self.config.context.min(model.max_context());
         let limits = crate::transcription::TranscriptionLimits {
             registration_id: registration.id,
+            task,
             max_samples: model
                 .max_samples()
                 .min(input_limit.min(MAX_INPUT_BYTES) / 4),
@@ -1333,17 +1342,24 @@ impl Router {
         &self,
         alias: &str,
     ) -> Result<crate::transcription::TranscriptionLimits, ServiceError> {
-        self.public_transcription_limits_with(alias, MAX_INPUT_BYTES)
+        self.public_speech_limits_with(SpeechTask::Transcription, alias, MAX_INPUT_BYTES)
     }
-    pub(crate) fn public_transcription_limits_with(
+    pub fn public_translation_limits(
         &self,
+        alias: &str,
+    ) -> Result<crate::transcription::TranscriptionLimits, ServiceError> {
+        self.public_speech_limits_with(SpeechTask::Translation, alias, MAX_INPUT_BYTES)
+    }
+    pub(crate) fn public_speech_limits_with(
+        &self,
+        task: SpeechTask,
         alias: &str,
         input_limit: usize,
     ) -> Result<crate::transcription::TranscriptionLimits, ServiceError> {
-        let (model, reader) = self.models.acquire_speech(alias, true)?;
+        let (model, reader) = self.models.acquire_speech(alias, task, true)?;
         let reader = reader;
         let model = model;
-        let limits = self.speech_limits(alias, model.as_ref(), input_limit);
+        let limits = self.speech_limits(alias, model.as_ref(), task, input_limit);
         drop(model);
         drop(reader);
         limits
@@ -1353,21 +1369,39 @@ impl Router {
         request: TranscriptionRequest,
         limits: crate::transcription::TranscriptionLimits,
     ) -> Result<TranscriptionReceipt, ServiceError> {
-        self.request_transcription_with(request, MAX_INPUT_BYTES, Some(limits))
+        self.request_speech_with(
+            SpeechTask::Transcription,
+            request,
+            MAX_INPUT_BYTES,
+            Some(limits),
+        )
     }
-    pub(crate) fn request_transcription_with(
+    pub fn request_public_translation(
         &self,
+        request: TranscriptionRequest,
+        limits: crate::transcription::TranscriptionLimits,
+    ) -> Result<TranscriptionReceipt, ServiceError> {
+        self.request_speech_with(
+            SpeechTask::Translation,
+            request,
+            MAX_INPUT_BYTES,
+            Some(limits),
+        )
+    }
+    pub(crate) fn request_speech_with(
+        &self,
+        task: SpeechTask,
         request: TranscriptionRequest,
         input_limit: usize,
         expected: Option<crate::transcription::TranscriptionLimits>,
     ) -> Result<TranscriptionReceipt, ServiceError> {
-        let (model, reader) = self
-            .models
-            .acquire_speech(&request.model, expected.is_some())?;
+        let (model, reader) =
+            self.models
+                .acquire_speech(&request.model, task, expected.is_some())?;
         let reader = reader;
         let model = model;
         if let Some(expected) = expected
-            && self.speech_limits(&request.model, model.as_ref(), input_limit)? != expected
+            && self.speech_limits(&request.model, model.as_ref(), task, input_limit)? != expected
         {
             return Err(ServiceError::new(
                 409,
@@ -1384,8 +1418,15 @@ impl Router {
         )?;
         let id = self.next_request_id()?;
         let ticket = self.queue.reserve()?;
-        let (job, receipt) =
-            SpeechJob::prepare(request, model, reader, &self.host, &self.queue, id, context)?;
+        let (job, receipt) = SpeechJob::prepare(
+            (task, request),
+            model,
+            reader,
+            &self.host,
+            &self.queue,
+            id,
+            context,
+        )?;
         self.queue
             .enqueue(ticket, Work::Finite(FiniteJob::Speech(job)))
             .map_err(|(error, _)| error)?;

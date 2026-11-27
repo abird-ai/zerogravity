@@ -19,11 +19,18 @@ type Result<T> = std::result::Result<T, ServiceError>;
 pub const MAX_TRANSCRIPT_BYTES: usize = 65536;
 pub const SAMPLE_RATE: u32 = 16000;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SpeechTask {
+    Transcription,
+    Translation,
+}
+
 /// Actual admitted public capability envelope. The wire adapter prices
 /// this before decoding PCM; admission rechecks the same registration.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TranscriptionLimits {
     pub registration_id: u64,
+    pub task: SpeechTask,
     pub max_samples: usize,
     pub max_tokens: usize,
     pub max_output_bytes: usize,
@@ -60,6 +67,25 @@ pub trait SpeechRecognizer: Send + Sync {
     fn public_transcription(&self) -> bool {
         false
     }
+    /// Native translation and wire qualification are distinct from ASR.
+    fn supports_translation(&self) -> bool {
+        false
+    }
+    fn public_translation(&self) -> bool {
+        false
+    }
+    fn start_translation(
+        self: Arc<Self>,
+        _samples: &[f32],
+        _sample_rate: u32,
+        _context: usize,
+        _max_tokens: usize,
+        _cancelled: &AtomicBool,
+    ) -> crate::Result<Box<dyn SpeechSession>> {
+        Err(crate::Error::Unsupported(
+            "speech translation is not supported".into(),
+        ))
+    }
     fn validate_admission(&self, admission: &TransferAdmission) -> crate::Result<()>;
     fn describe(&self) -> crate::Result<crate::diagnostics::ModelDetails> {
         Ok(Default::default())
@@ -83,12 +109,16 @@ pub trait SpeechSession: Send {
     ) -> crate::Result<Option<TranscriptionUsage>>;
 }
 pub struct Transcript {
+    task: SpeechTask,
     text: String,
     usage: TranscriptionUsage,
     source: SourceIdentity,
     _charge: ServingCharge,
 }
 impl Transcript {
+    pub fn task(&self) -> SpeechTask {
+        self.task
+    }
     pub fn text(&self) -> &str {
         &self.text
     }
@@ -148,6 +178,7 @@ impl TranscriptionRequest {
 }
 
 pub(crate) struct SpeechJob {
+    task: SpeechTask,
     request: TranscriptionRequest,
     session: Option<Box<dyn SpeechSession>>,
     model: Arc<dyn SpeechRecognizer>,
@@ -162,7 +193,7 @@ pub(crate) struct SpeechJob {
 }
 impl SpeechJob {
     pub(crate) fn prepare(
-        request: TranscriptionRequest,
+        intent: (SpeechTask, TranscriptionRequest),
         model: Arc<dyn SpeechRecognizer>,
         reader: ModelRead,
         host: &ServingHost,
@@ -172,6 +203,7 @@ impl SpeechJob {
     ) -> Result<(Box<Self>, TranscriptionReceipt)> {
         let reader = reader;
         let model = model;
+        let (task, request) = intent;
         let request_bytes = pending::checked_sum(&[
             pending::heap_strings(&[&request.model])?,
             pending::vec_bytes::<f32>(request.samples.capacity())?,
@@ -220,6 +252,7 @@ impl SpeechJob {
         );
         Ok((
             Box::new(Self {
+                task,
                 request,
                 session: None,
                 model,
@@ -241,17 +274,21 @@ impl SpeechJob {
     fn advance(&mut self) -> Result<Option<TranscriptionUsage>> {
         match &mut self.session {
             None => {
+                let model = self.model.clone();
+                let samples = &self.request.samples;
+                let rate = self.request.sample_rate;
+                let max = self.request.max_tokens;
+                let cancelled = self.cancel.flag();
                 self.session = Some(
-                    self.model
-                        .clone()
-                        .start(
-                            &self.request.samples,
-                            self.request.sample_rate,
-                            self.context,
-                            self.request.max_tokens,
-                            self.cancel.flag(),
-                        )
-                        .map_err(ServiceError::inference)?,
+                    match self.task {
+                        SpeechTask::Transcription => {
+                            model.start(samples, rate, self.context, max, cancelled)
+                        }
+                        SpeechTask::Translation => {
+                            model.start_translation(samples, rate, self.context, max, cancelled)
+                        }
+                    }
+                    .map_err(ServiceError::inference)?,
                 );
                 Ok(None)
             }
@@ -315,19 +352,28 @@ impl SpeechJob {
                 // Retire actual decoder before publishing its detached result.
                 drop(self.session.take());
                 let result = Transcript {
+                    task: self.task,
                     text: std::mem::take(&mut self.text),
                     usage,
                     source: self.model.source(),
                     _charge: self.output_charge.take().expect("speech output credit"),
                 };
                 if self.events.try_send(Ok(result)).is_ok() {
-                    stats.transcription_requests.fetch_add(1, Ordering::Relaxed);
-                    stats
-                        .transcription_input_tokens
-                        .fetch_add(usage.input_tokens as u64, Ordering::Relaxed);
-                    stats
-                        .transcription_output_tokens
-                        .fetch_add(usage.output_tokens as u64, Ordering::Relaxed);
+                    let (requests, input, output) = match self.task {
+                        SpeechTask::Transcription => (
+                            &stats.transcription_requests,
+                            &stats.transcription_input_tokens,
+                            &stats.transcription_output_tokens,
+                        ),
+                        SpeechTask::Translation => (
+                            &stats.translation_requests,
+                            &stats.translation_input_tokens,
+                            &stats.translation_output_tokens,
+                        ),
+                    };
+                    requests.fetch_add(1, Ordering::Relaxed);
+                    input.fetch_add(usage.input_tokens as u64, Ordering::Relaxed);
+                    output.fetch_add(usage.output_tokens as u64, Ordering::Relaxed);
                     self.reader.complete();
                 } else {
                     stats.cancelled.fetch_add(1, Ordering::Relaxed);

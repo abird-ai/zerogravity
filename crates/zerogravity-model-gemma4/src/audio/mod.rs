@@ -9,7 +9,7 @@ mod language;
 mod transcription;
 #[cfg(feature = "audio-transcription")]
 pub use transcription::{
-    Gemma4Transcriber, Gemma4Transcript, Gemma4Transcription, TranscriptFinish,
+    Gemma4Transcriber, Gemma4Transcript, Gemma4Transcription, SpeechTask, TranscriptFinish,
 };
 mod layer;
 pub use language::{AudioLanguageSession, Gemma4AudioLanguage};

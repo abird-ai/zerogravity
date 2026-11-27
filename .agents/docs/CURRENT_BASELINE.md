@@ -5,6 +5,18 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 27 Nov — OA-7E native speech translation
+
+One original speech job with task-bound public limits/receipt, separate
+native/public AST capability and usage counters. Source-owned automatic
+source language -> English AST prompt, strict target-line projection
+and shared multipart WAV translation JSON/text route. Independent
+original F32 reference Spanish "Hola mundo" -> "Hello world" (9558
+samples,15 audio rows,56 prompt IDs,8 generated including stop).
+Actual learned SDK: actual installed OpenAI SDK2.33.0 strict JSON {"text":"Hello world"}, exact independent English target and native input56/output8 usage; SDK completion378.481s, real learned test passed399.51s including retirement.
+Focused314/0/6, strict lint. Assembled: 2,596/0/112 (324 Rust suites, 698s), complete isolated gate passed.
+No built-in public grant, natural-speech quality, TTS or GPU claim.
+
 ## 27 Nov — OA-7D transcription protocol
 
 Explicit public speech registration gate and exact effective admission

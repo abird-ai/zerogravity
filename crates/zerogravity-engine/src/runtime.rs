@@ -394,15 +394,64 @@ impl Runtime {
         request: crate::transcription::TranscriptionRequest,
     ) -> std::result::Result<crate::transcription::TranscriptionReceipt, ServiceError> {
         self.with_text_router(|router| {
-            router.request_transcription_with(request, self.inner.limits.max_input_bytes, None)
+            router.request_speech_with(
+                crate::transcription::SpeechTask::Transcription,
+                request,
+                self.inner.limits.max_input_bytes,
+                None,
+            )
         })
     }
+    pub fn request_translation(
+        &self,
+        request: crate::transcription::TranscriptionRequest,
+    ) -> std::result::Result<crate::transcription::TranscriptionReceipt, ServiceError> {
+        self.with_text_router(|router| {
+            router.request_speech_with(
+                crate::transcription::SpeechTask::Translation,
+                request,
+                self.inner.limits.max_input_bytes,
+                None,
+            )
+        })
+    }
+    pub fn public_translation_limits(
+        &self,
+        alias: &str,
+    ) -> std::result::Result<crate::transcription::TranscriptionLimits, ServiceError> {
+        self.with_text_router(|router| {
+            router.public_speech_limits_with(
+                crate::transcription::SpeechTask::Translation,
+                alias,
+                self.inner.limits.max_input_bytes,
+            )
+        })
+    }
+    pub fn request_public_translation(
+        &self,
+        request: crate::transcription::TranscriptionRequest,
+        limits: crate::transcription::TranscriptionLimits,
+    ) -> std::result::Result<crate::transcription::TranscriptionReceipt, ServiceError> {
+        self.with_text_router(|router| {
+            router.request_speech_with(
+                crate::transcription::SpeechTask::Translation,
+                request,
+                self.inner.limits.max_input_bytes,
+                Some(limits),
+            )
+        })
+    }
+
     pub fn public_transcription_limits(
         &self,
         alias: &str,
     ) -> std::result::Result<crate::transcription::TranscriptionLimits, ServiceError> {
         self.with_text_router(|router| {
-            router.public_transcription_limits_with(alias, self.inner.limits.max_input_bytes)
+            router.public_speech_limits_with(
+                crate::transcription::SpeechTask::Transcription,
+                alias,
+                self.inner.limits.max_input_bytes,
+            )
         })
     }
     pub fn request_public_transcription(
@@ -411,7 +460,8 @@ impl Runtime {
         limits: crate::transcription::TranscriptionLimits,
     ) -> std::result::Result<crate::transcription::TranscriptionReceipt, ServiceError> {
         self.with_text_router(|router| {
-            router.request_transcription_with(
+            router.request_speech_with(
+                crate::transcription::SpeechTask::Transcription,
                 request,
                 self.inner.limits.max_input_bytes,
                 Some(limits),
