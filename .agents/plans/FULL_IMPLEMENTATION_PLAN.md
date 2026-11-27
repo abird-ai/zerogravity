@@ -797,8 +797,11 @@ OA-4C conversation/item resources and atomic context append accepted:
 focused 177/0/0 and strict lint, actual official SDK/CLI/TUI/Web (124.91s)
 and Rust SDK (15.56s) passed; full isolated gate 2,567/0/109 (318 suites,
 342s) passed. Same protocol quota and original semantic admission; no
-additional model state or execution owner. OA-4 remains open for exact
-input-token count and bounded background stream/replay.
+additional model state or execution owner. OA-4D exact input-token count
+accepted: focused 179/0/0 and strict lint, actual official SDK/CLI/TUI/Web
+(162.61s) and Rust SDK (18.79s) passed; full isolated gate 2,569/0/109
+(318 suites, 783s) passed. No generation admission or conversation mutation.
+OA-4 remains open for bounded background stream/replay/resumption.
 Preserve the original runtime, admission and listener owner.
 
 - [ ] Close the [OpenAI-compatible serving iteration](serving-and-speculation/NEXT_ITERATION_OPENAI_COMPATIBLE_SERVING.md):

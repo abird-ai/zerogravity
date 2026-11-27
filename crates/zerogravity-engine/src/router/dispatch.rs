@@ -113,37 +113,80 @@ impl SemanticRequest {
     }
 
     pub fn validate_input(&self, limit: usize) -> Result<(), ServiceError> {
-        match &self.input {
-            TextInput::Conversation(turns) => {
-                if turns.is_empty() || turns.len() > MAX_CHAT_MESSAGES {
-                    return Err(ServiceError::new(
-                        400,
-                        "invalid_messages",
-                        "messages must contain 1..128 entries",
-                    ));
-                }
-                if self.input.content_bytes().is_none_or(|n| n > limit) {
-                    return Err(ServiceError::new(
-                        413,
-                        "input_too_large",
-                        "chat input too large",
-                    ));
-                }
-            }
-            TextInput::Raw(text) | TextInput::User(text)
-                if text.is_empty() || text.len() > limit =>
-            {
-                return Err(ServiceError::new(
-                    400,
-                    "invalid_request",
-                    "request exceeds input/output bounds",
-                ));
-            }
-            _ => {}
-        }
-        Ok(())
+        validate_text_input(&self.input, limit)
     }
 }
+
+fn validate_text_input(input: &TextInput, limit: usize) -> Result<(), ServiceError> {
+    match input {
+        TextInput::Conversation(turns) => {
+            if turns.is_empty() || turns.len() > MAX_CHAT_MESSAGES {
+                return Err(ServiceError::new(
+                    400,
+                    "invalid_messages",
+                    "messages must contain 1..128 entries",
+                ));
+            }
+            if input.content_bytes().is_none_or(|n| n > limit) {
+                return Err(ServiceError::new(
+                    413,
+                    "input_too_large",
+                    "chat input too large",
+                ));
+            }
+        }
+        TextInput::Raw(text) | TextInput::User(text) if text.is_empty() || text.len() > limit => {
+            return Err(ServiceError::new(
+                400,
+                "invalid_request",
+                "request exceeds input/output bounds",
+            ));
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+/// Measure and price the original model-owned template for both generation
+/// and read-only counting. No tokenization before the caller admits scratch.
+fn prompt_bounds(
+    tokenizer: &dyn TextTokenizer,
+    input: &TextInput,
+    input_limit: usize,
+) -> Result<crate::model_instance::PromptBounds, ServiceError> {
+    let bounds = tokenizer
+        .semantic_prompt_bound(input)
+        .map_err(|error| match error {
+            crate::Error::InvalidInput(message) if input.is_chat() => {
+                ServiceError::new(400, "invalid_messages", message)
+            }
+            crate::Error::Unsupported(message) if input.is_chat() => {
+                ServiceError::new(400, "unsupported_chat", message)
+            }
+            crate::Error::Limit(message) if matches!(input, TextInput::Conversation(_)) => {
+                ServiceError::new(413, "input_too_large", message)
+            }
+            error => ServiceError::new(400, "size_overflow", error.to_string()),
+        })?;
+    // Preserve the configured structured-chat limit on rendered as well
+    // as semantic bytes; legacy single text retains its original contract.
+    if matches!(input, TextInput::Conversation(_)) && bounds.input_bytes > input_limit {
+        return Err(ServiceError::new(
+            400,
+            "invalid_request",
+            "request exceeds input/output bounds",
+        ));
+    }
+    Ok(bounds)
+}
+
+fn prompt_backing_bytes(bounds: &crate::model_instance::PromptBounds) -> Result<u64, ServiceError> {
+    pending::checked_sum(&[
+        pending::vec_bytes::<u32>(bounds.tokens)?,
+        bounds.scratch_bytes,
+    ])
+}
+
 /// Per-request clock/label only; never an authorization or publication owner.
 #[derive(Clone)]
 pub struct TokenMetricsRequest {
@@ -1021,6 +1064,61 @@ impl Router {
     ) -> Result<RequestEvents, ServiceError> {
         self.request_with(request, Some(ingress), Some(sharing), MAX_INPUT_BYTES)
     }
+    /// Count the selected model's complete rendered input (including its
+    /// generation prefix). The borrowed input stays caller-owned. No queue
+    /// ticket, session, output reserve, prefix lookup or generation metrics.
+    pub fn count_input_tokens(
+        &self,
+        alias: &str,
+        input: &TextInput,
+    ) -> Result<usize, ServiceError> {
+        self.count_input_tokens_with(alias, input, MAX_INPUT_BYTES)
+    }
+
+    pub(crate) fn count_input_tokens_with(
+        &self,
+        alias: &str,
+        input: &TextInput,
+        max_input_bytes: usize,
+    ) -> Result<usize, ServiceError> {
+        // Drop all model/tokenizer handles before releasing the registry
+        // reader, including on validation and physical admission failure.
+        let (model, reader) = self.models.acquire(alias)?;
+        let _reader = reader;
+        let model = model;
+        let input_limit = max_input_bytes.min(MAX_INPUT_BYTES);
+        validate_text_input(input, input_limit)?;
+        if input.is_chat() {
+            model.validate_chat()?;
+        }
+        let tokenizer = model.tokenizer();
+        let bounds = prompt_bounds(tokenizer.as_ref(), input, input_limit)?;
+        let _charge = self.host.charge(
+            alias,
+            "input-token-count",
+            AllocationClass::Scratch,
+            prompt_backing_bytes(&bounds)?,
+        )?;
+        let tokens = tokenizer
+            .semantic_prompt_tokens(input)
+            .map_err(ServiceError::inference)?;
+        if tokens.len() > bounds.tokens {
+            return Err(ServiceError::new(
+                500,
+                "tokenizer_bound",
+                "tokenizer exceeded its admitted token bound",
+            ));
+        }
+        if tokens.is_empty() || tokens.len() > self.config.context.min(model.max_context()) {
+            return Err(ServiceError::new(
+                400,
+                "context_overflow",
+                "input exceeds bounded model context",
+            ));
+        }
+        Ok(tokens.len())
+    }
+
     pub(crate) fn request_with(
         &self,
         mut request: SemanticRequest,
@@ -1089,37 +1187,9 @@ impl Router {
         )?;
         let max_tokens = request.max_tokens.min(self.config.context);
         let tokenizer = model.tokenizer();
-        let bounds =
-            tokenizer
-                .semantic_prompt_bound(&request.input)
-                .map_err(|error| match error {
-                    crate::Error::InvalidInput(message) if request.input.is_chat() => {
-                        ServiceError::new(400, "invalid_messages", message)
-                    }
-                    crate::Error::Unsupported(message) if request.input.is_chat() => {
-                        ServiceError::new(400, "unsupported_chat", message)
-                    }
-                    crate::Error::Limit(message)
-                        if matches!(&request.input, TextInput::Conversation(_)) =>
-                    {
-                        ServiceError::new(413, "input_too_large", message)
-                    }
-                    error => ServiceError::new(400, "size_overflow", error.to_string()),
-                })?;
-        // Preserve the configured HTTP chat limit on rendered bytes as
-        // well as semantic content. Single-text legacy input keeps its
-        // original raw/user length contract.
-        if matches!(&request.input, TextInput::Conversation(_)) && bounds.input_bytes > input_limit
-        {
-            return Err(ServiceError::new(
-                400,
-                "invalid_request",
-                "request exceeds input/output bounds",
-            ));
-        }
+        let bounds = prompt_bounds(tokenizer.as_ref(), &request.input, input_limit)?;
         let prompt_bytes = pending::checked_sum(&[
-            pending::vec_bytes::<u32>(bounds.tokens)?,
-            bounds.scratch_bytes,
+            prompt_backing_bytes(&bounds)?,
             // The presenter decodes the whole committed prefix.
             u64::try_from(tokenizer.decode_scratch_bound(max_tokens)).map_err(|_| {
                 ServiceError::new(400, "size_overflow", "decode scratch bound overflow")

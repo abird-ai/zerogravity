@@ -5,6 +5,18 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 27 Nov — OA-4D exact input-token count
+
+Native Runtime and Responses input_tokens over the selected model's
+original tokenizer/charged prompt bound and shared semantic lowering.
+Read-only committed conversation and previous-response replay; no
+generation admission/session/output or counter changes. Focused 179/0/0
+and strict lint passed. Actual Qwen3.5 official SDK 2.33.0 count/usage
+parity, CLI/TUI/Firefox (162.61s) and Rust SDK (18.79s) passed.
+Full isolated gate 2,569/0/109 (318 suites, 783s), release TUI/Web,
+installer and scripts passed. OA-4D accepted. No new physical GPU or
+performance evidence; bounded background streaming/replay remains OA-4.
+
 ## 27 Nov — OA-4C conversation resources and atomic context append
 
 Conversation/item CRUD, exact-ID bounded pages, semantic text replay,

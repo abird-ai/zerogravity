@@ -385,7 +385,10 @@ impl Connection {
             let path = parts.uri.path_and_query().map_or("", |uri| uri.as_str());
             let accepts_chunked = matches!(
                 path,
-                "/v1/completions" | "/v1/chat/completions" | "/v1/responses"
+                "/v1/completions"
+                    | "/v1/chat/completions"
+                    | "/v1/responses"
+                    | "/v1/responses/input_tokens"
             ) || path == "/v1/conversations"
                 || path.starts_with("/v1/conversations/");
             let length = validate_headers(&parts, host.config.limits.body_bytes, accepts_chunked)?;
@@ -517,7 +520,10 @@ impl Connection {
             }
             let chat = path == "/v1/chat/completions";
             let responses = path == "/v1/responses";
-            if parts.method != Method::POST || !(chat || responses || path == "/v1/completions") {
+            let counting = path == "/v1/responses/input_tokens";
+            if parts.method != Method::POST
+                || !(chat || responses || counting || path == "/v1/completions")
+            {
                 return Err(ServiceError::new(404, "not_found", "unsupported endpoint"));
             }
             if !header_value(&parts.headers, "content-type").is_some_and(|t| {
@@ -528,6 +534,19 @@ impl Connection {
                     415,
                     "unsupported_media_type",
                     "JSON Content-Type required",
+                ));
+            }
+            if counting {
+                let input_tokens = responses::count(
+                    &raw[..used],
+                    host.service.as_ref(),
+                    &mut ingress,
+                    &host.resources,
+                )?;
+                return Ok(body::json_response(
+                    200,
+                    &json!({"object":"response.input_tokens","input_tokens":input_tokens}),
+                    None,
                 ));
             }
             let (mut task, usage, projection) = if responses {

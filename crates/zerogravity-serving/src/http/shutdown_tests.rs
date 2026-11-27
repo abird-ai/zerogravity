@@ -102,6 +102,16 @@ struct PendingService {
     receipts: Mutex<Vec<CancelToken>>,
 }
 impl TextService for PendingService {
+    fn count_input_tokens(
+        &self,
+        model: &str,
+        input: &zerogravity_engine::router::TextInput,
+    ) -> Result<usize, ServiceError> {
+        assert_eq!(model, "fixture");
+        // Test-only observation of exact semantic context, never model math.
+        Ok(input.content_bytes().expect("bounded input"))
+    }
+
     fn charge_ingress(&self, session: &str, bytes: u64) -> Result<ServingCharge, ServiceError> {
         self.host
             .charge("shutdown-control", session, AllocationClass::Scratch, bytes)
@@ -651,6 +661,19 @@ fn conversation_background_cancel_and_terminal_append_are_atomic() {
         _ => panic!("original active receipt missing"),
     };
     assert_eq!(call("GET", &items, None), initial);
+    let count_request =
+        json!({"model":"fixture","conversation":id,"input":"next","instructions":"brief"});
+    let count = || call("POST", "/v1/responses/input_tokens", Some(&count_request));
+    // Reads observe the last committed history, not the pending new input.
+    assert_eq!(
+        count(),
+        (
+            200,
+            json!({"object":"response.input_tokens","input_tokens":17})
+        )
+    );
+    assert_eq!(service.receipts.lock().unwrap().len(), 1);
+    assert_eq!(call("GET", &items, None), initial);
     assert_eq!(call("POST", "/v1/responses", Some(&request)).0, 409);
     assert_eq!(
         call(
@@ -730,6 +753,15 @@ fn conversation_background_cancel_and_terminal_append_are_atomic() {
     assert_eq!(data[2]["content"][0]["text"], "complete");
     assert_eq!(data[2]["id"], terminal["output"][0]["id"]);
     assert_eq!(data[2]["status"], "incomplete");
+    assert_eq!(
+        count(),
+        (
+            200,
+            json!({"object":"response.input_tokens","input_tokens":32})
+        )
+    );
+    assert_eq!(service.receipts.lock().unwrap().len(), 2);
+
     assert_eq!(
         call("POST", &format!("{second_path}/cancel"), None),
         (200, terminal)

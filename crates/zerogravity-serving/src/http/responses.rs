@@ -4,7 +4,7 @@ mod background;
 mod input;
 mod store;
 pub(super) use background::{Jobs, start as start_background};
-pub(super) use input::parse;
+pub(super) use input::{count, parse};
 pub(super) use store::{Pending, Store, conversation_route, route as resource_route};
 
 use super::{

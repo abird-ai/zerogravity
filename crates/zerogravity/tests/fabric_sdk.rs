@@ -1727,10 +1727,22 @@ fn control_clients_share_exact_model_and_listener_lifecycle() {
             }
         }
     };
-    let direct = drain(runtime.submit_task(task).unwrap());
-    // The CLI/single-user SDK convenience and the new structured request
-    // use the same model template, registered owner and typed terminal.
     use zerogravity::runtime::text::{ChatMessage, ChatRole, SemanticRequest, TextInput};
+    let before = runtime.scheduler_snapshot().unwrap().unwrap();
+    let raw_count = runtime
+        .count_input_tokens("alias", &TextInput::Raw(input.into()))
+        .unwrap();
+    let chat_count = peer
+        .count_input_tokens("primary", &TextInput::User(input.into()))
+        .unwrap();
+    let after = runtime.scheduler_snapshot().unwrap().unwrap();
+    assert_eq!(before.queue, after.queue);
+    assert_eq!(before.counters.attempted, after.counters.attempted);
+    assert_eq!(before.host.unwrap().totals(), after.host.unwrap().totals());
+    let direct = drain(runtime.submit_task(task).unwrap());
+    assert_eq!(raw_count, direct.1);
+    // The CLI/single-user SDK convenience and the structured request use
+    // the same model template, registered owner and typed terminal.
     let single_user = drain(
         runtime
             .submit_task(TextTask {
@@ -1752,6 +1764,27 @@ fn control_clients_share_exact_model_and_listener_lifecycle() {
         stream: false,
         token_metrics: None,
     };
+    assert_eq!(chat_count, single_user.1);
+    assert_eq!(
+        runtime
+            .count_input_tokens("alias", &conversation(input).input)
+            .unwrap(),
+        chat_count
+    );
+    assert_eq!(
+        runtime
+            .count_input_tokens("alias", &conversation("<|im_start|>").input)
+            .unwrap_err()
+            .code,
+        "invalid_messages"
+    );
+    assert_eq!(
+        runtime
+            .count_input_tokens("alias", &conversation(&"x".repeat(100)).input)
+            .unwrap_err()
+            .code,
+        "invalid_request"
+    );
     let receipt = runtime.request_semantic(conversation(input)).unwrap();
     match receipt
         .events

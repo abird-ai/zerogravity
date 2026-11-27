@@ -201,6 +201,242 @@ pub(super) fn message(role: ChatRole, content: &Value) -> Result<ChatMessage> {
     Ok(ChatMessage { role, text })
 }
 
+/// Shared text intent for generation and read-only input counting.
+struct Prompt<'a> {
+    model: &'a str,
+    instructions: Option<&'a str>,
+    input: Option<&'a Value>,
+    conversation: Option<&'a str>,
+    previous: Option<&'a str>,
+}
+impl<'a> Prompt<'a> {
+    fn parse(map: &'a Map<String, Value>) -> Result<Self> {
+        let model = map
+            .get("model")
+            .and_then(Value::as_str)
+            .ok_or_else(|| invalid("model", "model name required"))?;
+        zerogravity_engine::router::validate_alias(model).map_err(|e| e.with_parameter("model"))?;
+        let conversation = optional(map, "conversation")
+            .map(|value| {
+                if let Some(id) = value.as_str() {
+                    return Ok(id);
+                }
+                let object = value
+                    .as_object()
+                    .ok_or_else(|| invalid("conversation", "conversation ID required"))?;
+                only(object, &["id"], "conversation")?;
+                object
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| invalid("conversation", "conversation ID required"))
+            })
+            .transpose()?;
+        let previous = optional(map, "previous_response_id")
+            .map(|v| {
+                v.as_str()
+                    .filter(|id| id.len() <= 128)
+                    .ok_or_else(|| invalid("previous_response_id", "response ID required"))
+            })
+            .transpose()?;
+        if conversation.is_some() && previous.is_some() {
+            return Err(invalid(
+                "conversation",
+                "conversation and previous_response_id are mutually exclusive",
+            ));
+        }
+        let instructions = optional(map, "instructions")
+            .map(|v| {
+                v.as_str()
+                    .ok_or_else(|| invalid("instructions", "instructions must be text"))
+            })
+            .transpose()?;
+        let input = optional(map, "input").filter(|v| !(conversation.is_some() && empty_array(v)));
+        if input.is_none() && conversation.is_none() {
+            return Err(invalid("input", "input required"));
+        }
+        Ok(Self {
+            model,
+            instructions,
+            input,
+            conversation,
+            previous,
+        })
+    }
+
+    // Generation holds the exact conversation mutation lease before calling
+    // this. Counting takes only the committed read under the store lock.
+    fn lower(
+        &self,
+        resources: &Store,
+        service: &dyn TextService,
+        ingress: &mut Vec<ServingCharge>,
+        append: bool,
+    ) -> Result<TextInput> {
+        if let Some(id) = self.conversation {
+            return resources
+                .read_conversation(id, |history| {
+                    self.lower_turns(history.turns(), service, ingress, append)
+                })
+                .map_err(|error| {
+                    if error.code == "conversation_not_found" {
+                        error.with_parameter("conversation")
+                    } else {
+                        error
+                    }
+                });
+        }
+        let parent = self
+            .previous
+            .map(|id| {
+                let parent = resources
+                    .get(id)
+                    .map_err(|e| e.with_parameter("previous_response_id"))?;
+                if !parent.continuable {
+                    return Err(invalid(
+                        "previous_response_id",
+                        "previous response has no complete text output",
+                    ));
+                }
+                Ok(parent)
+            })
+            .transpose()?;
+        self.lower_turns(
+            parent
+                .iter()
+                .flat_map(|record| record.input.iter().chain(std::iter::once(&record.output))),
+            service,
+            ingress,
+            false,
+        )
+    }
+
+    fn lower_turns<'h>(
+        &self,
+        history: impl Iterator<Item = &'h ChatMessage> + Clone,
+        service: &dyn TextService,
+        ingress: &mut Vec<ServingCharge>,
+        append: bool,
+    ) -> Result<TextInput> {
+        let mut count = usize::from(self.instructions.is_some());
+        let mut bytes = self.instructions.map_or(0, str::len);
+        for turn in history.clone() {
+            count = add(count, 1)?;
+            bytes = add(bytes, turn.text.len())?;
+        }
+        if let Some(input) = self.input {
+            turns(input, |role, content| {
+                count = add(count, 1)?;
+                fragments(content, role, |text| {
+                    bytes = add(bytes, text.len())?;
+                    Ok(())
+                })
+            })?;
+        }
+        // Only generation reserves room for a new assistant item.
+        let retained_count = count - usize::from(self.instructions.is_some());
+        if count == 0
+            || count > MAX_CHAT_MESSAGES
+            || bytes > super::super::MAX_BODY
+            || (append && retained_count >= MAX_CHAT_MESSAGES)
+        {
+            return Err(ServiceError::new(
+                413,
+                "input_too_large",
+                "Responses input exceeds limits",
+            )
+            .with_parameter("input"));
+        }
+        let route_bytes = add(
+            add(bytes, self.model.len())?,
+            count * std::mem::size_of::<ChatMessage>(),
+        )?;
+        ingress.push(service.charge_ingress("http-responses-input", route_bytes as u64)?);
+        let mut messages = Vec::with_capacity(count);
+        if let Some(text) = self.instructions {
+            messages.push(ChatMessage {
+                role: ChatRole::Developer,
+                text: text.into(),
+            });
+        }
+        // Request-local instructions replace previous instructions. Stored
+        // history contains only the normalized turns and committed output.
+        messages.extend(history.cloned());
+        if let Some(input) = self.input {
+            turns(input, |role, content| {
+                messages.push(message(role, content)?);
+                Ok(())
+            })?;
+        }
+        Ok(TextInput::Conversation(messages))
+    }
+}
+
+/// Validate prompt-affecting controls identically for count and generation.
+fn prompt_controls(map: &Map<String, Value>) -> Result<(&'static str, bool)> {
+    neutral(map, "reasoning", |_| false)?;
+    neutral(map, "tools", empty_array)?;
+    neutral(map, "truncation", |v| v.as_str() == Some("disabled"))?;
+    let tool_choice = match optional(map, "tool_choice").map(Value::as_str) {
+        None | Some(Some("auto")) => "auto",
+        Some(Some("none")) => "none",
+        _ => return Err(unsupported("tool_choice")),
+    };
+    let parallel_tool_calls = boolean(map, "parallel_tool_calls", true)?;
+    if let Some(text) = optional(map, "text") {
+        plain_text(text)?;
+    }
+    Ok((tool_choice, parallel_tool_calls))
+}
+
+/// Exact read-only count: no generation options, output reservation,
+/// conversation lease, response record, or scheduler ticket.
+pub(in crate::http) fn count(
+    body: &[u8],
+    service: &dyn TextService,
+    ingress: &mut Vec<ServingCharge>,
+    resources: &Store,
+) -> Result<usize> {
+    let value = super::super::parse_json(body, Some(service), ingress)?;
+    let map = value
+        .as_object()
+        .ok_or_else(|| invalid("input", "expected JSON object"))?;
+    for key in map.keys() {
+        match key.as_str() {
+            "model"
+            | "input"
+            | "instructions"
+            | "conversation"
+            | "previous_response_id"
+            | "parallel_tool_calls"
+            | "reasoning"
+            | "text"
+            | "tool_choice"
+            | "tools"
+            | "truncation" => (),
+            "personality" => return Err(unsupported("personality")),
+            _ => {
+                return Err(ServiceError::new(
+                    400,
+                    "unsupported_parameter",
+                    "unknown input token count parameter",
+                ));
+            }
+        }
+    }
+    let prompt = Prompt::parse(map)?;
+    prompt_controls(map)?;
+    let input = prompt.lower(resources, service, ingress, false)?;
+    service
+        .count_input_tokens(prompt.model, &input)
+        .map_err(|error| {
+            if error.code == "model_not_found" {
+                error.with_parameter("model")
+            } else {
+                error
+            }
+        })
+}
+
 pub(in crate::http) fn parse(
     body: &[u8],
     service: &dyn TextService,
@@ -255,11 +491,7 @@ pub(in crate::http) fn parse(
             }
         }
     }
-    let model = map
-        .get("model")
-        .and_then(Value::as_str)
-        .ok_or_else(|| invalid("model", "model name required"))?;
-    zerogravity_engine::router::validate_alias(model).map_err(|e| e.with_parameter("model"))?;
+    let prompt = Prompt::parse(map)?;
     let stream = boolean(map, "stream", false)?;
     // Foreground storage is opt-in. Background always needs a temporary
     // polling record, but store=false never permits durable continuation.
@@ -280,74 +512,14 @@ pub(in crate::http) fn parse(
             return Err(unsupported("background_options"));
         }
     }
-    neutral(map, "reasoning", |_| false)?;
-    let conversation_id = optional(map, "conversation")
-        .map(|value| {
-            if let Some(id) = value.as_str() {
-                return Ok(id);
-            }
-            let object = value
-                .as_object()
-                .ok_or_else(|| invalid("conversation", "conversation ID required"))?;
-            only(object, &["id"], "conversation")?;
-            object
-                .get("id")
-                .and_then(Value::as_str)
-                .ok_or_else(|| invalid("conversation", "conversation ID required"))
-        })
-        .transpose()?;
-    if conversation_id.is_some() && optional(map, "previous_response_id").is_some() {
-        return Err(invalid(
-            "conversation",
-            "conversation and previous_response_id are mutually exclusive",
-        ));
-    }
-    let conversation = conversation_id
-        .map(|id| {
-            resources
-                .lease_conversation(id)
-                .map_err(|e| e.with_parameter("conversation"))
-        })
-        .transpose()?;
-    let previous = optional(map, "previous_response_id")
-        .map(|v| {
-            v.as_str()
-                .filter(|id| id.len() <= 128)
-                .ok_or_else(|| invalid("previous_response_id", "response ID required"))
-        })
-        .transpose()?;
-    let parent = previous
-        .map(|id| {
-            let parent = resources
-                .get(id)
-                .map_err(|e| e.with_parameter("previous_response_id"))?;
-            if !parent.continuable {
-                return Err(invalid(
-                    "previous_response_id",
-                    "previous response has no complete text output",
-                ));
-            }
-            Ok(parent)
-        })
-        .transpose()?;
+    let (tool_choice, parallel_tool_calls) = prompt_controls(map)?;
     neutral(map, "temperature", |v| v.as_f64() == Some(0.0))?;
     neutral(map, "top_p", |v| v.as_f64() == Some(1.0))?;
-    neutral(map, "tools", empty_array)?;
     neutral(map, "include", empty_array)?;
-    neutral(map, "truncation", |v| v.as_str() == Some("disabled"))?;
     neutral(map, "service_tier", |v| {
         matches!(v.as_str(), Some("auto" | "default"))
     })?;
     neutral(map, "top_logprobs", |v| v.as_u64() == Some(0))?;
-    let tool_choice = match optional(map, "tool_choice").map(Value::as_str) {
-        None | Some(Some("auto")) => "auto",
-        Some(Some("none")) => "none",
-        _ => return Err(unsupported("tool_choice")),
-    };
-    let parallel_tool_calls = boolean(map, "parallel_tool_calls", true)?;
-    if let Some(text) = optional(map, "text") {
-        plain_text(text)?;
-    }
     if let Some(options) = optional(map, "stream_options") {
         let options = options
             .as_object()
@@ -374,58 +546,16 @@ pub(in crate::http) fn parse(
     if max_tokens == 0 {
         return Err(invalid("max_output_tokens", "no output capacity"));
     }
-    let instructions = optional(map, "instructions")
-        .map(|v| {
-            v.as_str()
-                .ok_or_else(|| invalid("instructions", "instructions must be text"))
+    let metadata = metadata(map)?;
+    let conversation = prompt
+        .conversation
+        .map(|id| {
+            resources
+                .lease_conversation(id)
+                .map_err(|e| e.with_parameter("conversation"))
         })
         .transpose()?;
-    let input = optional(map, "input").filter(|v| !(conversation.is_some() && empty_array(v)));
-    if input.is_none() && conversation.is_none() {
-        return Err(invalid("input", "input required"));
-    }
-    let mut count = usize::from(instructions.is_some());
-    let mut bytes = instructions.map_or(0, str::len);
-    if let Some(conversation) = &conversation {
-        let (history_count, history_bytes) = conversation.measure();
-        count = add(count, history_count)?;
-        bytes = add(bytes, history_bytes)?;
-    }
-    if let Some(parent) = &parent {
-        count = add(count, add(parent.input.len(), 1)?)?;
-        for turn in parent.input.iter().chain(std::iter::once(&parent.output)) {
-            bytes = add(bytes, turn.text.len())?;
-        }
-    }
-    if let Some(input) = input {
-        turns(input, |role, content| {
-            count = add(count, 1)?;
-            fragments(content, role, |text| {
-                bytes = add(bytes, text.len())?;
-                Ok(())
-            })
-        })?;
-    }
-    // Reserve one conversation item for the terminal assistant output.
-    let retained_count = count - usize::from(instructions.is_some());
-    if count == 0
-        || count > MAX_CHAT_MESSAGES
-        || bytes > super::super::MAX_BODY
-        || (conversation.is_some() && retained_count >= MAX_CHAT_MESSAGES)
-    {
-        return Err(
-            ServiceError::new(413, "input_too_large", "Responses input exceeds limits")
-                .with_parameter("input"),
-        );
-    }
-    let metadata = metadata(map)?;
-    // Price the typed input before copying, independently of response
-    // metadata, which must survive retirement of the admitted input.
-    let route_bytes = add(
-        add(bytes, model.len())?,
-        count * std::mem::size_of::<ChatMessage>(),
-    )?;
-    ingress.push(service.charge_ingress("http-responses-input", route_bytes as u64)?);
+    let input = prompt.lower(resources, service, ingress, conversation.is_some())?;
     let metadata_bytes = metadata.map_or(0, |m| {
         m.iter()
             .map(|(k, v)| k.len() + v.as_str().unwrap().len())
@@ -443,54 +573,32 @@ pub(in crate::http) fn parse(
             output_limit
         },
         add(
-            add(metadata_bytes, instructions.map_or(0, str::len))?,
+            add(metadata_bytes, prompt.instructions.map_or(0, str::len))?,
             add(
-                previous.map_or(0, str::len),
-                conversation_id.map_or(0, str::len),
+                prompt.previous.map_or(0, str::len),
+                prompt.conversation.map_or(0, str::len),
             )?,
         )?,
     )?;
-    let mut messages = Vec::with_capacity(count);
-    if let Some(text) = instructions {
-        messages.push(ChatMessage {
-            role: ChatRole::Developer,
-            text: text.into(),
-        });
-    }
-    // Only this request's instructions precede the replay. The previous
-    // response's instructions were never put in its continuation history.
-    if let Some(parent) = parent {
-        messages.extend(parent.input.iter().cloned());
-        messages.push(parent.output.clone());
-    }
-    if let Some(conversation) = &conversation {
-        conversation.extend(&mut messages);
-    }
-    if let Some(input) = input {
-        turns(input, |role, content| {
-            messages.push(message(role, content)?);
-            Ok(())
-        })?;
-    }
     let metadata = owned_metadata(metadata);
     Ok((
         SemanticRequest {
-            model: model.to_owned(),
-            input: TextInput::Conversation(messages),
+            model: prompt.model.to_owned(),
+            input,
             max_tokens,
             stream,
             token_metrics: None,
         },
         Options {
-            instructions: instructions.map(str::to_owned),
+            instructions: prompt.instructions.map(str::to_owned),
             metadata,
             max_tokens,
             tool_choice,
             parallel_tool_calls,
             store,
             background,
-            previous: previous.map(str::to_owned),
-            conversation: conversation_id.map(str::to_owned),
+            previous: prompt.previous.map(str::to_owned),
+            conversation: prompt.conversation.map(str::to_owned),
             _charge: wire.charge.clone(),
         },
         wire,

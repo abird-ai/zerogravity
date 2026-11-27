@@ -8,8 +8,8 @@ Read §§0–13 first for current architecture, acceptance, limitations and next
 work. The [standalone OA-4C continuation prompt](NEXT_AGENT_2026-11-27_OA4C.md)
 is the historical entry to the current work; use the live checkpoint below.
 OA-4B already committed at 89822f40; no production rework required.
-OA-4C accepted. Remaining OA-4: exact input-token counting and bounded
-background streaming/replay/resumption.
+OA-4C/D accepted. Remaining OA-4: bounded background
+streaming/replay/resumption.
 Appendix D preserves every post-M1 landing narrative, changed paths and
 exact engineering prose delta; Appendix B records unresolved markers.
 The preceding [UX-P-M1 pack](FULL_COMPREHENSIVE_HANDOFF_2026-11-26_UX_PM1.md),
@@ -37,7 +37,49 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — OA-4C conversations accepted; count/replay next (27 Nov)
+### Current checkpoint — OA-4D exact input-token count accepted; replay next (27 Nov)
+
+Started from clean signed e8ad81e5 on sole L5 main. Same original
+registry reader, semantic/rendered input validation, model-owned
+PromptBounds and semantic_prompt_tokens as generation. Explicitly
+admit only prompt scratch/token storage using original host ledger;
+retire tokens, tokenizer/model handles and reader on success/refusal.
+No generation queue reservation, session, output allocation, engine
+request ID, prefix lookup or generation metrics. Native facade Runtime and engine
+Runtime/Router expose count_input_tokens(model, &TextInput); TextService
+default explicitly refuses for legacy embedders.
+
+POST /v1/responses/input_tokens uses original strict fixed/chunked JSON
+ingress, authorization and bounded typed prompt lowering, returns
+response.input_tokens and exact full input count (including generation
+prefix). Shared prompt controls and context replay; unsupported controls
+refuse. Conversation reads copy committed turns under the same store lock
+without a mutation lease or retention refresh, including while a generation
+holds a lease. Preserve previous-response retained-reader identity and
+request-local instruction replacement. Count accepts the full prompt
+context bound, no generated-span reservation. Count is not a guarantee
+of later execution admission. Synchronous bounded tokenization, no new
+job or detached scheduler.
+
+Focused 179/0/0, strict lint passed; exact count with full generation
+queue, real physical ledger pressure, strict/authenticated transport,
+read-only active conversation, previous-response replay, unchanged
+generation/reader counters and full ledger retirement. Initial test-only
+non-Debug ResponseEvent formatting compile error fixed. Real cached
+consumer checks passed: actual official OpenAI SDK 2.33.0 and cached
+CLI/TUI/Firefox (162.61s), Rust SDK (18.79s). Exact count equals
+actual generation input usage for typed text, previous-response replay
+and read-only conversations. Full isolated assembled gate exited 0:
+2,569/0/109 across 318 suites (783s), release TUI/Web, installer and
+scripts passed. OA-4D accepted. Logs: target/oa4d-focused.log,
+target/oa4d-real-consumers.log, target/oa4d-assembled.log.
+
+Next after OA-4D: bounded background stream/replay/resumption, one
+joined original receipt, bounded sequence and replay cursor, cancellation
+race and reader retirement. OA-4 remains open; no new physical GPU or
+performance qualification.
+
+### Prior checkpoint — OA-4C conversations accepted; count/replay next (27 Nov)
 
 Started from clean main at 39d7086e (OA-4B implementation 89822f40).
 Single L5 source-authoring checkout; no push, downloads, or new

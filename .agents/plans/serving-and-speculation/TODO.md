@@ -156,10 +156,18 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   private-network assembled gate 2,567/0/109 (318 suites, 342s), release
   TUI/Web, installer and scripts passed. OA-4C accepted. See design and
   current handoff for local bounds, retention and retry details.
-- [ ] OA-4 remaining: exact input-token counting without
-  generation through original charged tokenizer; bounded background
-  streaming/replay and resume. No duplicate model state store,
-  scheduler or fake capability. Real SDK qualification.
+- [x] OA-4D: exact input-token counting through the original charged
+  selected-model tokenizer and shared semantic/rendered input bounds.
+  Read-only committed conversation snapshots, previous-response replay,
+  original registry reader, no generation queue ticket/session/output/
+  prefix or metrics. Native Runtime and official Responses count endpoint.
+  Focused 179/0/0 and strict lint passed; real cached Qwen3.5 official
+  SDK 2.33.0/CLI/TUI/Firefox (162.61s), Rust SDK (18.79s) passed.
+  Full private-network gate 2,569/0/109 across 318 suites (783s),
+  release TUI/Web, installer and scripts passed. OA-4D accepted.
+- [ ] OA-4 remaining: bounded background streaming/replay and
+  resumption over the existing joined job/receipt. No duplicate
+  model state store, scheduler or fake capability. Real SDK qualification.
 
 ### Current continuation — 22 Nov 2026
 

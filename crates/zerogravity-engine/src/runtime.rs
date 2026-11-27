@@ -388,6 +388,18 @@ impl Runtime {
             router.request_with(request, None, None, self.inner.limits.max_input_bytes)
         })
     }
+    /// Exact selected-model input count under the original lifecycle and
+    /// configured semantic/rendered input limits. Does not admit generation.
+    pub fn count_input_tokens(
+        &self,
+        model: &str,
+        input: &crate::router::TextInput,
+    ) -> std::result::Result<usize, ServiceError> {
+        self.with_text_router(|router| {
+            router.count_input_tokens_with(model, input, self.inner.limits.max_input_bytes)
+        })
+    }
+
     /// Explicit cross-request prefix sharing by the trusted embedding layer.
     pub fn request_text_scoped(
         &self,

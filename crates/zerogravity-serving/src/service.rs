@@ -1,7 +1,7 @@
 //! Transport seam over the caller's existing scheduler; never owns shutdown.
 use serde_json::Value;
 pub use zerogravity_engine::router::{
-    Request, RequestEvents, SemanticRequest, ServiceError, pending::ServingCharge,
+    Request, RequestEvents, SemanticRequest, ServiceError, TextInput, pending::ServingCharge,
 };
 use zerogravity_engine::{Runtime, router::Router, state_cache::PrefixSharingScope};
 
@@ -51,6 +51,15 @@ pub trait TextService: Send + Sync + 'static {
         }
         self.request_admitted_scoped(request.into_legacy()?, ingress, sharing)
     }
+    /// Borrow the admitted text intent. Legacy embedders explicitly refuse
+    /// rather than estimate counts or open a generation receipt.
+    fn count_input_tokens(&self, _model: &str, _input: &TextInput) -> Result<usize> {
+        Err(ServiceError::new(
+            400,
+            "unsupported_capability",
+            "text service does not support input token counting",
+        ))
+    }
     fn charge_ingress(&self, session: &str, bytes: u64) -> Result<ServingCharge>;
     fn model_ids(&self) -> Result<Vec<String>>;
     fn max_output(&self) -> Result<usize>;
@@ -66,6 +75,10 @@ pub trait TextService: Send + Sync + 'static {
 }
 
 impl TextService for Runtime {
+    fn count_input_tokens(&self, model: &str, input: &TextInput) -> Result<usize> {
+        Runtime::count_input_tokens(self, model, input)
+    }
+
     fn validate_chat(&self, model: &str) -> Result<()> {
         self.with_text_router(|router| router.validate_chat(model))
     }
@@ -117,6 +130,10 @@ impl TextService for Runtime {
 }
 
 impl TextService for Router {
+    fn count_input_tokens(&self, model: &str, input: &TextInput) -> Result<usize> {
+        Router::count_input_tokens(self, model, input)
+    }
+
     fn validate_chat(&self, model: &str) -> Result<()> {
         Router::validate_chat(self, model)
     }

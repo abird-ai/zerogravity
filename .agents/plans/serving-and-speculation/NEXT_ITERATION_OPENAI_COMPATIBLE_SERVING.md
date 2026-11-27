@@ -6,7 +6,7 @@ scaffolding), CLI/TUI/Web and serving, ROCm, CUDA, Vulkan, then concrete
 compiled providers. Native Hugging Face/Safetensors and GGUF are primary.
 Older ordering below is context; valid owner constraints remain authoritative.
 
-Status: **OA-1 through OA-3 and OA-4A/B/C accepted** (27 Nov). OA-4 remains open for exact input-token count and bounded background replay; later units remain ordered.
+Status: **OA-1 through OA-3 and OA-4A/B/C/D accepted** (27 Nov). OA-4 remains open for bounded background streaming/replay/resumption; later units remain ordered.
 
 26 Nov user decision: [UX-P native TUI polish](../cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md)
 was the prerequisite. The assembled P4B gate passed on ad7a4178;
@@ -1436,10 +1436,45 @@ Serial CLI/TUI/Web and official SDK retry passed (124.91s), Rust SDK
 bound refusal during concurrent workspace build; serial retry passed
 unchanged. OA-4C accepted.
 
-Remaining after OA-4C: exact input_tokens count without generation through
-original charged tokenizer; bounded background streaming/replay and resume.
-Retain one protocol quota, no model-state store or second scheduler.
-No false capability until qualified.
+**OA-4D exact input-token count (27 Nov).** Current API:
+https://developers.openai.com/api/reference/resources/responses/subresources/input_tokens/methods/count.
+POST /v1/responses/input_tokens returns response.input_tokens with the
+exact full rendered prompt token count, including the selected model's
+generation prefix. Explicit loaded model alias required. Shared prompt
+lowering and prompt-affecting capability checks with Responses generation:
+typed text, instructions, previous-response replay and committed
+conversation context; no inherited request-local instructions. The local
+input-required policy is unchanged except existing conversation-only input.
+Unsupported media/tools/reasoning/truncation/other controls refuse; count
+does not reserve output or accept generation-only controls. The read-only
+conversation snapshot measures and copies under the existing store lock,
+with admitted input storage; active mutation lease does not prevent reading
+the last committed context. No retention refresh, append, protocol record
+or lease for counting. Generation still holds its original mutation lease.
+
+Router, engine Runtime, serving TextService and public facade Runtime expose
+count_input_tokens(model, &TextInput). Acquire the exact registry reader,
+share generation's semantic/rendered byte checks and model-owned prompt
+bounds, reserve original host scratch and actual token backing before
+tokenization, count the resulting IDs, release scratch/tokenizer/model
+before retiring the reader. Enforce positive prompt within configured model
+context and advertised tokenizer token bound; no generated-span reserve.
+A count is not a guarantee that later generation will fit or pass
+execution-specific shape/control validation. No generation ticket, engine request
+ID, worker, session, StateRoot, prefix lookup, output allocation or
+performance-counter update. Legacy embedders explicitly refuse unless
+they implement the capability. Synchronous bounded tokenizer call under
+original Runtime lifecycle; no new detached job or scheduler.
+
+Focused engine/serving 179/0/0, strict lint passed. Real cached Qwen3.5
+official SDK 2.33.0 exact count/usage parity and CLI/TUI/Firefox lifecycle
+(162.61s), native Rust SDK (18.79s) passed. Full isolated assembled
+gate 2,569/0/109 across 318 suites (783s), release TUI/Web, installer
+and scripts passed. OA-4D accepted.
+
+Remaining after OA-4D: bounded background streaming/replay/resumption over
+the existing joined job and receipt. Retain one protocol quota, no
+model-state store or second scheduler. No false capability until qualified.
 
 ### OA-5 — Chat/Completions compatibility close
 

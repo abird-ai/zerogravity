@@ -51,7 +51,13 @@ with openai.OpenAI(
         max_tokens=2,
         temperature=0,
     )
+    counted = client.responses.input_tokens.count(
+        model=kwargs["model"], instructions=kwargs["instructions"],
+        input=kwargs["input"], truncation="disabled",
+    )
+    assert counted.object == "response.input_tokens"
     response = client.responses.create(**kwargs)
+    assert counted.input_tokens == response.usage.input_tokens
     assert response.output_text == chat.choices[0].message.content
     assert response.usage.input_tokens == chat.usage.prompt_tokens
     assert response.usage.output_tokens == chat.usage.completion_tokens
@@ -94,6 +100,10 @@ with openai.OpenAI(
     assert page.data[0].content[0].text == prompt
     new_prompt = "Continue."
     new_instructions = "Answer briefly."
+    continued_count = client.responses.input_tokens.count(
+        model="served-fixture", input=new_prompt, instructions=new_instructions,
+        previous_response_id=stored.id,
+    )
     continued = client.responses.create(
         model="served-fixture",
         input=new_prompt,
@@ -117,6 +127,7 @@ with openai.OpenAI(
     assert continued.previous_response_id == stored.id
     assert continued.output_text == expected.choices[0].message.content
     assert continued.usage.input_tokens == expected.usage.prompt_tokens
+    assert continued_count.input_tokens == continued.usage.input_tokens
     assert continued.usage.output_tokens == expected.usage.completion_tokens
     page = client.responses.input_items.list(continued.id, order="asc", limit=2)
     assert len(page.data) == 2 and page.has_more
@@ -229,6 +240,10 @@ with openai.OpenAI(
     initial_id = initial.data[0].id
     # Omitted input replays the original stored typed history, without
     # re-appending that history or persisting request-local instructions.
+    first_count = client.responses.input_tokens.count(
+        model="fast", conversation=cid, instructions=instructions,
+    )
+    assert client.conversations.items.list(cid, order="asc").model_dump() == initial.model_dump()
     first = client.responses.create(
         model="fast", conversation=cid, instructions=instructions,
         store=False, max_output_tokens=2, temperature=0,
@@ -236,6 +251,7 @@ with openai.OpenAI(
     assert first.conversation.id == cid
     assert first.output_text == response.output_text
     assert first.usage == response.usage
+    assert first_count.input_tokens == first.usage.input_tokens
     first_page = client.conversations.items.list(cid, order="asc")
     assert len(first_page.data) == 2
     assert first_page.data[0].id == initial_id
@@ -247,6 +263,11 @@ with openai.OpenAI(
     except openai.NotFoundError:
         pass
 
+    next_count = client.responses.input_tokens.count(
+        model="served-fixture", conversation={"id": cid}, input=new_prompt,
+        instructions=new_instructions,
+    )
+    assert client.conversations.items.list(cid, order="asc").model_dump() == first_page.model_dump()
     with client.responses.create(
         model="served-fixture", conversation={"id": cid}, input=new_prompt,
         instructions=new_instructions, store=True, stream=True,
@@ -257,6 +278,7 @@ with openai.OpenAI(
     assert last.conversation.id == cid
     assert last.output_text == expected.choices[0].message.content
     assert last.usage.input_tokens == expected.usage.prompt_tokens
+    assert next_count.input_tokens == last.usage.input_tokens
     assert last.usage.output_tokens == expected.usage.completion_tokens
     page = client.conversations.items.list(cid, order="asc", limit=2)
     assert page.has_more and len(page.data) == 2
@@ -312,3 +334,17 @@ with openai.OpenAI(
     assert client.responses.delete(job.id) is None
     assert client.conversations.delete(conversation.id).deleted
     print("OpenAI SDK: conversation CRUD, stable item cursors, exact Chat parity, foreground/SSE/background atomic append and independent response retention passed")
+
+    for params, error_type, parameter in [
+        ({"model":"missing","input":prompt}, openai.NotFoundError, "model"),
+        ({"model":"fast","input":prompt,"conversation":"conv_missing"}, openai.NotFoundError, "conversation"),
+        ({"model":"fast","input":prompt,"previous_response_id":stored.id}, openai.NotFoundError, "previous_response_id"),
+        ({"model":"fast","input":prompt,"truncation":"auto"}, openai.BadRequestError, "truncation"),
+        ({"model":"fast","input":prompt,"reasoning":{"effort":"high"}}, openai.BadRequestError, "reasoning"),
+    ]:
+        try:
+            client.responses.input_tokens.count(**params)
+            raise AssertionError("invalid token-count request was accepted")
+        except error_type as error:
+            assert error.body["param"] == parameter and error.request_id
+    print("OpenAI SDK: exact input-token count matches generation usage for typed text, previous-response replay and read-only conversation snapshots")

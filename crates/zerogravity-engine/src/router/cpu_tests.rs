@@ -1141,3 +1141,102 @@ fn legacy_only_model_refuses_structured_conversation_before_enqueue_and_retires_
     drop(receipt);
     router.shutdown().unwrap();
 }
+
+#[test]
+fn exact_input_count_is_charged_but_does_not_admit_generation() {
+    let host = HostPool::isolated(256).unwrap();
+    let model = MockModel::new(&host, None);
+    let mut router = router(&host, &model);
+    let baseline = host.snapshot().unwrap();
+    let tickets = (0..16)
+        .map(|_| router.queue.reserve().unwrap())
+        .collect::<Vec<_>>();
+    let queue = router.queue_snapshot();
+    let input = TextInput::Raw("hello".into());
+    assert_eq!(
+        router.request(request("x")).err().unwrap().code,
+        "queue_full"
+    );
+    // A full generation queue cannot prevent this independent prompt read.
+    let count_id = router.next_id.load(Ordering::Relaxed);
+    assert_eq!(router.count_input_tokens("alias", &input).unwrap(), 5);
+    assert_eq!(router.count_input_tokens("model", &input).unwrap(), 5);
+    assert_eq!(router.next_id.load(Ordering::Relaxed), count_id);
+    assert_eq!(router.queue_snapshot(), queue);
+    assert_eq!(host.snapshot().unwrap(), baseline);
+    assert_eq!(model.next.load(Ordering::Acquire), 0);
+    assert_eq!(router.catalog_snapshot().unwrap()[0].admitted_requests, 0);
+    assert_eq!(router.scheduler_snapshot().counters.attempted, 0);
+    assert_eq!(
+        router
+            .count_input_tokens("missing", &input)
+            .unwrap_err()
+            .code,
+        "model_not_found"
+    );
+    let conversation = TextInput::Conversation(vec![ChatMessage {
+        role: ChatRole::User,
+        text: "x".into(),
+    }]);
+    assert_eq!(
+        router
+            .count_input_tokens("model", &conversation)
+            .unwrap_err()
+            .code,
+        "unsupported_chat"
+    );
+    assert_eq!(
+        router
+            .count_input_tokens("model", &TextInput::Raw("x".repeat(128)))
+            .unwrap(),
+        128
+    );
+    assert_eq!(
+        router
+            .count_input_tokens("model", &TextInput::Raw("x".repeat(129)))
+            .unwrap_err()
+            .code,
+        "context_overflow"
+    );
+
+    // Exhaust the actual original physical ledger, not a simulated quota.
+    let admission = host.transfer_admission("pressure", "count").unwrap();
+    let remaining = admission
+        .arbiter
+        .snapshot(&admission.resource)
+        .unwrap()
+        .remaining;
+    let pressure = admission
+        .arbiter
+        .admit(
+            &admission.resource,
+            admission.owner,
+            &[zerogravity_core::resource_arbiter::AllocationRequest {
+                kind: AllocationClass::Scratch,
+                bytes: remaining,
+            }],
+        )
+        .unwrap();
+    assert_eq!(
+        router
+            .count_input_tokens("model", &input)
+            .unwrap_err()
+            .status,
+        503
+    );
+    assert_eq!(router.catalog_snapshot().unwrap()[0].admitted_requests, 0);
+    assert_eq!(router.queue_snapshot(), queue);
+    drop((pressure, tickets));
+    assert_eq!(host.snapshot().unwrap(), baseline);
+    let counted = router.count_input_tokens("model", &input).unwrap();
+    let receipt = router.request(request("hello")).unwrap();
+    match receipt.events.recv_timeout(Duration::from_secs(5)).unwrap() {
+        ResponseEvent::Done { prompt_tokens, .. } => assert_eq!(prompt_tokens, counted),
+        ResponseEvent::Error(error) => panic!("{error}"),
+        _ => panic!("expected terminal generation"),
+    }
+    drop(receipt);
+    router.shutdown().unwrap();
+    drop((router, model));
+    assert_eq!(host.snapshot().unwrap().1, 0);
+}

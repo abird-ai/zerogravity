@@ -66,6 +66,15 @@ impl Runtime {
         self.engine.request_semantic(request)
     }
 
+    /// Exact original tokenizer/template count, without generation admission.
+    pub fn count_input_tokens(
+        &self,
+        model: &str,
+        input: &text::TextInput,
+    ) -> std::result::Result<usize, text::ServiceError> {
+        self.engine.count_input_tokens(model, input)
+    }
+
     /// On-demand selected owners/controls; no model loading or task admission.
     pub fn inspect_task(
         &self,

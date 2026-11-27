@@ -153,6 +153,29 @@ impl Script {
     }
 }
 impl TextService for Script {
+    fn count_input_tokens(
+        &self,
+        model: &str,
+        input: &TextInput,
+    ) -> std::result::Result<usize, ServiceError> {
+        if model != "fixture" {
+            return Err(ServiceError::new(
+                404,
+                "model_not_found",
+                "fixture alias missing",
+            ));
+        }
+        // Test-only semantic census. Include role and turn boundaries so
+        // comparing count and generation catches context lowering mistakes.
+        let TextInput::Conversation(turns) = input else {
+            panic!("semantic conversation")
+        };
+        Ok(turns
+            .iter()
+            .map(|t| t.text.len() + t.role.as_str().len() + 1)
+            .sum())
+    }
+
     fn validate_chat(&self, _: &str) -> std::result::Result<(), ServiceError> {
         if self.raw_only {
             Err(ServiceError::new(400, "unsupported_chat", "raw text only"))
@@ -1767,6 +1790,147 @@ fn conversation_crud_is_authorized_and_failed_generation_is_not_appended() {
         ))
         .starts_with("HTTP/1.1 200")
     );
+    server.shutdown().unwrap();
+    drop(service);
+    assert_eq!(host.serving_bytes(), baseline);
+}
+
+#[test]
+fn input_count_uses_shared_context_lowering_and_strict_transport_without_enqueue() {
+    use serde_json::json;
+    let _lock = test_support::lock();
+    let host = test_support::host();
+    let baseline = host.serving_bytes();
+    let service = Script::new(host.clone());
+    let server = ServerBuilder::from_service(service.clone())
+        .api_key(Some("secret".into()))
+        .bind("127.0.0.1:0".parse().unwrap())
+        .build()
+        .unwrap()
+        .start()
+        .unwrap();
+    let address = server.local_addr();
+    let auth = |request: &str| {
+        request.replacen(
+            "\r\nHost: localhost\r\n",
+            "\r\nHost: localhost\r\nAuthorization: Bearer secret\r\n",
+            1,
+        )
+    };
+    let call = |path: &str, value: &serde_json::Value, status: u16| {
+        let raw = exchange(address, &auth(&post(path, &value.to_string())));
+        assert!(raw.starts_with(&format!("HTTP/1.1 {status}")), "{raw}");
+        assert!(correlation(raw.split_once("\r\n\r\n").unwrap().0).starts_with("req_zg_"));
+        document(&raw)
+    };
+    let path = "/v1/responses/input_tokens";
+    let first = json!({"model":"fixture","input":[{"role":"user","content":[{"type":"input_text","text":"hé"},{"type":"input_text","text":"llo"}]}],"instructions":"old"});
+    let unauth = exchange(address, &post(path, &first.to_string()));
+    assert!(unauth.starts_with("HTTP/1.1 401"));
+    // Exactly the same strict JSON/body reader also admits chunked input.
+    let raw = first.to_string();
+    let wire = format!(
+        "POST {path} HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer secret\r\nContent-Type: application/json\r\nTransfer-Encoding: chunked\r\n\r\n{:x}\r\n{raw}\r\n0\r\n\r\n",
+        raw.len()
+    );
+    let chunked = exchange(address, &wire);
+    assert!(chunked.starts_with("HTTP/1.1 200"), "{chunked}");
+    let first_count = call(path, &first, 200);
+    assert_eq!(document(&chunked), first_count);
+    assert_eq!(first_count["object"], "response.input_tokens");
+    assert!(service.requests.lock().unwrap().is_empty());
+
+    let mut create = first.clone();
+    create["store"] = json!(true);
+    let response = call("/v1/responses", &create, 200);
+    let parent = response["id"].as_str().unwrap();
+    let next = json!({"model":"fixture","input":"next","instructions":"new","previous_response_id":parent});
+    let count = call(path, &next, 200);
+    assert_eq!(service.requests.lock().unwrap().len(), 1);
+    call("/v1/responses", &next, 200);
+    let requests = service.requests.lock().unwrap();
+    let TextInput::Conversation(turns) = &requests[0].0.input else {
+        panic!("semantic conversation")
+    };
+    assert_eq!(
+        first_count["input_tokens"],
+        turns
+            .iter()
+            .map(|t| t.text.len() + t.role.as_str().len() + 1)
+            .sum::<usize>()
+    );
+    let TextInput::Conversation(turns) = &requests[1].0.input else {
+        panic!("semantic conversation")
+    };
+    assert_eq!(
+        count["input_tokens"],
+        turns
+            .iter()
+            .map(|t| t.text.len() + t.role.as_str().len() + 1)
+            .sum::<usize>()
+    );
+    assert_eq!(
+        turns.iter().map(|t| t.text.as_str()).collect::<Vec<_>>(),
+        ["new", "héllo", "transport fixture", "next"]
+    );
+    drop(requests);
+
+    let conversation = call(
+        "/v1/conversations",
+        &json!({"items":[{"role":"user","content":"héllo"},{"role":"assistant","content":"transport fixture"}]}),
+        200,
+    );
+    let id = conversation["id"].as_str().unwrap();
+    let items = format!("/v1/conversations/{id}/items?order=asc");
+    let get_items = || document(&exchange(address, &auth(&get(&items, ""))));
+    let before = get_items();
+    let conv_request =
+        json!({"model":"fixture","conversation":{"id":id},"instructions":"new","input":"next"});
+    assert_eq!(call(path, &conv_request, 200), count);
+    assert_eq!(get_items(), before);
+    assert_eq!(service.requests.lock().unwrap().len(), 2);
+
+    for (body, status, parameter) in [
+        (json!({"input":"x"}), 400, "model"),
+        (json!({"model":"missing","input":"x"}), 404, "model"),
+        (
+            json!({"model":"fixture","input":"x","conversation":"conv_missing"}),
+            404,
+            "conversation",
+        ),
+        (
+            json!({"model":"fixture","input":"x","previous_response_id":"resp_missing"}),
+            404,
+            "previous_response_id",
+        ),
+        (
+            json!({"model":"fixture","input":"x","conversation":id,"previous_response_id":parent}),
+            400,
+            "conversation",
+        ),
+        (
+            json!({"model":"fixture","input":"x","tools":[{"type":"web_search"}]}),
+            400,
+            "tools",
+        ),
+        (
+            json!({"model":"fixture","input":"x","truncation":"auto"}),
+            400,
+            "truncation",
+        ),
+    ] {
+        assert_eq!(call(path, &body, status)["error"]["param"], parameter);
+    }
+    let duplicate = exchange(
+        address,
+        &auth(&post(
+            path,
+            r#"{"model":"fixture","input":"x","input":"y"}"#,
+        )),
+    );
+    assert!(duplicate.starts_with("HTTP/1.1 400"));
+    assert_eq!(get_items(), before);
+    assert_eq!(service.requests.lock().unwrap().len(), 2);
     server.shutdown().unwrap();
     drop(service);
     assert_eq!(host.serving_bytes(), baseline);

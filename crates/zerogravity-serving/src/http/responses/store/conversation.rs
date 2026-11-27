@@ -51,7 +51,7 @@ impl StoredItem {
     }
 }
 
-pub(super) struct Conversation {
+pub(in crate::http::responses) struct Conversation {
     created: u64,
     metadata: BTreeMap<String, String>,
     items: Vec<StoredItem>,
@@ -92,6 +92,9 @@ impl Conversation {
             Ok(())
         }
     }
+    pub(in crate::http::responses) fn turns(&self) -> impl Iterator<Item = &ChatMessage> + Clone {
+        self.items.iter().map(|item| &item.turn)
+    }
     fn text_bytes(&self) -> usize {
         self.items.iter().map(|item| item.turn.text.len()).sum()
     }
@@ -118,6 +121,22 @@ fn missing_item() -> ServiceError {
 }
 
 impl Store {
+    /// Observe the last committed context, even during a generation lease.
+    /// Measurement and admitted copying happen under the same state lock;
+    /// no reader can see provisional items or extend retention.
+    pub(in crate::http::responses) fn read_conversation<T>(
+        &self,
+        id: &str,
+        read: impl FnOnce(&Conversation) -> Result<T>,
+    ) -> Result<T> {
+        if !valid_id(id, "conv_") {
+            return Err(missing());
+        }
+        self.expire();
+        let state = self.state.lock().expect("protocol store");
+        read(state.conversations.get(id).ok_or_else(missing)?)
+    }
+
     pub(in crate::http) fn lease_conversation(self: &Arc<Self>, id: &str) -> Result<Lease> {
         if !valid_id(id, "conv_") {
             return Err(missing());
@@ -152,14 +171,6 @@ impl Lease {
             .expect("leased conversation");
         assert!(conversation.busy);
         read(conversation)
-    }
-    pub(in crate::http) fn measure(&self) -> (usize, usize) {
-        self.with(|conversation| (conversation.items.len(), conversation.text_bytes()))
-    }
-    pub(in crate::http) fn extend(&self, target: &mut Vec<ChatMessage>) {
-        self.with(|conversation| {
-            target.extend(conversation.items.iter().map(|item| item.turn.clone()))
-        });
     }
     pub(super) fn prepare(
         self,
@@ -574,7 +585,7 @@ mod tests {
         let lease = store.lease_conversation("conv_fixture").unwrap();
         store.expire_at(now + TTL);
         assert!(store.lease_conversation("conv_fixture").is_err());
-        assert_eq!(lease.measure(), (0, 0));
+        assert_eq!(lease.with(|c| (c.items.len(), c.text_bytes())), (0, 0));
         assert!(
             store
                 .reserve(super::super::MAX_BYTES, service.as_ref())
