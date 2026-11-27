@@ -15,8 +15,10 @@ use zerogravity_engine::router::{
 };
 
 mod conversation;
+mod replay;
 use conversation::{Append, Conversation, ItemKey};
 pub(in crate::http) use conversation::{Lease as ConversationLease, route as conversation_route};
+pub(super) use replay::{Batch as ReplayBatch, Replay};
 
 type Result<T> = std::result::Result<T, ServiceError>;
 
@@ -133,6 +135,11 @@ impl Store {
                 }
                 active.wake.notify_one();
                 records.insert(id.to_owned(), Entry::terminal(record.clone()));
+                // The public SSE grammar has no cancelled terminal event.
+                // Preserve already-published deltas, then close at EOF.
+                if let Some(replay) = &record.replay {
+                    replay.finish(None);
+                }
                 Ok(record)
             }
         }
@@ -199,6 +206,7 @@ pub(super) struct Record {
     pub(super) continuable: bool,
     background: bool,
     stored: bool,
+    replay: Option<Arc<Replay>>,
     _credit: Arc<Credit>,
 }
 struct Retained(Arc<Record>);
@@ -226,6 +234,7 @@ pub(in crate::http) struct Pending {
     credit: Option<Arc<Credit>>,
     input_keys: Option<Arc<Vec<ItemKey>>>,
     append: Option<Append>,
+    pub(super) replay: Option<Arc<Replay>>,
 }
 impl Pending {
     pub(in crate::http) fn prepare(
@@ -273,6 +282,14 @@ impl Pending {
             .ok_or_else(|| {
                 ServiceError::new(400, "size_overflow", "response store bound overflow")
             })?;
+        let streaming = options.background && request.stream;
+        let bytes = if streaming {
+            Replay::reservation(limit)
+                .and_then(|extra| bytes.checked_add(extra))
+                .ok_or_else(|| ServiceError::new(400, "size_overflow", "replay bound overflow"))?
+        } else {
+            bytes
+        };
         let identity = Identity::new(request_id);
         let credit = if retain {
             // Conversation item IDs/statuses are retained along with the
@@ -286,6 +303,12 @@ impl Pending {
         } else {
             None
         };
+        let replay = streaming.then(|| {
+            Arc::new(Replay::new(
+                limit,
+                credit.as_ref().expect("background reservation").clone(),
+            ))
+        });
         let (append, input_keys) = if let Some(conversation) = conversation {
             let (append, keys) = conversation.prepare(input, &identity)?;
             (Some(append), retain.then(|| Arc::new(keys)))
@@ -302,6 +325,7 @@ impl Pending {
             credit,
             input_keys,
             append,
+            replay,
         }))
     }
 
@@ -335,6 +359,7 @@ impl Pending {
             continuable: self.stored && continuable,
             background: self.background,
             stored: self.stored,
+            replay: self.replay.clone(),
             _credit: self
                 .credit
                 .as_ref()
@@ -393,6 +418,7 @@ impl Pending {
         active: &Arc<Active>,
         record: Arc<Record>,
         status: Option<&'static str>,
+        terminal: Option<ReplayBatch>,
     ) {
         let mut state = self.store.state.lock().expect("protocol store");
         // Cancellation may have already won. Never recreate deleted records
@@ -403,6 +429,9 @@ impl Pending {
                 append.publish(&mut state, &record.output.text, status);
             }
             state.responses.insert(self.id, Entry::terminal(record));
+            if let Some(replay) = &self.replay {
+                replay.finish(terminal);
+            }
         }
     }
 }
@@ -515,6 +544,75 @@ fn valid_id(id: &str, prefix: &str) -> bool {
         && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
 }
 
+struct Retrieval {
+    stream: bool,
+    after: Option<usize>,
+}
+impl Retrieval {
+    fn parse(query: Option<&str>) -> Result<Self> {
+        let mut result = Self {
+            stream: false,
+            after: None,
+        };
+        let mut seen = 0u8;
+        for pair in query
+            .into_iter()
+            .flat_map(|q| q.split('&'))
+            .filter(|s| !s.is_empty())
+        {
+            let (key, value) = pair.split_once('=').ok_or_else(|| {
+                ServiceError::new(400, "invalid_request", "invalid response retrieval query")
+            })?;
+            let bit = match key {
+                "stream" if matches!(value, "true" | "false") => {
+                    result.stream = value == "true";
+                    1
+                }
+                "starting_after" => {
+                    result.after = Some(
+                        value
+                            .parse::<usize>()
+                            .ok()
+                            .filter(|_| {
+                                !value.is_empty() && value.bytes().all(|b| b.is_ascii_digit())
+                            })
+                            .ok_or_else(|| {
+                                ServiceError::new(400, "invalid_request", "invalid replay cursor")
+                                    .with_parameter("starting_after")
+                            })?,
+                    );
+                    2
+                }
+                "include_obfuscation" if value == "false" => 4,
+                _ => {
+                    return Err(ServiceError::new(
+                        400,
+                        "unsupported_parameter",
+                        "unsupported response retrieval option",
+                    ));
+                }
+            };
+            if seen & bit != 0 {
+                return Err(ServiceError::new(
+                    400,
+                    "invalid_request",
+                    "duplicate response retrieval option",
+                ));
+            }
+            seen |= bit;
+        }
+        if !result.stream && seen & 6 != 0 {
+            return Err(ServiceError::new(
+                400,
+                "invalid_request",
+                "replay options require stream=true",
+            )
+            .with_parameter("stream"));
+        }
+        Ok(result)
+    }
+}
+
 use super::super::body::{self, Reply};
 use hyper::{Method, Response};
 use serde_json::json;
@@ -546,17 +644,23 @@ pub(in crate::http) fn route(
         }
         match (method, action) {
             (&Method::GET, "") => {
-                if uri
-                    .query()
-                    .is_some_and(|q| !matches!(q, "" | "stream=false"))
-                {
-                    return Err(ServiceError::new(
-                        400,
-                        "unsupported_parameter",
-                        "unsupported response retrieval option",
-                    ));
+                let retrieval = Retrieval::parse(uri.query())?;
+                let record = store.get(id)?;
+                if retrieval.stream {
+                    return record
+                        .replay
+                        .as_ref()
+                        .ok_or_else(|| {
+                            ServiceError::new(
+                                400,
+                                "unsupported_parameter",
+                                "response was not created as a background stream",
+                            )
+                            .with_parameter("stream")
+                        })?
+                        .reply(retrieval.after);
                 }
-                Ok(body::retained_json(store.get(id)?.bytes(), None))
+                Ok(body::retained_json(record.bytes(), None))
             }
             (&Method::DELETE, "") if uri.query().is_none() => {
                 store.remove(id)?;
@@ -681,6 +785,7 @@ mod tests {
                     continuable: true,
                     background: false,
                     stored: true,
+                    replay: None,
                     _credit: Arc::new(credit),
                 }),
             },

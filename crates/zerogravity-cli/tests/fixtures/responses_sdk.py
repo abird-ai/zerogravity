@@ -348,3 +348,65 @@ with openai.OpenAI(
         except error_type as error:
             assert error.body["param"] == parameter and error.request_id
     print("OpenAI SDK: exact input-token count matches generation usage for typed text, previous-response replay and read-only conversation snapshots")
+
+    # Resume the exact event log from a disconnected creation stream. This
+    # uses the ordinary SDK, not a ZeroGravity client or a second request.
+    for retain in (True, False):
+        with client.responses.create(**{**kwargs, "background": True, "stream": True, "store": retain}) as stream:
+            created = next(stream)
+            assert created.type == "response.created"
+            assert created.sequence_number == 0
+            bg_id = created.response.id
+            assert created.response.background is True
+        with client.responses.retrieve(bg_id, stream=True, starting_after=created.sequence_number, include_obfuscation=False) as stream:
+            resumed = list(stream)
+        events = [created, *resumed]
+        assert [event.sequence_number for event in events] == list(range(len(events)))
+        final = events[-1].response
+        assert final.status == response.status
+        assert final.output_text == response.output_text
+        assert final.usage == response.usage
+        assert "".join(event.delta for event in events if event.type == "response.output_text.delta") == final.output_text
+        assert client.responses.retrieve(bg_id).model_dump() == final.model_dump()
+        with client.responses.retrieve(bg_id, stream=True) as stream:
+            assert [event.model_dump() for event in stream] == [event.model_dump() for event in events]
+        with client.responses.retrieve(bg_id, stream=True, starting_after=events[-1].sequence_number) as stream:
+            assert list(stream) == []
+        assert client.responses.cancel(bg_id).model_dump() == final.model_dump()
+        assert client.responses.delete(bg_id) is None
+
+    # Conversation commit is independent of the creating and replaying
+    # sockets, and happens exactly once at successful terminal publication.
+    conversation = client.conversations.create()
+    with client.responses.create(**{**kwargs, "background": True, "stream": True, "conversation": conversation.id}) as stream:
+        created = next(stream)
+        bg_id = created.response.id
+    with client.responses.retrieve(bg_id, stream=True, starting_after=created.sequence_number) as stream:
+        events = list(stream)
+    final = events[-1].response
+    assert final.output_text == response.output_text and final.usage == response.usage
+    page = client.conversations.items.list(conversation.id, order="asc")
+    assert len(page.data) == 2 and page.data[1].id == final.output[0].id
+    with client.responses.retrieve(bg_id, stream=True) as stream:
+        assert list(stream)[-1].response.model_dump() == final.model_dump()
+    assert client.conversations.items.list(conversation.id, order="asc").model_dump() == page.model_dump()
+    assert client.responses.delete(bg_id) is None
+    assert client.conversations.delete(conversation.id).deleted
+    print("OpenAI SDK: background streaming, create disconnect/resume, exact full replay, terminal usage and once-only conversation append passed")
+
+    with client.responses.create(**{**kwargs, "background": True, "stream": True}) as stream:
+        created = next(stream)
+        bg_id = created.response.id
+    stopped_stream = client.responses.cancel(bg_id)
+    with client.responses.retrieve(bg_id, stream=True, starting_after=created.sequence_number) as stream:
+        tail = list(stream)
+    assert [e.sequence_number for e in tail] == list(range(1, len(tail) + 1))
+    if stopped_stream.status == "cancelled":
+        # The SSE event union has no cancelled terminal; the canonical
+        # status is available from cancellation and JSON polling.
+        assert all(e.type not in ("response.completed", "response.incomplete", "response.failed") for e in tail)
+    else:
+        assert tail[-1].response.model_dump() == stopped_stream.model_dump()
+    assert client.responses.cancel(bg_id).model_dump() == stopped_stream.model_dump()
+    assert client.responses.delete(bg_id) is None
+    print(f"OpenAI SDK: background streaming cancellation race ({stopped_stream.status}) passed")

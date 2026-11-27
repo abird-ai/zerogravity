@@ -8,8 +8,9 @@ Read §§0–13 first for current architecture, acceptance, limitations and next
 work. The [standalone OA-4C continuation prompt](NEXT_AGENT_2026-11-27_OA4C.md)
 is the historical entry to the current work; use the live checkpoint below.
 OA-4B already committed at 89822f40; no production rework required.
-OA-4C/D accepted. Remaining OA-4: bounded background
-streaming/replay/resumption.
+OA-4C/D accepted. OA-4E bounded background streaming/replay/resumption
+implemented and focused/SDK/assembled qualified; final resident consumer
+acceptance remains open.
 Appendix D preserves every post-M1 landing narrative, changed paths and
 exact engineering prose delta; Appendix B records unresolved markers.
 The preceding [UX-P-M1 pack](FULL_COMPREHENSIVE_HANDOFF_2026-11-26_UX_PM1.md),
@@ -37,7 +38,58 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — OA-4D exact input-token count accepted; replay next (27 Nov)
+### Current checkpoint — OA-4E background streaming/replay (27 Nov)
+
+Started from clean signed ad4fe6f7 on sole L5 main. One existing joined
+background consumer owns original receipt; foreground direct streaming
+and background replay share typed SSE projection and bounded writer.
+New background stream create and GET stream=true/starting_after=N
+use the exact original sequence/bytes. Multiple subscribers are reads
+of one append-only log; no per-reader queue or receipt owner. Original
+socket admission/wire limits/write deadline and job deadline remain.
+Full log retained (no eviction); cap min(output limit, 1 MiB) and
+520 events. Same protocol quota and physical ledger, additional 6x
+log limit +128 KiB for frame/partial/fallback backing. Mandatory opening
+and failure frame preflight before publishing ID; failure buffer is
+already allocated and normal deltas leave room for it. Whole terminal
+success group prepared before response and atomic context append;
+cancel/overflow/failure never partially publish successful terminal.
+Cancel closes replay after prior events; canonical cancelled record
+via JSON poll/cancel, no unsupported synthetic SSE kind. Existing
+30min stored / 10min temporary expiry and final-reader credit.
+Nonstream/foreground retroactive replay and obfuscation refuse.
+Details in owning OA-4 design.
+
+Focused 182/0/0 and strict lint passed; actual TCP tests exercise
+disconnected create, live concurrent readers, exact complete and suffix
+replay, invalid cursors, cancellation races, oversized terminal group,
+once-only conversation append, expiry and quota retirement, shutdown.
+Initial regression run still expected background stream refusal; updated
+to assert nonstream replay/unsupported completion-window refusal.
+Real installed OpenAI SDK 2.33.0 passed actual cached Qwen3.5
+background streaming/disconnect/resume, full replay, exact output/usage,
+once-only conversation append and actual stream cancellation (cancelled).
+First canary incorrectly expected auth on a loopback fixture that
+explicitly unsets ZEROGRAVITY_API_KEY; moved assertion to the actual
+bearer-authenticated socket test, focused retry 182/0/0 and strict lint
+passed. Second full consumer run (236.89s) passed all SDK checks but
+Firefox resident fixture timed out at model load during observed shared
+host memory pressure (cause not independently established). No
+production change to weaken auth/admission or test timeouts. Rust SDK
+lifecycle passed (19.96s); full assembled private-network gate passed
+2,572/0/109 across 318 Rust suites (548s), release TUI/Web, installer
+and scripts. Logs: target/oa4e-focused.log,
+target/oa4e-focused-retry.log, target/oa4e-real-consumers.log (first
+fixture error), target/oa4e-real-consumers-retry.log (SDK pass, browser
+timeout), target/oa4e-rust-sdk.log, target/oa4e-assembled.log.
+
+Next: serial resident Firefox/CLI/TUI consumer retry only (reuse the
+cached model and previously passed SDK/assembled evidence; do not weaken
+the timeout or resource admission). Close OA-4 only on acceptance. Then OA-5 Chat/Completions compatibility over
+original semantic intent, model capabilities and qualified generation
+controls. No duplicate execution authority or unqualified modalities.
+
+### Prior checkpoint — OA-4D exact input-token count accepted; replay next (27 Nov)
 
 Started from clean signed e8ad81e5 on sole L5 main. Same original
 registry reader, semantic/rendered input validation, model-owned

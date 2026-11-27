@@ -6,7 +6,7 @@ use crate::{
     test_support::{self, HostBytes},
 };
 use std::{
-    io::{Read, Write},
+    io::{BufRead, BufReader, Read, Write},
     net::TcpStream,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
@@ -518,16 +518,21 @@ fn background_poll_cancel_completion_and_shutdown_share_original_receipts() {
 
     assert_eq!(background_exchange(address, "DELETE", &first, None).0, 200);
     assert_eq!(background_exchange(address, "GET", &first, None).0, 404);
+    let (status, error) =
+        background_exchange(address, "GET", &format!("{second}?stream=true"), None);
+    assert_eq!(status, 400);
+    assert_eq!(error["error"]["param"], "stream");
     let (status, error) = background_exchange(
         address,
         "POST",
         "/v1/responses",
-        Some(&json!({
-            "model":"fixture","input":"hello","background":true,"stream":true,
-        })),
+        Some(
+            &json!({"model":"fixture","input":"hello","background":true,"stream":true,
+            "background_options":{"completion_window":"2h"}}),
+        ),
     );
     assert_eq!(status, 400);
-    assert_eq!(error["error"]["param"], "stream");
+    assert_eq!(error["error"]["param"], "background_options");
 
     let _third = submit(true);
     let third_token = service.receipt(2);
@@ -852,5 +857,398 @@ fn foreground_conversation_disconnect_releases_lease_without_append() {
     }
     server.shutdown().unwrap();
     drop((consumer, service));
+    assert_eq!(host.serving_bytes(), baseline);
+}
+
+// Read SSE incrementally over actual chunked HTTP; a TCP/HTTP chunk need
+// not coincide with an event. Preserve original event bytes for replay.
+struct Sse {
+    reader: BufReader<TcpStream>,
+    pending: Vec<u8>,
+    closed: bool,
+}
+impl Sse {
+    fn open(
+        address: std::net::SocketAddr,
+        method: &str,
+        path: &str,
+        body: Option<&serde_json::Value>,
+    ) -> Self {
+        let mut socket = TcpStream::connect(address).unwrap();
+        socket
+            .set_read_timeout(Some(Duration::from_secs(3)))
+            .unwrap();
+        let data = body.map(serde_json::Value::to_string).unwrap_or_default();
+        write!(socket, "{method} {path} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{data}", data.len()).unwrap();
+        let mut reader = BufReader::new(socket);
+        let mut head = String::new();
+        loop {
+            let mut line = String::new();
+            assert_ne!(reader.read_line(&mut line).unwrap(), 0);
+            head.push_str(&line);
+            if line == "\r\n" {
+                break;
+            }
+        }
+        assert!(head.starts_with("HTTP/1.1 200"), "{head}");
+        assert!(
+            head.to_ascii_lowercase()
+                .contains("transfer-encoding: chunked"),
+            "{head}"
+        );
+        assert!(
+            head.to_ascii_lowercase()
+                .contains("content-type: text/event-stream")
+        );
+        Self {
+            reader,
+            pending: Vec::new(),
+            closed: false,
+        }
+    }
+    fn next(&mut self) -> Option<String> {
+        loop {
+            if let Some(end) = self.pending.windows(2).position(|w| w == b"\n\n") {
+                let frame = String::from_utf8(self.pending.drain(..end + 2).collect()).unwrap();
+                if frame.starts_with(':') {
+                    continue;
+                }
+                return Some(frame);
+            }
+            if self.closed {
+                assert!(self.pending.is_empty(), "truncated SSE event");
+                return None;
+            }
+            let mut line = String::new();
+            assert_ne!(
+                self.reader.read_line(&mut line).unwrap(),
+                0,
+                "truncated chunked response"
+            );
+            let size = usize::from_str_radix(line.trim(), 16).unwrap();
+            let start = self.pending.len();
+            assert!(start + size <= 1 << 20);
+            self.pending.resize(start + size, 0);
+            self.reader.read_exact(&mut self.pending[start..]).unwrap();
+            let mut end = [0; 2];
+            self.reader.read_exact(&mut end).unwrap();
+            assert_eq!(&end, b"\r\n");
+            self.closed = size == 0;
+        }
+    }
+    fn rest(&mut self) -> Vec<String> {
+        std::iter::from_fn(|| self.next()).collect()
+    }
+}
+fn event(frame: &str) -> serde_json::Value {
+    let (kind, data) = frame.trim_end().split_once("\ndata: ").unwrap();
+    let value: serde_json::Value = serde_json::from_str(data).unwrap();
+    assert_eq!(kind.strip_prefix("event: ").unwrap(), value["type"]);
+    value
+}
+
+#[test]
+fn background_stream_resumes_exact_events_and_appends_conversation_once() {
+    use serde_json::json;
+    let _lock = test_support::lock();
+    let host = test_support::host();
+    let baseline = host.serving_bytes();
+    let service = PendingService::open(host.clone());
+    let consumer = service.queue.worker().unwrap();
+    let server = start(service.clone());
+    let address = server.local_addr();
+    let (status, conversation) = background_exchange(
+        address,
+        "POST",
+        "/v1/conversations",
+        Some(&json!({"items":[{"role":"user","content":"original"}]})),
+    );
+    assert_eq!(status, 200);
+    let cid = conversation["id"].as_str().unwrap();
+    let items = format!("/v1/conversations/{cid}/items?order=asc");
+    let initial_items = background_exchange(address, "GET", &items, None);
+    let request = json!({"model":"fixture","input":"new","conversation":cid,
+        "background":true,"stream":true,"store":false});
+    let mut create = Sse::open(address, "POST", "/v1/responses", Some(&request));
+    let mut prefix = (0..4).map(|_| create.next().unwrap()).collect::<Vec<_>>();
+    let opening = event(&prefix[0]);
+    assert_eq!(opening["type"], "response.created");
+    assert_eq!(opening["response"]["background"], true);
+    let id = opening["response"]["id"].as_str().unwrap();
+    let path = format!("/v1/responses/{id}");
+    let token = service.receipt(0);
+    let job = match consumer.try_pop(|(cancel, _)| cancel.is_cancelled()) {
+        Pop::Item(job) => job,
+        _ => panic!("original active receipt missing"),
+    };
+    job.1
+        .try_send(ResponseEvent::Text("hé".into()))
+        .unwrap_or_else(|_| panic!("worker disconnected"));
+    prefix.push(create.next().unwrap());
+    assert_eq!(event(&prefix[4])["delta"], "hé");
+    drop(create);
+    wait_until(|| server.metrics().active_connections == 0);
+    assert!(
+        !token.is_cancelled(),
+        "creation socket owns no background receipt"
+    );
+    assert_eq!(
+        background_exchange(address, "GET", &path, None).1,
+        opening["response"]
+    );
+    assert_eq!(
+        background_exchange(address, "GET", &items, None),
+        initial_items
+    );
+
+    for query in [
+        "stream=true&starting_after=5",
+        "stream=true&starting_after=-1",
+        "stream=false&starting_after=0",
+        "stream=true&starting_after=0&starting_after=1",
+        "stream=true&include_obfuscation=true",
+    ] {
+        assert_eq!(
+            background_exchange(address, "GET", &format!("{path}?{query}"), None).0,
+            400,
+            "{query}"
+        );
+    }
+    let mut resumed = Sse::open(
+        address,
+        "GET",
+        &format!("{path}?starting_after=4&stream=true&include_obfuscation=false"),
+        None,
+    );
+    let mut whole = Sse::open(address, "GET", &format!("{path}?stream=true"), None);
+    for original in &prefix {
+        assert_eq!(&whole.next().unwrap(), original);
+    }
+    job.1
+        .try_send(ResponseEvent::Text("llo".into()))
+        .unwrap_or_else(|_| panic!("worker disconnected"));
+    let delta = resumed.next().unwrap();
+    assert_eq!(event(&delta)["sequence_number"], 5);
+    assert_eq!(event(&delta)["delta"], "llo");
+    assert_eq!(whole.next().unwrap(), delta);
+    job.1
+        .try_send(ResponseEvent::Done {
+            output: "héllo".into(),
+            prompt_tokens: 3,
+            cached_prompt_tokens: 1,
+            completion_tokens: 2,
+            finish_reason: "stop",
+        })
+        .unwrap_or_else(|_| panic!("worker disconnected"));
+    let tail = resumed.rest();
+    assert_eq!(whole.rest(), tail);
+    assert_eq!(tail.len(), 4);
+    let terminal = event(tail.last().unwrap());
+    assert_eq!(terminal["type"], "response.completed");
+    assert_eq!(
+        terminal["response"]["output"][0]["content"][0]["text"],
+        "héllo"
+    );
+    assert_eq!(
+        terminal["response"]["usage"]["input_tokens_details"]["cached_tokens"],
+        1
+    );
+    let all = prefix
+        .into_iter()
+        .chain([delta])
+        .chain(tail)
+        .collect::<Vec<_>>();
+    for (i, frame) in all.iter().enumerate() {
+        assert_eq!(event(frame)["sequence_number"], i);
+    }
+    assert_eq!(
+        background_exchange(address, "GET", &path, None),
+        (200, terminal["response"].clone())
+    );
+    let page = background_exchange(address, "GET", &items, None).1;
+    assert_eq!(page["data"].as_array().unwrap().len(), 3);
+    assert_eq!(page["data"][1]["content"][0]["text"], "new");
+    assert_eq!(
+        page["data"][2]["id"],
+        terminal["response"]["output"][0]["id"]
+    );
+    assert_eq!(page["data"][2]["content"][0]["text"], "héllo");
+    assert_eq!(
+        Sse::open(address, "GET", &format!("{path}?stream=true"), None).rest(),
+        all
+    );
+    assert_eq!(
+        Sse::open(
+            address,
+            "GET",
+            &format!("{path}?stream=true&starting_after=7"),
+            None
+        )
+        .rest(),
+        all[8..]
+    );
+    assert!(
+        Sse::open(
+            address,
+            "GET",
+            &format!("{path}?stream=true&starting_after=9"),
+            None
+        )
+        .rest()
+        .is_empty()
+    );
+    assert_eq!(background_exchange(address, "GET", &items, None).1, page);
+    assert_eq!(service.receipts.lock().unwrap().len(), 1);
+    assert_eq!(
+        background_exchange(
+            address,
+            "POST",
+            "/v1/responses",
+            Some(&json!({
+        "model":"fixture","input":"again","previous_response_id":id}))
+        )
+        .0,
+        400
+    );
+    assert_eq!(background_exchange(address, "DELETE", &path, None).0, 200);
+    assert_eq!(
+        background_exchange(address, "GET", &format!("{path}?stream=true"), None).0,
+        404
+    );
+    server.shutdown().unwrap();
+    drop((resumed, whole, job, token, consumer, service));
+    assert_eq!(host.serving_bytes(), baseline);
+}
+
+#[test]
+fn background_stream_cancel_overflow_and_shutdown_preserve_terminal_authority() {
+    use serde_json::json;
+    let _lock = test_support::lock();
+    let host = test_support::host();
+    let baseline = host.serving_bytes();
+    let service = PendingService::open(host.clone());
+    let consumer = service.queue.worker().unwrap();
+    let server = ServerBuilder::from_service(service.clone())
+        .bind("127.0.0.1:0".parse().unwrap())
+        .limits(crate::ingress::IngressLimits {
+            output_bytes: 8192,
+            ..Default::default()
+        })
+        .build()
+        .unwrap()
+        .start()
+        .unwrap();
+    let address = server.local_addr();
+    let (_, conversation) =
+        background_exchange(address, "POST", "/v1/conversations", Some(&json!({})));
+    let cid = conversation["id"].as_str().unwrap();
+    let items = format!("/v1/conversations/{cid}/items");
+    let initial = background_exchange(address, "GET", &items, None);
+    let request = json!({"model":"fixture","input":"x","conversation":cid,
+        "background":true,"stream":true,"store":true});
+    let submit = || {
+        let mut stream = Sse::open(address, "POST", "/v1/responses", Some(&request));
+        let prefix = (0..4).map(|_| stream.next().unwrap()).collect::<Vec<_>>();
+        let first = event(&prefix[0]);
+        let id = first["response"]["id"].as_str().unwrap();
+        (stream, prefix, format!("/v1/responses/{id}"))
+    };
+
+    let (mut stream, mut frames, path) = submit();
+    let token = service.receipt(0);
+    let job = match consumer.try_pop(|(cancel, _)| cancel.is_cancelled()) {
+        Pop::Item(job) => job,
+        _ => panic!("original active receipt missing"),
+    };
+    job.1
+        .try_send(ResponseEvent::Text("partial".into()))
+        .unwrap_or_else(|_| panic!("worker disconnected"));
+    frames.push(stream.next().unwrap());
+    let mut resumed = Sse::open(
+        address,
+        "GET",
+        &format!("{path}?stream=true&starting_after=4"),
+        None,
+    );
+    let (status, cancelled) = background_exchange(address, "POST", &format!("{path}/cancel"), None);
+    assert_eq!(status, 200);
+    assert_eq!(cancelled["status"], "cancelled");
+    assert!(token.is_cancelled());
+    let _ = job.1.try_send(ResponseEvent::Done {
+        output: "late".into(),
+        prompt_tokens: 3,
+        cached_prompt_tokens: 0,
+        completion_tokens: 1,
+        finish_reason: "stop",
+    });
+    assert!(stream.rest().is_empty());
+    assert!(resumed.rest().is_empty());
+    assert_eq!(
+        Sse::open(address, "GET", &format!("{path}?stream=true"), None).rest(),
+        frames
+    );
+    assert_eq!(
+        background_exchange(address, "POST", &format!("{path}/cancel"), None),
+        (200, cancelled)
+    );
+    assert_eq!(background_exchange(address, "GET", &items, None), initial);
+    assert_eq!(background_exchange(address, "DELETE", &path, None).0, 200);
+
+    // This admitted delta fits the log, but the entire success terminal
+    // group cannot fit. Never expose a partially successful terminal.
+    let (mut stream, mut frames, path) = submit();
+    let token2 = service.receipt(1);
+    let job2 = match consumer.try_pop(|(cancel, _)| cancel.is_cancelled()) {
+        Pop::Item(job) => job,
+        _ => panic!("original active receipt missing"),
+    };
+    let text = "x".repeat(3500);
+    job2.1
+        .try_send(ResponseEvent::Text(text.clone()))
+        .unwrap_or_else(|_| panic!("worker disconnected"));
+    frames.push(stream.next().unwrap());
+    assert_eq!(event(&frames[4])["delta"], text);
+    job2.1
+        .try_send(ResponseEvent::Done {
+            output: text,
+            prompt_tokens: 3,
+            cached_prompt_tokens: 0,
+            completion_tokens: 1,
+            finish_reason: "stop",
+        })
+        .unwrap_or_else(|_| panic!("worker disconnected"));
+    let tail = stream.rest();
+    assert_eq!(tail.len(), 1);
+    let failed = event(&tail[0]);
+    assert_eq!(failed["type"], "response.failed");
+    assert_eq!(failed["sequence_number"], 5);
+    assert_eq!(failed["response"]["status"], "failed");
+    assert!(failed["response"]["usage"].is_null());
+    frames.extend(tail);
+    assert!(token2.is_cancelled());
+    assert_eq!(
+        background_exchange(address, "GET", &path, None),
+        (200, failed["response"].clone())
+    );
+    assert_eq!(background_exchange(address, "GET", &items, None), initial);
+    assert_eq!(
+        Sse::open(address, "GET", &format!("{path}?stream=true"), None).rest(),
+        frames
+    );
+    assert_eq!(background_exchange(address, "DELETE", &path, None).0, 200);
+    // Active subscriber and job are both joined at shutdown.
+    let (stream, _, _) = submit();
+    let token3 = service.receipt(2);
+    server.shutdown().unwrap();
+    assert!(token3.is_cancelled());
+    assert_eq!(
+        service
+            .queue
+            .sweep(|(cancel, _)| cancel.is_cancelled())
+            .unwrap(),
+        1
+    );
+    assert_closed(stream.reader.into_inner());
+    drop((job, job2, token, token2, token3, consumer, service));
     assert_eq!(host.serving_bytes(), baseline);
 }

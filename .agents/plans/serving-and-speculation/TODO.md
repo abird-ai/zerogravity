@@ -165,9 +165,19 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   SDK 2.33.0/CLI/TUI/Firefox (162.61s), Rust SDK (18.79s) passed.
   Full private-network gate 2,569/0/109 across 318 suites (783s),
   release TUI/Web, installer and scripts passed. OA-4D accepted.
-- [ ] OA-4 remaining: bounded background streaming/replay and
-  resumption over the existing joined job/receipt. No duplicate
-  model state store, scheduler or fake capability. Real SDK qualification.
+- [x] OA-4E implementation: bounded background streaming/replay and
+  resumption over the existing joined job/receipt, shared typed SSE
+  projection and charged immutable replay, exclusive sequence cursor,
+  atomic terminal/context publication. Focused 182/0/0, strict lint,
+  actual installed OpenAI SDK 2.33.0 stream/resume/cancel and Rust SDK
+  lifecycle (19.96s) passed. No duplicate scheduler/model state.
+  Full assembled private-network gate 2,572/0/109 (318 suites, 548s)
+  passed, including release TUI/Web, installer and scripts.
+- [ ] OA-4E final acceptance: serial real resident Firefox/CLI/TUI
+  lifecycle revalidation. Prior SDK pass
+  followed by Firefox model-load timeout under observed shared host
+  pressure (cause not established); no weakened timeout or admission.
+  Retest only remaining consumer check before OA-4 closure and OA-5.
 
 ### Current continuation — 22 Nov 2026
 

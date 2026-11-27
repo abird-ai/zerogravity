@@ -497,9 +497,6 @@ pub(in crate::http) fn parse(
     // polling record, but store=false never permits durable continuation.
     let store = boolean(map, "store", false)?;
     let background = boolean(map, "background", false)?;
-    if background && stream {
-        return Err(unsupported("stream"));
-    }
     if let Some(options) = optional(map, "background_options") {
         if !background {
             return Err(unsupported("background_options"));

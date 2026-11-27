@@ -17,11 +17,13 @@ The latest [comprehensive takeover through OA-4B](../docs/FULL_COMPREHENSIVE_HAN
 §§0–13 describes original architecture, accepted Phase 1/UX-P and serving
 OA-1–3/OA-4A/B, actual evidence, limitations and next coherent work.
 The [OA-4C takeover prompt](../docs/NEXT_AGENT_2026-11-27_OA4C.md) is
-historical; read the live current handoff for accepted OA-4C/D and next work.
-Current unit: [remaining OA-4 response/conversation resources](serving-and-speculation/NEXT_ITERATION_OPENAI_COMPATIBLE_SERVING.md#oa-4--responseconversation-resources):
-bounded background stream/replay/resumption. OA-4B polling/cancel,
-OA-4C conversation/item resources and atomic append, and OA-4D exact
-input-token count are accepted; deeper M2 inspection stays optional and
+historical; read the live current handoff for accepted OA-4C/D, implemented
+OA-4E, and remaining acceptance.
+Current unit: [OA-4 response/conversation resources](serving-and-speculation/NEXT_ITERATION_OPENAI_COMPATIBLE_SERVING.md#oa-4--responseconversation-resources):
+bounded background stream/replay/resumption implemented and focused/SDK/
+assembled qualified; resident Firefox lifecycle retry remains.
+OA-4B polling/cancel, OA-4C conversation/item resources and atomic append,
+and OA-4D exact input-token count are accepted; deeper M2 inspection stays optional and
 capability-bound. §10.2 records remaining packaging and physical
 qualification caveats (old P4B blockers resolved).
 Appendices A–E preserve the engineering index, unresolved checklist,

@@ -5,6 +5,19 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 27 Nov — OA-4E bounded background streaming/replay
+
+Original joined receipt and shared typed SSE projection; immutable charged
+append-only replay with exclusive cursor, once-only conversation append
+and atomic terminal publication. Focused 182/0/0 and strict lint passed.
+Actual cached Qwen3.5 official SDK 2.33.0 stream/disconnect/resume/full
+replay/output/usage/cancellation and Rust SDK (19.96s) passed. Broader
+real resident Firefox model-load timed out during observed shared host
+memory pressure; cause not established. Full isolated gate 2,572/0/109
+(318 suites, 548s), release TUI/Web, installer and scripts passed.
+Serial real resident consumer retry remains for final OA-4 acceptance.
+No new physical GPU or performance evidence.
+
 ## 27 Nov — OA-4D exact input-token count
 
 Native Runtime and Responses input_tokens over the selected model's

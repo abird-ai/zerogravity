@@ -801,7 +801,14 @@ additional model state or execution owner. OA-4D exact input-token count
 accepted: focused 179/0/0 and strict lint, actual official SDK/CLI/TUI/Web
 (162.61s) and Rust SDK (18.79s) passed; full isolated gate 2,569/0/109
 (318 suites, 783s) passed. No generation admission or conversation mutation.
-OA-4 remains open for bounded background stream/replay/resumption.
+OA-4E bounded background streaming/replay/resumption is implemented:
+focused 182/0/0, strict lint, actual official SDK 2.33.0 cached-model
+stream/replay/cancel/atomic append and Rust SDK (19.96s) passed. Same
+joined receipt, shared charged protocol log and exclusive cursor.
+Full isolated assembled gate 2,572/0/109 (318 suites, 548s) passed.
+Final OA-4 acceptance remains open for serial resident Firefox/CLI/TUI
+lifecycle retry (model-load timeout under
+observed shared host pressure; cause not established).
 Preserve the original runtime, admission and listener owner.
 
 - [ ] Close the [OpenAI-compatible serving iteration](serving-and-speculation/NEXT_ITERATION_OPENAI_COMPATIBLE_SERVING.md):

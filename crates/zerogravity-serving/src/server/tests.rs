@@ -1491,36 +1491,61 @@ fn stored_stream_publishes_terminal_snapshot_and_obeys_listener_auth() {
         .start()
         .unwrap();
     let address = server.local_addr();
-    let request = json!({"model":"fixture","input":"hello","stream":true,"store":true}).to_string();
-    let mut client = response_client(address);
-    write!(client.get_mut(), "POST /v1/responses HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer secret\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{request}",request.len()).unwrap();
-    let (head, body) = read_response(&mut client);
-    assert!(head.starts_with("HTTP/1.1 200"));
-    let terminal: serde_json::Value = serde_json::from_str(
-        body.split("\n\n")
-            .filter(|s| !s.is_empty())
-            .last()
-            .unwrap()
-            .split_once("\ndata: ")
-            .unwrap()
-            .1,
-    )
-    .unwrap();
-    assert_eq!(terminal["type"], "response.completed");
-    let id = terminal["response"]["id"].as_str().unwrap();
-    let path = format!("/v1/responses/{id}");
-    let unauthorized = exchange(
-        address,
-        &format!("GET {path} HTTP/1.1\r\nHost: localhost\r\n\r\n"),
-    );
-    assert!(unauthorized.starts_with("HTTP/1.1 401"));
-    assert!(!unauthorized.contains("transport fixture"));
-    let retrieved = exchange(
-        address,
-        &format!("GET {path} HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer secret\r\n\r\n"),
-    );
-    assert_eq!(document(&retrieved), terminal["response"]);
-    drop(client);
+    for background in [false, true] {
+        let request = json!({"model":"fixture","input":"hello","stream":true,"store":true,"background":background}).to_string();
+        let mut client = response_client(address);
+        write!(client.get_mut(), "POST /v1/responses HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer secret\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{request}",request.len()).unwrap();
+        let (head, body) = read_response(&mut client);
+        assert!(head.starts_with("HTTP/1.1 200"));
+        let terminal: serde_json::Value = serde_json::from_str(
+            body.split("\n\n")
+                .filter(|s| !s.is_empty())
+                .last()
+                .unwrap()
+                .split_once("\ndata: ")
+                .unwrap()
+                .1,
+        )
+        .unwrap();
+        assert_eq!(terminal["type"], "response.completed");
+        let id = terminal["response"]["id"].as_str().unwrap();
+        let path = format!("/v1/responses/{id}");
+        let unauthorized = exchange(
+            address,
+            &format!("GET {path} HTTP/1.1\r\nHost: localhost\r\n\r\n"),
+        );
+        assert!(unauthorized.starts_with("HTTP/1.1 401"));
+        assert!(!unauthorized.contains("transport fixture"));
+        let retrieved = exchange(
+            address,
+            &format!(
+                "GET {path} HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer secret\r\n\r\n"
+            ),
+        );
+        assert_eq!(document(&retrieved), terminal["response"]);
+        if background {
+            let denied = exchange(
+                address,
+                &format!(
+                    "GET {path}?stream=true HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer wrong\r\n\r\n"
+                ),
+            );
+            assert!(denied.starts_with("HTTP/1.1 401"));
+            assert!(!denied.contains("transport fixture"));
+            let mut reader = response_client(address);
+            write!(reader.get_mut(), "GET {path}?stream=true HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer secret\r\n\r\n").unwrap();
+            let (head, replay) = read_response(&mut reader);
+            assert!(head.starts_with("HTTP/1.1 200"));
+            assert_eq!(replay, body);
+        }
+        let removed = exchange(
+            address,
+            &format!(
+                "DELETE {path} HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer secret\r\n\r\n"
+            ),
+        );
+        assert!(removed.starts_with("HTTP/1.1 200"));
+    }
     server.shutdown().unwrap();
     drop(service);
     assert_eq!(host.serving_bytes(), baseline);

@@ -45,6 +45,15 @@ impl Data {
             _projection: None,
         }
     }
+    /// Immutable charged protocol bytes, with no inference receipt.
+    pub(super) fn retained(bytes: Bytes) -> Self {
+        Self {
+            bytes,
+            written: None,
+            _owner: None,
+            _projection: None,
+        }
+    }
     pub(super) fn projected(
         bytes: Vec<u8>,
         owner: &Arc<RequestEvents>,

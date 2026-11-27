@@ -65,23 +65,12 @@ impl Wire {
         })
     }
 
-    fn encode<T: Serialize>(
-        &mut self,
-        owner: &Arc<RequestEvents>,
-        event: Option<&str>,
-        value: &T,
-    ) -> io::Result<Data> {
+    fn encode<T: Serialize>(&mut self, owner: &Arc<RequestEvents>, value: &T) -> io::Result<Data> {
         let mut buffer = BoundedWriter {
             bytes: Vec::new(),
             limit: self.remaining,
         };
-        if let Some(kind) = event {
-            write!(buffer, "event: {kind}\ndata: ")?;
-        }
         serde_json::to_writer(&mut buffer, value).map_err(io::Error::other)?;
-        if event.is_some() {
-            buffer.write_all(b"\n\n")?;
-        }
         self.remaining -= buffer.bytes.len();
         Ok(Data::projected(buffer.bytes, owner, &self.charge))
     }
@@ -418,7 +407,7 @@ pub(super) async fn completion(
     let content = [TextPart::new(&output)];
     let items = [Message::new(&identity, status, &content)];
     let view = options.view(&identity, &owner.model, status, &items, Some(usage), None);
-    let data = wire.encode(&owner, None, &view).map_err(wire_error)?;
+    let data = wire.encode(&owner, &view).map_err(wire_error)?;
     if let Some(pending) = pending {
         pending.finish(&view, &output, Some(status))?;
     }
@@ -441,7 +430,7 @@ struct Event<P> {
 }
 #[derive(Serialize)]
 struct ResponsePayload<'a> {
-    response: View<'a>,
+    response: &'a View<'a>,
 }
 #[derive(Serialize)]
 struct ItemPayload<'a> {
@@ -478,27 +467,133 @@ impl<'a> TextPayload<'a> {
         }
     }
 }
+/// The same typed event grammar for direct foreground and retained
+/// background projection. Serialization does not own an engine receipt.
+enum StreamEvent<'a> {
+    Response(&'static str, &'a View<'a>),
+    Item(&'static str, Message<'a>),
+    Part(&'static str, PartPayload<'a>),
+    Text(&'static str, TextPayload<'a>),
+}
+impl StreamEvent<'_> {
+    fn encode(self, sequence: usize, limit: usize) -> io::Result<Vec<u8>> {
+        let mut buffer = BoundedWriter {
+            bytes: Vec::new(),
+            limit,
+        };
+        self.encode_into(sequence, &mut buffer)?;
+        Ok(buffer.bytes)
+    }
+    fn encode_into(self, sequence: usize, buffer: &mut BoundedWriter) -> io::Result<()> {
+        fn encode<T: Serialize>(
+            kind: &'static str,
+            sequence: usize,
+            payload: T,
+            buffer: &mut BoundedWriter,
+        ) -> io::Result<()> {
+            write!(buffer, "event: {kind}\ndata: ")?;
+            serde_json::to_writer(
+                &mut *buffer,
+                &Event {
+                    kind,
+                    sequence_number: sequence,
+                    payload,
+                },
+            )
+            .map_err(io::Error::other)?;
+            buffer.write_all(b"\n\n")
+        }
+        match self {
+            Self::Response(kind, view) => {
+                encode(kind, sequence, ResponsePayload { response: view }, buffer)
+            }
+            Self::Item(kind, item) => encode(
+                kind,
+                sequence,
+                ItemPayload {
+                    output_index: 0,
+                    item,
+                },
+                buffer,
+            ),
+            Self::Part(kind, part) => encode(kind, sequence, part, buffer),
+            Self::Text(kind, text) => encode(kind, sequence, text, buffer),
+        }
+    }
+}
+fn initial_events<'a>(identity: &'a Identity, view: &'a View<'a>) -> [StreamEvent<'a>; 4] {
+    [
+        StreamEvent::Response("response.created", view),
+        StreamEvent::Response("response.in_progress", view),
+        StreamEvent::Item(
+            "response.output_item.added",
+            Message::new(identity, "in_progress", &[]),
+        ),
+        StreamEvent::Part(
+            "response.content_part.added",
+            PartPayload {
+                item_id: &identity.message,
+                output_index: 0,
+                content_index: 0,
+                part: TextPart::new(""),
+            },
+        ),
+    ]
+}
+fn delta_event<'a>(identity: &'a Identity, text: &'a str) -> StreamEvent<'a> {
+    StreamEvent::Text(
+        "response.output_text.delta",
+        TextPayload::new(identity, Some(text), None),
+    )
+}
+fn done_events<'a>(
+    identity: &'a Identity,
+    view: &'a View<'a>,
+    output: &'a str,
+    status: &'static str,
+    content: &'a [TextPart<'a>],
+) -> [StreamEvent<'a>; 4] {
+    [
+        StreamEvent::Text(
+            "response.output_text.done",
+            TextPayload::new(identity, None, Some(output)),
+        ),
+        StreamEvent::Part(
+            "response.content_part.done",
+            PartPayload {
+                item_id: &identity.message,
+                output_index: 0,
+                content_index: 0,
+                part: TextPart::new(output),
+            },
+        ),
+        StreamEvent::Item(
+            "response.output_item.done",
+            Message::new(identity, status, content),
+        ),
+        StreamEvent::Response(
+            if status == "completed" {
+                "response.completed"
+            } else {
+                "response.incomplete"
+            },
+            view,
+        ),
+    ]
+}
 impl Wire {
-    fn event<T: Serialize>(
+    fn event(
         &mut self,
         owner: &Arc<RequestEvents>,
         sequence: &mut usize,
-        kind: &'static str,
-        payload: T,
+        event: StreamEvent<'_>,
     ) -> io::Result<Frame<Data>> {
-        let data = self.encode(
-            owner,
-            Some(kind),
-            &Event {
-                kind,
-                sequence_number: *sequence,
-                payload,
-            },
-        )?;
+        let bytes = event.encode(*sequence, self.remaining)?;
+        self.remaining -= bytes.len();
         *sequence = sequence
             .checked_add(1)
             .ok_or_else(|| io::Error::other("Responses sequence exhausted"))?;
-        Ok(Frame::data(data))
+        Ok(Frame::data(Data::projected(bytes, owner, &self.charge)))
     }
 }
 
@@ -516,16 +611,10 @@ pub(super) fn streaming(
     let stream = async_stream::try_stream! {
         let mut sequence = 0;
         let mut partial = String::new();
-        for kind in ["response.created", "response.in_progress"] {
-            let view = options.view(&identity, &owner.model, "in_progress", &[], None, None);
-            yield wire.event(&owner, &mut sequence, kind, ResponsePayload { response: view })?;
+        let initial = options.view(&identity, &owner.model, "in_progress", &[], None, None);
+        for event in initial_events(&identity, &initial) {
+            yield wire.event(&owner, &mut sequence, event)?;
         }
-        yield wire.event(&owner, &mut sequence, "response.output_item.added", ItemPayload {
-            output_index: 0, item: Message::new(&identity, "in_progress", &[]),
-        })?;
-        yield wire.event(&owner, &mut sequence, "response.content_part.added", PartPayload {
-            item_id: &identity.message, output_index: 0, content_index: 0, part: TextPart::new(""),
-        })?;
         let deadline = time::Instant::now() + body::RESPONSE_TIMEOUT;
         let failure = loop {
             let now = time::Instant::now();
@@ -545,8 +634,7 @@ pub(super) fn streaming(
             };
             match event {
                 ResponseEvent::Text(text) => {
-                    let frame = wire.event(&owner, &mut sequence, "response.output_text.delta",
-                        TextPayload::new(&identity, Some(&text), None))?;
+                    let frame = wire.event(&owner, &mut sequence, delta_event(&identity, &text))?;
                     // Successful bounded serialization establishes a bound on
                     // the accumulated decoded delta bytes as well.
                     partial.push_str(&text);
@@ -557,23 +645,17 @@ pub(super) fn streaming(
                     if partial != output { break ServiceError::new(500, "invalid_stream", "text deltas differ from terminal output"); }
                     let status = match terminal_status(finish_reason) { Ok(status) => status, Err(error) => break error };
                     let usage = match Usage::new(prompt_tokens, cached_prompt_tokens, completion_tokens) { Ok(usage) => usage, Err(error) => break error };
-                    yield wire.event(&owner, &mut sequence, "response.output_text.done", TextPayload::new(&identity, None, Some(&output)))?;
-                    yield wire.event(&owner, &mut sequence, "response.content_part.done", PartPayload {
-                        item_id: &identity.message, output_index: 0, content_index: 0, part: TextPart::new(&output),
-                    })?;
                     let content = [TextPart::new(&output)];
-                    yield wire.event(&owner, &mut sequence, "response.output_item.done", ItemPayload {
-                        output_index: 0, item: Message::new(&identity, status, &content),
-                    })?;
                     let items = [Message::new(&identity, status, &content)];
                     let view = options.view(&identity, &owner.model, status, &items, Some(usage), None);
-                    let kind = if status == "completed" { "response.completed" } else { "response.incomplete" };
-                    // Encode the final event before publishing the record;
-                    // a failed projection must not leave a partial resource.
-                    let payload = ResponsePayload { response: view };
-                    let frame = wire.event(&owner, &mut sequence, kind, &payload)?;
+                    let [text, part, item, terminal] = done_events(&identity, &view, &output, status, &content);
+                    for event in [text, part, item] {
+                        yield wire.event(&owner, &mut sequence, event)?;
+                    }
+                    // Encode the final event before publishing the record.
+                    let frame = wire.event(&owner, &mut sequence, terminal)?;
                     if let Some(pending) = pending.take() {
-                        pending.finish(&payload.response, &output, Some(status)).map_err(io::Error::other)?;
+                        pending.finish(&view, &output, Some(status)).map_err(io::Error::other)?;
                     }
                     yield frame;
                     return;
@@ -588,8 +670,7 @@ pub(super) fn streaming(
         let part = [TextPart::new(&partial)];
         let items = [Message::new(&identity, "incomplete", &part)];
         let view = options.view(&identity, &owner.model, "failed", &items, None, Some(&failure_object));
-        let payload = ResponsePayload { response: view };
-        let frame = wire.event(&owner, &mut sequence, "response.failed", &payload)?;
+        let frame = wire.event(&owner, &mut sequence, StreamEvent::Response("response.failed", &view))?;
         if let Some(pending) = pending.take() {
             // Do not persist opt-in arbitrary diagnostics with a resource.
             let mut safe_error = failure_object;

@@ -6,7 +6,7 @@ scaffolding), CLI/TUI/Web and serving, ROCm, CUDA, Vulkan, then concrete
 compiled providers. Native Hugging Face/Safetensors and GGUF are primary.
 Older ordering below is context; valid owner constraints remain authoritative.
 
-Status: **OA-1 through OA-3 and OA-4A/B/C/D accepted** (27 Nov). OA-4 remains open for bounded background streaming/replay/resumption; later units remain ordered.
+Status: **OA-1 through OA-3 and OA-4A/B/C/D accepted** (27 Nov). OA-4E bounded background streaming/replay/resumption implemented and focused/SDK/assembled qualified; final acceptance remains open for resident Firefox lifecycle retry. Later units remain ordered.
 
 26 Nov user decision: [UX-P native TUI polish](../cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md)
 was the prerequisite. The assembled P4B gate passed on ad7a4178;
@@ -1472,9 +1472,65 @@ official SDK 2.33.0 exact count/usage parity and CLI/TUI/Firefox lifecycle
 gate 2,569/0/109 across 318 suites (783s), release TUI/Web, installer
 and scripts passed. OA-4D accepted.
 
-Remaining after OA-4D: bounded background streaming/replay/resumption over
-the existing joined job and receipt. Retain one protocol quota, no
-model-state store or second scheduler. No false capability until qualified.
+**OA-4E bounded background streaming/replay (27 Nov).** Current API:
+https://developers.openai.com/api/docs/guides/background and
+https://developers.openai.com/api/reference/resources/responses/methods/retrieve.
+Default/soonest completion window accepts background=true, stream=true.
+GET response?stream=true replays the originally published SSE bytes,
+optionally starting strictly after a previously published sequence_number.
+Omitted cursor starts at zero; unknown/future/malformed/duplicate cursors
+refuse. Last terminal event cursor yields EOF. Nonstream background and
+foreground records cannot retroactively stream. Only disabled obfuscation
+is supported; no new modality or cloud scheduling policy.
+
+One existing listener JoinSet consumer owns the original event receipt.
+The same typed foreground SSE grammar and bounded serializer produce
+immutable event bytes. Replay subscribers hold only shared bytes/credit,
+not a model session, receipt, queue or producer. No per-reader event
+buffer; original socket admission, cumulative wire cap and stalled-write
+deadline apply independently. A disconnected/stalled subscriber does
+not cancel background work. Shared log cap min(configured output bytes,
+1 MiB), 520 events (four opening + 512 deltas + four terminal), no
+eviction or renumbering. Opening and deterministic failure event are
+prepared before ID publication. Reserve space and one event slot for
+failure; reuse its preallocated buffer if successful terminal group
+or ordinary failure projection cannot fit. Additional 6x log bound
+plus 128 KiB metadata allowance covers retained encoding/backing,
+fallback overlap and partial text, in the same 64-slot/32 MiB protocol
+quota and original physical ledger. The original generation deadline
+and cooperative joined consumer remain bounded.
+
+Validate exact delta/terminal text, usage and terminal status. Prepare
+all successful terminal frames before publishing response/context append;
+the same store transition wins against cancellation and closes the log.
+Overflow/worker error produces failed response and no successful partial
+terminal group or conversation append. Explicit cancellation signals
+the original receipt, publishes the canonical cancelled snapshot and
+closes subscribers after already retained events. No invented
+response.cancelled SSE event (not in current public streaming union);
+poll or cancel for the cancelled status. Previously emitted deltas are
+replayable but not a completed assistant output. Repeat cancel is
+idempotent. Same terminal retention (store=true 30min, temporary
+store=false 10min); delete/expire blocks new subscribers but retained
+reader/frame credit follows the final reader. Shutdown joins original
+connection and background tasks. No additional scheduler, model-state
+store, persistent replay, obfuscation or detached execution.
+
+Focused engine/serving 182/0/0, strict lint passed. Actual TCP tests:
+disconnect, active/terminal replay, concurrent readers, exclusive cursor,
+once-only conversation append, cancel/late Done, bounded terminal
+overflow, expiry/reader quota and joined shutdown. Actual OpenAI SDK
+2.33.0 passed cached-model stream/resume, exact output/usage, full replay,
+conversation append and actual cancellation. First fixture auth
+assertion corrected for its explicitly unauthenticated listener; real
+bearer-authenticated replay/refusal is covered by focused socket test.
+Broader browser resident-model load timed out under observed shared
+host pressure (cause not established); Rust SDK lifecycle passed
+(19.96s). Full assembled private-network gate 2,572/0/109 across
+318 suites (548s), release TUI/Web, installer and scripts passed.
+Serial resident Firefox/CLI/TUI retry remains. No weakened admission
+or timeout; reuse passed SDK and assembled evidence.
+OA-4 closes only after its acceptance gates.
 
 ### OA-5 — Chat/Completions compatibility close
 
