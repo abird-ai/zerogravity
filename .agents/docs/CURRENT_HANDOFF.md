@@ -20,6 +20,10 @@ OA-7A advanced on the already cached complete Gemma 4 E2B learned audio
 source: native F32 CPU waveform-to-language-soft-token reference and
 independent actual trained-source parity and full workspace gate passed;
 no ASR/TTS/public audio eligibility.
+OA-7B shares one original authenticated window source between audio and
+language; actual learned F32 audio-conditioned prefill and cached decode
+match the independent original text model; full workspace gate passed.
+No transcript/Runtime/public audio eligibility yet.
 Appendix D preserves every post-M1 landing narrative, changed paths and
 exact engineering prose delta; Appendix B records unresolved markers.
 The preceding [UX-P-M1 pack](FULL_COMPREHENSIVE_HANDOFF_2026-11-26_UX_PM1.md),
@@ -47,7 +51,106 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — OA-7A original Gemma 4 audio encoder (27 Nov)
+### Current checkpoint — OA-7B shared original audio/language execution (27 Nov)
+
+Started from clean signed cec65c4f on sole L5 main. Reused OA-7A original
+cached E2B source and independent audio reference. No model/SDK acquisition.
+Do not treat bare "next" as authorization for MiniLM or any new model.
+
+Extracted managed original source opening/binding from execution/source.rs
+to family managed_source.rs; original E2B pins/index/roles, 12 GiB source
+byte cap and exact held descriptor authentication unchanged. Audio now
+uses the same VerifiedTensorSource as OriginalGemma4Text; no additional
+source issuance, complete resident checkpoint or audio-only converted
+weights. General small dense raw parameter transport supports exact
+scalar/rank<=4 BF16/F16/F32 shape/issuer (<=4 MiB); original rank1 and
+conv4 contracts remain unchanged. Audio reads actual source windows,
+prices decoded small parameters and original request/output scratch,
+validates learned finite coefficients/clip bounds; matrix rows staged
+once per tile across the utterance. Existing FFT/Conformer/projector
+semantics unchanged. Audio outputs retain detached physical result credit.
+Actual combined load asserts Arc issuer identity, not digest equivalence.
+
+Gemma4AudioLanguage owns encoder plus original text owner. One
+AudioLanguageSession wraps original Gemma4ReferenceSession and
+SessionAuthority. Bounded raw source IDs and exactly one contiguous
+audio placeholder span with BOA/EOA, exact count/width/source; foreign
+media IDs, invalid slots, nonempty prefill state and bad context refuse.
+No implicit speech template, scheduler, second state/cache or public
+endpoint. Shared ReferenceTextMath imports charged finite external F32
+activation for original source only, and the original family forward
+takes the optional main soft embedding. The same transaction evaluates
+all positions and publishes actual original KV only on success.
+Subsequent cached decode uses the original ordinary token path.
+
+**Correction to OA-7A handoff:** original Gemma4Model gets per-layer
+token lookup using text IDs with audio placeholders replaced by PAD.
+get_per_layer_inputs only computes that lookup when IDs are present.
+Gemma4TextModel.forward then applies project_per_layer_inputs to the
+merged main embedding (actual audio vector at audio slots). Thus PLE
+lookup is PAD, learned PLE projection is AUDIO, not raw PAD. The
+implemented shared traversal preserves this exact distinction. Ordinary
+recorded/BF16/text paths retain their old embedding and projection
+semantics. Audio-conditioned arithmetic is AnalyticF32 only.
+
+Independent tools/gemma4-audio-reference/language.py uses the same local
+PyTorch/Transformers versions as OA-7A, loads actual original text
+submodule in F32 widened from BF16 via meta construction/assign, derives
+nonpersistent rotary/scale buffers from original classes, executes
+original multimodal scatter + per-layer methods and actual cached
+continuation. Initial reference closure rejected actual unused shared-KV
+checkpoint members; corrected to admit only exact k_proj/v_proj/k_norm
+roles omitted by reference layers with is_kv_shared_layer. No native
+tolerance changed. Reference 9-position prompt [2,256000,258881 x4,
+258883,19997,236787], actual waveform (not speech) and learned 4x1536
+audio rows. Whole vocabulary prefill argmax 236743 and cached decode
+argmax 107. Actual isolated native release:
+- combined source/parameters 74,392,844 bytes reserved (previous audio
+  alone full checkpoint 10,254,953,566), auth/bind 15.907s. Retained
+  resource reservations, not peak RSS/OS page cache; ~99.3% reduction;
+- actual shared encoder max abs 2.5749e-5, relL2 1.039e-6;
+- prefill 9 tokens, 262144 logits, max abs 0.000320435, relL2
+  0.000004470, 54.506s, exact argmax;
+- one real cached continuation, 262144 logits, max abs 0.000189781,
+  relL2 0.000009288, 7.752s, exact argmax;
+- all coordinates pass predeclared abs0.01 + rel0.002*abs(ref) and
+  relL2<=0.002. Actual invalid span and pre-cancel refusal, active
+  decoder cancellation after state admission preserves original root
+  and bytes. After model/session retirement, only detached audio result
+  remains; dropping it returns original admission to baseline.
+- existing two OA-7A encoder cases rerun on windows; retained standalone
+  71,151,744 bytes, identical log-mel/projection maxima/relative errors,
+  active cancellation and result retirement. Two real learned tests
+  passed 113.84s. CPU reference execution times are observations, not
+  production throughput or BF16/GPU parity.
+
+Focused 222/0/14 across9 suites (actual learned tests separately run)
+and strict Clippy passed; artifact dense scalar/conv shape/foreign
+issuer test, original text arithmetic and execution regressions passed.
+Assembled gate: 2,591/0/111 (322 Rust suites, 679s), complete isolated gate passed.
+
+Next OA-7C: use original source-bound tokenizer and actual model-owned
+audio chat template/placeholder expansion, bounded PCM/container ingress,
+genuine speech sample and independent transcript/decoder reference.
+Integrate actual prepared audio-language owner into common Runtime,
+registry/workers/receipt, preserving existing admission/StateRoot and
+cancellation; no separate decoder, fake transcript or HTTP-only math.
+Then OA-7D expose qualified multipart transcription, only supported
+options. Translation/TTS/streaming separately capability-gated. Native
+API here deliberately explicit model-level raw-ID path; no transcript,
+production latency, real audio endpoint or automatic catalog eligibility.
+No genuine speech fixture identified in existing visible caches; no
+new model/source/SDK download. MiniLM OA-6 remains open.
+
+Logs: target/oa7b-reference-retry.log (independent original text),
+target/oa7b-learned.log, target/oa7b-focused.log,
+target/oa7b-assembled.log. Independent language.py accepts local
+snapshot files dir, prior audio reference JSON and output JSON.
+Native tests use original OA-7A env plus
+ZG_GEMMA4_AUDIO_LANGUAGE_REFERENCE and select audio::tests::actual_
+with --lib --ignored --nocapture --test-threads=1, release/locked/offline.
+
+### Prior checkpoint — OA-7A original Gemma 4 audio encoder (27 Nov)
 
 Started from clean signed fa269df1 on sole L5 main. OA-6C accepted
 workspace/SDK fixture evidence reused. MiniLM remains absent; continuation
@@ -129,11 +232,10 @@ language execution with one shared verified source owner, not a second
 10 GB checkpoint allocation. Inspect original multimodal placeholder
 replacement, tokenizer/template, per-layer inputs and attention/state
 semantics. Installed original Gemma4Model.forward replaces multimodal
-placeholder IDs with text PAD IDs, computes per-layer inputs using
-the original PAD embedding before scattering valid projected audio
-rows into the main input embedding, then applies the model's ordinary
-position/attention policy. Preserve those two distinct inputs; do not
-treat audio rows as lookup IDs or derive PLE from audio vectors. Qualify
+placeholder IDs with text PAD IDs and computes the per-layer token
+lookup before scattering valid audio rows. OA-7B verified the exact
+follow-up learned PLE projection uses the merged audio embedding
+(correction to the earlier PAD-projection interpretation above). Qualify
 exact audio-conditioned prefill/decode against independent original
 model and a genuine local speech sample. Only
 after real native transcription completion through existing Runtime/

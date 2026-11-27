@@ -21,8 +21,9 @@ historical; read the live current handoff for accepted OA-4A–E
 and OA-5 current-capability text compatibility.
 Current unit: [OA-7 Audio](serving-and-speculation/NEXT_ITERATION_OPENAI_COMPATIBLE_SERVING.md#oa-7--audio):
 OA-7A original cached Gemma 4 E2B waveform-to-language-token CPU reference
-and actual learned numerical parity passed; native multimodal decoder/
-Runtime/transcription integration next. OA-6A/B/C workspace-qualified;
+and actual learned numerical parity passed; OA-7B shared original source
+and native audio-conditioned F32 decoder prefill/continuation parity passed.
+OA-7C genuine speech/template/shared Runtime transcription integration next. OA-6A/B/C workspace-qualified;
 MiniLM trained-source authorization/parity and built-in public eligibility
 remain open. No new model download.
 OA-4 fully accepted after the serial resident lifecycle retry; OA-5

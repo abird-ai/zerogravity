@@ -6,7 +6,7 @@ scaffolding), CLI/TUI/Web and serving, ROCm, CUDA, Vulkan, then concrete
 compiled providers. Native Hugging Face/Safetensors and GGUF are primary.
 Older ordering below is context; valid owner constraints remain authoritative.
 
-Status: **OA-1–5 accepted** (27 Nov), scoped to actual supported text capabilities. OA-6A native BERT candidate workspace-qualified; OA-6B native shared Runtime/SDK workspace-qualified; OA-6C gated wire/SDK workspace-qualified; trained-source and built-in eligibility remain open. OA-7A original cached Gemma4 audio encoder actual reference parity passed; native multimodal decoder/ASR integration remains open. Later units remain ordered.
+Status: **OA-1–5 accepted** (27 Nov), scoped to actual supported text capabilities. OA-6A native BERT candidate workspace-qualified; OA-6B native shared Runtime/SDK workspace-qualified; OA-6C gated wire/SDK workspace-qualified; trained-source and built-in eligibility remain open. OA-7A/B original cached Gemma4 encoder and shared audio-conditioned native F32 decoder parity passed; actual speech/Runtime/ASR integration remains open. Later units remain ordered.
 
 26 Nov user decision: [UX-P native TUI polish](../cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md)
 was the prerequisite. The assembled P4B gate passed on ad7a4178;
@@ -1669,15 +1669,30 @@ result retirement pass. Focused 125/0/13, strict lint. Assembled:
 2,587/0/110 (322 Rust suites, 570s), complete isolated gate passed. This is encoder/projector evidence, not ASR/TTS or
 public eligibility.
 
-**OA-7B:** one original source owner for audio and language, actual
-model-owned multimodal input/template/placeholder insertion,
-per-layer input/attention/state semantics, audio-conditioned prefill
-and decode through common Runtime/registry/scheduler/receipt. Qualify
-real learned source and genuine speech, actual transcript and joined
-lifecycle before public audio transcription. Do not attach audio rows
-to a fake decoder or duplicate source bytes. Reuse existing multipart
-and bounded transport. Translation/speech/streaming only over
-actual qualified ASR/TTS runtime capabilities.
+**OA-7B (27 Nov): shared original audio/language execution.** Existing
+verified source window owner shared between audio encoder and original
+Gemma text, exact same issuer. Bounded complete scalar/conv parameters
+retain original shape; no full resident copy or separate source.
+Original audio placeholder span resolves PAD IDs for PLE lookup;
+learned PLE projection uses merged audio row (not PAD projection).
+Native F32 activation import and optional main embedding in same
+family traversal, original StateRoot transaction/KV, ordinary cached
+decode. Actual source-derived synthetic waveform + nine-position
+prompt, full vocabulary prefill/continuation vs independent original
+F32 Transformers: 524288 logits max abs 0.000320435/0.000189781,
+relL2 0.000004470/0.000009288, exact argmax both. Combined retained
+74,392,844 bytes; previous full audio-only 10,254,953,566. Active
+cancellation and independent retirement, existing two audio cases
+passed. Focused 222/0/14 strict lint. Assembled: 2,591/0/111 (322 Rust suites, 679s), complete isolated gate passed.
+No trained speech accuracy, GPU parity or public eligibility.
+
+**OA-7C:** original model-owned audio prompt/template, genuine speech
+sample and independent transcript/decoder qualification. Integrate
+prepared audio-language model through existing Runtime/registry/
+scheduler/receipt; real admission, cancellation and joined retirement.
+No second source, state, scheduler or fake decoder. **OA-7D:** only
+then public bounded multipart transcription and supported controls.
+Translation/speech/streaming only with actual capability.
 
 ### OA-8 — Images
 

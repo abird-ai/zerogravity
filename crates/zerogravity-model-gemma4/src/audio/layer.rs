@@ -6,7 +6,7 @@ use super::{
 };
 use crate::Result;
 use std::sync::atomic::AtomicBool;
-use zerogravity_artifacts::SourceWeights;
+use zerogravity_artifacts::source_weights::VerifiedTensorSource;
 use zerogravity_cpu::ops::{audio::depthwise_causal, encoder::check_cancel, silu, softmax};
 
 const RMS_EPSILON: f32 = 1e-6;
@@ -49,7 +49,7 @@ impl FeedForward {
     }
     fn run(
         &self,
-        s: &SourceWeights,
+        s: &VerifiedTensorSource,
         c: &Audio,
         input: Vec<f32>,
         cancelled: Option<&AtomicBool>,
@@ -100,7 +100,7 @@ impl Attention {
     }
     fn run(
         &self,
-        s: &SourceWeights,
+        s: &VerifiedTensorSource,
         c: &Audio,
         input: &[f32],
         positions: &[f32],
@@ -191,7 +191,7 @@ impl LightConv {
     }
     fn run(
         &self,
-        s: &SourceWeights,
+        s: &VerifiedTensorSource,
         c: &Audio,
         input: Vec<f32>,
         cancelled: Option<&AtomicBool>,
@@ -246,7 +246,7 @@ impl Layer {
     }
     pub fn run(
         &self,
-        s: &SourceWeights,
+        s: &VerifiedTensorSource,
         c: &Audio,
         input: Vec<f32>,
         positions: &[f32],

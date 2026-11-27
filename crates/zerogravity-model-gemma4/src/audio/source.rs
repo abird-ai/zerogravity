@@ -2,7 +2,13 @@
 //! source bytes; only small affine/conv parameters are decoded.
 use crate::{Error, Result};
 use std::{collections::BTreeSet, sync::atomic::AtomicBool};
-use zerogravity_artifacts::{SourceWeights, artifact::TensorInfo, codecs::dequantize};
+use zerogravity_artifacts::{
+    artifact::TensorInfo,
+    codecs::dequantize,
+    source_weights::{ParameterWindow, TensorWindow, VerifiedMatrix, VerifiedTensorSource},
+};
+use zerogravity_core::accelerator::program::MatrixAxes;
+
 use zerogravity_core::{
     accelerator::MatVecRegion,
     encoding::{ScalarDType, StoredTensorEncoding},
@@ -18,33 +24,65 @@ use zerogravity_cpu::{
 
 const BF16: StoredTensorEncoding = StoredTensorEncoding::Scalar(ScalarDType::Bf16);
 
+fn finite(raw: &[u8], name: &str) -> Result<()> {
+    if !raw
+        .chunks_exact(2)
+        .all(|b| u16::from_le_bytes([b[0], b[1]]) & 0x7f80 != 0x7f80)
+    {
+        return Err(Error::Malformed(format!(
+            "nonfinite learned audio tensor {name}"
+        )));
+    }
+    Ok(())
+}
+fn parameter(
+    source: &VerifiedTensorSource,
+    t: &TensorInfo,
+    cancelled: Option<&AtomicBool>,
+) -> Result<ParameterWindow> {
+    let p = source.dense_parameter(&t.name, &t.shape)?;
+    let range = 0..p.elements();
+    let window = match cancelled {
+        Some(flag) => source.read_parameter_cancellable(&p, range, flag)?,
+        None => source.read_parameter(&p, range)?,
+    };
+    window.require_complete(&p)?;
+    Ok(window)
+}
+fn tile_rows(columns: usize) -> usize {
+    (1024 * 1024 / (columns * 2)).clamp(1, 512)
+}
+fn read_matrix_rows(
+    source: &VerifiedTensorSource,
+    weight: &VerifiedMatrix,
+    range: std::ops::Range<usize>,
+    cancelled: Option<&AtomicBool>,
+) -> Result<TensorWindow> {
+    match cancelled {
+        Some(flag) => source.read_rows_cancellable(weight, range, flag),
+        None => source.read_rows(weight, range),
+    }
+}
+
 pub(super) struct Binder<'a> {
-    pub source: &'a SourceWeights,
+    pub source: &'a VerifiedTensorSource,
     used: BTreeSet<String>,
+    cancelled: Option<&'a AtomicBool>,
 }
 impl<'a> Binder<'a> {
-    pub fn new(source: &'a SourceWeights) -> Self {
+    pub fn new(source: &'a VerifiedTensorSource, cancelled: Option<&'a AtomicBool>) -> Self {
         Self {
             source,
             used: BTreeSet::new(),
+            cancelled,
         }
     }
-    fn tensor(&mut self, name: &str, shape: &[usize], finite: bool) -> Result<TensorInfo> {
-        let t = self.source.tensor(name)?;
+    fn tensor(&mut self, name: &str, shape: &[usize]) -> Result<TensorInfo> {
+        check_cancel(self.cancelled)?;
+        let t = self.source.tensor_info(name)?;
         if t.kind != BF16 || !t.shape.iter().copied().eq(shape.iter().map(|&n| n as u64)) {
             return Err(Error::Malformed(format!(
                 "Gemma audio tensor {name}: dtype/shape mismatch"
-            )));
-        }
-        if finite
-            && !self
-                .source
-                .bytes(t)?
-                .chunks_exact(2)
-                .all(|b| u16::from_le_bytes([b[0], b[1]]) & 0x7f80 != 0x7f80)
-        {
-            return Err(Error::Malformed(format!(
-                "nonfinite learned audio tensor {name}"
             )));
         }
         if !self.used.insert(name.to_owned()) {
@@ -55,16 +93,19 @@ impl<'a> Binder<'a> {
         Ok(t.clone())
     }
     pub fn decoded(&mut self, name: &str, shape: &[usize]) -> Result<Vec<f32>> {
-        let t = self.tensor(name, shape, true)?;
+        let t = self.tensor(name, shape)?;
+        let raw = parameter(self.source, &t, self.cancelled)?;
+        finite(raw.as_slice(), name)?;
         let n = shape
             .iter()
             .try_fold(1usize, |a, &b| a.checked_mul(b))
             .ok_or_else(|| Error::Limit("audio decoded tensor extent".into()))?;
-        dequantize(BF16, self.source.bytes(&t)?, n)
+        dequantize(BF16, raw.as_slice(), n)
     }
     fn scalar(&mut self, name: &str) -> Result<f32> {
-        let t = self.tensor(name, &[], false)?;
-        let raw = self.source.bytes(&t)?;
+        let t = self.tensor(name, &[])?;
+        let window = parameter(self.source, &t, self.cancelled)?;
+        let raw = window.as_slice();
         let v = f32::from_bits(u32::from(u16::from_le_bytes([raw[0], raw[1]])) << 16);
         if v.is_nan() {
             return Err(Error::Malformed(format!("NaN clip bound {name}")));
@@ -104,8 +145,19 @@ impl<'a> Binder<'a> {
         } else {
             (format!("{name}.weight"), Clip::UNBOUNDED)
         };
+        self.tensor(&matrix, &[output, input])?;
+        let weight = self.source.matrix(&matrix, MatrixAxes::OutputInput)?;
+        for begin in (0..output).step_by(tile_rows(input)) {
+            let raw = read_matrix_rows(
+                self.source,
+                &weight,
+                begin..(begin + tile_rows(input)).min(output),
+                self.cancelled,
+            )?;
+            finite(raw.as_slice(), &matrix)?;
+        }
         Ok(Linear {
-            weight: self.tensor(&matrix, &[output, input], true)?,
+            weight,
             input,
             output,
             clip,
@@ -135,7 +187,7 @@ impl Clip {
     };
 }
 pub(super) struct Linear {
-    weight: TensorInfo,
+    weight: VerifiedMatrix,
     input: usize,
     output: usize,
     clip: Clip,
@@ -143,43 +195,47 @@ pub(super) struct Linear {
 impl Linear {
     pub fn rows(
         &self,
-        source: &SourceWeights,
+        source: &VerifiedTensorSource,
         rows: &[f32],
         cancelled: Option<&AtomicBool>,
     ) -> Result<Vec<f32>> {
         if rows.is_empty() || !rows.len().is_multiple_of(self.input) {
             return Err(Error::InvalidInput("audio projection input extent".into()));
         }
-        let data = source.bytes(&self.weight)?;
-        let mut out = Vec::with_capacity(rows.len() / self.input * self.output);
-        for row in rows.chunks_exact(self.input) {
+        let count = rows.len() / self.input;
+        let clipped;
+        let input = if self.clip.input == Clip::UNBOUNDED.input {
+            rows
+        } else {
+            clipped = rows
+                .iter()
+                .map(|v| v.clamp(self.clip.input[0], self.clip.input[1]))
+                .collect::<Vec<_>>();
+            &clipped
+        };
+        let mut out = vec![0.; count * self.output];
+        let tile = tile_rows(self.input);
+        for start in (0..self.output).step_by(tile) {
             check_cancel(cancelled)?;
-            let clipped;
-            let input = if self.clip.input == Clip::UNBOUNDED.input {
-                row
-            } else {
-                clipped = row
-                    .iter()
-                    .map(|v| v.clamp(self.clip.input[0], self.clip.input[1]))
-                    .collect::<Vec<_>>();
-                &clipped
-            };
-            // Shared exact source GEMV; original HF [out,in] geometry,
-            // F32 activation with BF16 coefficients, no second weight copy.
-            let values = source_reference_projection(MatVecRegion {
-                source_identity: source.source_identity(),
-                tensor_name: &self.weight.name,
-                kind: BF16,
-                columns: self.input,
-                rows: self.output,
-                packed_weights: data,
-                activation: input,
-            })?;
-            out.extend(
-                values
-                    .into_iter()
-                    .map(|v| v.clamp(self.clip.output[0], self.clip.output[1])),
-            );
+            let end = (start + tile).min(self.output);
+            let window = read_matrix_rows(source, &self.weight, start..end, cancelled)?;
+            let data = window.as_slice();
+            for (index, row) in input.chunks_exact(self.input).enumerate() {
+                check_cancel(cancelled)?;
+                let values = source_reference_projection(MatVecRegion {
+                    source_identity: source.source_identity(),
+                    tensor_name: &self.weight.tensor().name,
+                    kind: BF16,
+                    columns: self.input,
+                    rows: end - start,
+                    packed_weights: data,
+                    activation: row,
+                })?;
+                let dst = &mut out[index * self.output + start..index * self.output + end];
+                for (dst, value) in dst.iter_mut().zip(values) {
+                    *dst = value.clamp(self.clip.output[0], self.clip.output[1]);
+                }
+            }
         }
         Ok(out)
     }
@@ -260,7 +316,7 @@ impl Subsampling {
     }
     pub fn run(
         &self,
-        source: &SourceWeights,
+        source: &VerifiedTensorSource,
         c: &super::config::Config,
         features: &[f32],
         frames: usize,

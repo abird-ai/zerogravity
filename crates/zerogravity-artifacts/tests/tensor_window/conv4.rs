@@ -159,3 +159,24 @@ fn geometry_corruption_cancel_and_pressure_refuse_without_leases() {
     drop(source);
     assert_eq!(reserved(&host), 0);
 }
+
+#[test]
+fn dense_scalar_and_conv_preserve_exact_shape_and_issuer() {
+    for shape in [&[][..], &[2, 1, 3, 3][..]] {
+        let elements = shape.iter().product::<u64>() as usize;
+        let f = fixture("BF16", shape, elements * 2);
+        let host = admission(64 * 1024 * 1024, "host");
+        let source = f.plan(&host).unwrap().open().unwrap();
+        let parameter = source.dense_parameter("conv", shape).unwrap();
+        assert_eq!(parameter.tensor().shape, shape);
+        assert_eq!(parameter.elements(), elements);
+        let window = source.read_parameter(&parameter, 0..elements).unwrap();
+        window.require_complete(&parameter).unwrap();
+        assert_eq!(window.as_slice().len(), elements * 2);
+        assert!(source.dense_parameter("conv", &[elements as u64]).is_err());
+        let foreign = f.plan(&host).unwrap().open().unwrap();
+        assert!(foreign.read_parameter(&parameter, 0..elements).is_err());
+        drop((foreign, window, parameter, source));
+        assert_eq!(reserved(&host), 0);
+    }
+}

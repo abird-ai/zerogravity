@@ -672,6 +672,47 @@ impl VerifiedTensorSource {
             bytes,
         })
     }
+    /// Complete small scalar/vector/convolution operand, preserving its
+    /// original rank, dtype and source member. No flattened tensor identity,
+    /// numerical eligibility or arbitrary byte-range authority.
+    pub fn dense_parameter(&self, name: &str, shape: &[u64]) -> Result<VerifiedParameter> {
+        let location = self
+            .0
+            .tensors
+            .get(name)
+            .ok_or_else(|| Error::Malformed("original dense parameter missing".into()))?;
+        if shape.len() > 4
+            || location.info.shape != shape
+            || !matches!(location.info.kind, StoredTensorEncoding::Scalar(_))
+        {
+            return Err(Error::Unsupported(
+                "original dense parameter shape/dtype".into(),
+            ));
+        }
+        let elements = shape
+            .iter()
+            .try_fold(1usize, |n, &d| {
+                usize::try_from(d)
+                    .ok()
+                    .filter(|&d| d > 0)
+                    .and_then(|d| n.checked_mul(d))
+            })
+            .ok_or_else(|| Error::Limit("dense parameter extent".into()))?;
+        let element_bytes = usize::try_from(location.info.kind.byte_len(1)?)
+            .map_err(|_| Error::Limit("dense parameter scalar bytes".into()))?;
+        let bytes = elements
+            .checked_mul(element_bytes)
+            .filter(|&n| n > 0 && n <= 4 * 1024 * 1024 && n as u64 == location.info.byte_len)
+            .ok_or_else(|| Error::Limit("dense parameter byte bound".into()))?;
+        Ok(VerifiedParameter {
+            location: location.clone(),
+            owner: self.0.clone(),
+            elements,
+            element_bytes,
+            bytes,
+        })
+    }
+
     /// Original parameter elements are contiguous; arbitrary strides have no API.
     pub fn read_parameter(
         &self,

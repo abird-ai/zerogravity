@@ -4,7 +4,9 @@
 //! learned coefficients, not a claim of native BF16 device parity.
 mod config;
 mod frontend;
+mod language;
 mod layer;
+pub use language::{AudioLanguageSession, Gemma4AudioLanguage};
 mod source;
 
 use crate::{Error, Result};
@@ -13,7 +15,7 @@ use frontend::MelFrontend;
 use layer::Layer;
 use source::{Binder, Linear, Norm, Subsampling};
 use std::sync::atomic::AtomicBool;
-use zerogravity_artifacts::{SourceWeights, cache::SnapshotLease};
+use zerogravity_artifacts::{cache::SnapshotLease, source_weights::VerifiedTensorSource};
 use zerogravity_core::{
     identity::SourceIdentity,
     resource_arbiter::{
@@ -81,7 +83,7 @@ impl AudioTokens {
 }
 
 pub struct Gemma4AudioEncoder {
-    source: SourceWeights,
+    source: VerifiedTensorSource,
     config: Config,
     frontend: MelFrontend,
     subsampling: Subsampling,
@@ -95,39 +97,27 @@ pub struct Gemma4AudioEncoder {
     _parameters: GlobalResourceLease,
 }
 impl Gemma4AudioEncoder {
-    /// Explicit finite CPU reference load. The existing original source
-    /// owner authenticates the whole checkpoint; callers choose its cold
-    /// byte bound. No partial-file digest, renamed audio-only checkpoint,
-    /// alternate source issuer or borrowed mutable mmap.
+    /// Authenticate the original managed checkpoint once, with bounded
+    /// source windows rather than another complete resident checkpoint.
     pub fn load(
         snapshot: &SnapshotLease,
-        max_owned_bytes: u64,
+        max_source_bytes: u64,
         admission: &TransferAdmission,
+    ) -> Result<Self> {
+        let source = crate::managed_source::open(snapshot, admission, max_source_bytes, None)?;
+        Self::bind(snapshot, source, admission, None)
+    }
+    pub(crate) fn bind(
+        snapshot: &SnapshotLease,
+        source: VerifiedTensorSource,
+        admission: &TransferAdmission,
+        cancelled: Option<&AtomicBool>,
     ) -> Result<Self> {
         let _metadata = reserve(admission, AllocationClass::Scratch, 4 * 1024 * 1024)?;
         let config = Config::parse(
             &snapshot.read_verified("config.json", 64 * 1024)?,
             &snapshot.read_verified("processor_config.json", 64 * 1024)?,
         )?;
-        let entry = snapshot
-            .manifest()
-            .entries()
-            .iter()
-            .find(|entry| entry.path() == "model.safetensors")
-            .ok_or_else(|| Error::Malformed("original audio source missing".into()))?;
-        if entry.bytes() > max_owned_bytes {
-            return Err(Error::Limit(
-                "original audio source exceeds cold byte bound".into(),
-            ));
-        }
-        admission.arbiter.check_host_cold_allocation(
-            entry
-                .bytes()
-                .checked_add(32 * 1024 * 1024)
-                .ok_or_else(overflow)?,
-        )?;
-        let source =
-            snapshot.single_safetensors("model.safetensors", max_owned_bytes, admission)?;
         let c = &config.audio;
         // Small decoded conv/norm/scalar parameters and source descriptors,
         // relative-position table and FFT/filter plans. Full matrices remain
@@ -158,7 +148,7 @@ impl Gemma4AudioEncoder {
             parameter_bytes,
         )?;
         let frontend = MelFrontend::new(&config.frontend)?;
-        let mut binder = Binder::new(&source);
+        let mut binder = Binder::new(&source, cancelled);
         let subsampling = Subsampling::bind(&mut binder, &config)?;
         let positions = layer::relative_positions(c);
         let layers = (0..c.num_hidden_layers)
@@ -196,6 +186,9 @@ impl Gemma4AudioEncoder {
     }
     pub fn source(&self) -> SourceIdentity {
         self.source.source_identity()
+    }
+    pub(crate) fn verified_source(&self) -> &VerifiedTensorSource {
+        &self.source
     }
     pub fn max_samples(&self) -> usize {
         self.config.max_samples

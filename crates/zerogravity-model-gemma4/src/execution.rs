@@ -3,7 +3,7 @@
 // Former facade: gemma4_cpu::{Gemma4CpuLoaded, Gemma4CpuContext, Gemma4CpuInput};
 // session::{Gemma4CpuSession, Gemma4CpuCall}.
 mod session;
-mod source;
+use crate::managed_source as source;
 use crate::text::{
     Gemma4CpuInventory, OriginalGemma4Text,
     tokenizer::{Gemma4PreparedText, Gemma4TextTokenizer, Gemma4TokenizerFiles},

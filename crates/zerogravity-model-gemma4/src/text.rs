@@ -181,21 +181,39 @@ pub(crate) fn forward<B: MathematicalBackend>(
     input: ForwardInputs<B::Index>,
     need_logits: bool,
 ) -> Result<Option<B::Value>> {
+    forward_embedding(weights, math, input, need_logits, None)
+}
+
+pub(crate) fn forward_embedding<B: MathematicalBackend>(
+    weights: &impl Weights,
+    math: &mut B,
+    input: ForwardInputs<B::Index>,
+    need_logits: bool,
+    soft_embedding: Option<B::Value>,
+) -> Result<Option<B::Value>> {
     use Gemma4MatrixRole as M;
     use Gemma4ParameterRole as P;
     let g = weights.geometry();
-    let mut x = math.embed(weights.matrix(M::Embedding)?, input.token)?;
-    shape(weights, math, &x, g.hidden)?;
-    x = unary(
-        math,
-        "text.embedding.scale",
-        if weights.activation_precision() == ActivationPrecision::Bf16WidenedF32 {
-            TextElementwise::ScaleBf16Scalar((g.hidden as f64).sqrt() as f32)
-        } else {
-            TextElementwise::Scale((g.hidden as f32).sqrt())
-        },
-        &x,
-    )?;
+    // The family resolves multimodal placeholder IDs to PAD for the PLE
+    // token lookup. The learned PLE projection still consumes the merged
+    // main embedding, exactly as Gemma4TextModel.project_per_layer_inputs.
+    let mut x = if let Some(soft) = soft_embedding {
+        shape(weights, math, &soft, g.hidden)?;
+        soft
+    } else {
+        let token_embedding = math.embed(weights.matrix(M::Embedding)?, input.token)?;
+        shape(weights, math, &token_embedding, g.hidden)?;
+        unary(
+            math,
+            "text.embedding.scale",
+            if weights.activation_precision() == ActivationPrecision::Bf16WidenedF32 {
+                TextElementwise::ScaleBf16Scalar((g.hidden as f64).sqrt() as f32)
+            } else {
+                TextElementwise::Scale((g.hidden as f32).sqrt())
+            },
+            &token_embedding,
+        )?
+    };
     math.observe(usize::MAX, "embedding", &x)?;
     let ple = if g.ple > 0 {
         let ple = math.embed(weights.matrix(M::PerLayerEmbedding)?, input.token)?;

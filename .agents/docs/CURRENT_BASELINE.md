@@ -5,6 +5,18 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 27 Nov — OA-7B shared original audio/language execution
+
+One authenticated original window source for Gemma4 E2B audio+text;
+retained reservations 74,392,844 bytes vs prior full audio source
+10,254,953,566. Actual source-bound 4x1536 audio rows, nine-position
+prefill and one cached continuation, full 262144 logits each: max abs
+0.000320435/0.000189781, relL2 0.000004470/0.000009288, exact argmax.
+Original StateRoot cancellation/retirement and both old actual audio
+cases pass, two learned tests 113.84s. Focused 222/0/14, strict lint.
+Assembled: 2,591/0/111 (322 Rust suites, 679s), complete isolated gate passed. F32 CPU reference only, no speech,
+Runtime or public audio qualification; no physical GPU performance claim.
+
 ## 27 Nov — OA-7A original Gemma 4 audio encoder
 
 Native waveform-to-language-token F32 CPU reference over original

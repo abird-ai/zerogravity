@@ -90,12 +90,11 @@ fn compare(label: &str, actual: &[f32], reference: &[f32], absolute: f64, relati
     assert!(rel_l2 <= relative, "{label} exceeds relative L2 tolerance");
 }
 
-/// Real original learned source, not a synthetic oracle. Reference script
-/// runs the installed Transformers CPU model with BF16 coefficients widened
-/// to F32, exact frontend and audio-to-language projection.
-#[test]
-#[ignore = "requires original cached Gemma4 audio checkpoint and independent offline reference"]
-fn actual_original_audio_tower_matches_transformers_and_retires() {
+fn fixture() -> (
+    Vec<Case>,
+    zerogravity_artifacts::cache::SnapshotLease,
+    TransferAdmission,
+) {
     let reference = std::env::var_os("ZG_GEMMA4_AUDIO_REFERENCE").expect("reference JSON path");
     let digest = std::env::var("ZG_GEMMA4_AUDIO_SNAPSHOT").expect("original cache snapshot digest");
     let cases: Vec<Case> = serde_json::from_slice(&std::fs::read(reference).unwrap()).unwrap();
@@ -119,6 +118,16 @@ fn actual_original_audio_tower_matches_transformers_and_retires() {
         resource,
         owner: ResourceOwner::new("gemma4", "audio-reference").unwrap(),
     };
+    (cases, lease, admission)
+}
+
+/// Real original learned source, not a synthetic oracle. Reference script
+/// runs the installed Transformers CPU model with BF16 coefficients widened
+/// to F32, exact frontend and audio-to-language projection.
+#[test]
+#[ignore = "requires original cached Gemma4 audio checkpoint and independent offline reference"]
+fn actual_original_audio_tower_matches_transformers_and_retires() {
+    let (cases, lease, admission) = fixture();
     let baseline = reserved(&admission);
     let start = std::time::Instant::now();
     let model = Gemma4AudioEncoder::load(&lease, 11 << 30, &admission).unwrap();
@@ -128,6 +137,10 @@ fn actual_original_audio_tower_matches_transformers_and_retires() {
         reserved(&admission) - baseline
     );
     assert!(model.source().is_bound());
+    assert!(
+        reserved(&admission) - baseline < 128 * 1024 * 1024,
+        "window source must not retain the whole 10GB checkpoint"
+    );
     let retained = reserved(&admission);
     let mut last = None;
     for (i, case) in cases.iter().enumerate() {
@@ -201,4 +214,157 @@ fn actual_original_audio_tower_matches_transformers_and_retires() {
     drop(output);
     assert_eq!(reserved(&admission), baseline);
     println!("AUDIO_ORIGINAL_SOURCE_REFERENCE_PASS");
+}
+
+#[derive(Deserialize)]
+struct LanguageCase {
+    prompt: Vec<u32>,
+    audio_case: usize,
+    decode_token: u32,
+    prefill: Vec<f32>,
+    decode: Vec<f32>,
+}
+fn argmax(values: &[f32]) -> usize {
+    values
+        .iter()
+        .enumerate()
+        .max_by(|a, b| a.1.total_cmp(b.1))
+        .unwrap()
+        .0
+}
+
+#[test]
+#[ignore = "requires original cached Gemma4 source and independent audio-conditioned text reference"]
+fn actual_audio_language_prefill_and_decode_match_transformers() {
+    let (cases, lease, admission) = fixture();
+    let reference: LanguageCase = serde_json::from_slice(
+        &std::fs::read(
+            std::env::var_os("ZG_GEMMA4_AUDIO_LANGUAGE_REFERENCE")
+                .expect("original audio language reference"),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let case = &cases[reference.audio_case];
+    let baseline = reserved(&admission);
+    let start = std::time::Instant::now();
+    let model = Gemma4AudioLanguage::load(&lease, 11 << 30, &admission, None).unwrap();
+    let retained = reserved(&admission) - baseline;
+    println!(
+        "AUDIO_LANGUAGE_BOUND elapsed={:.3}s retained_bytes={retained}",
+        start.elapsed().as_secs_f64()
+    );
+    assert_eq!(model.source(), model.encoder().source());
+    assert!(
+        retained < 128 * 1024 * 1024,
+        "one small original source and prepared parameter set"
+    );
+    let witness = model.encoder().verified_source().weak_owner();
+    let output = model
+        .encoder()
+        .encode_pcm(&case.samples, 16000, None)
+        .unwrap();
+    assert_eq!(output.source(), model.source());
+    compare(
+        "shared encoder actual rows",
+        output.values(),
+        &case.values,
+        2e-3,
+        2e-4,
+    );
+    let mut session = model.session(reference.prompt.len() + 2).unwrap();
+    let initial = session.binding();
+    // Bad media cardinality and pre-cancel never create committed KV.
+    let mut wrong = reference.prompt.clone();
+    let index = wrong.iter().position(|&id| id == 258881).unwrap();
+    wrong.remove(index);
+    assert!(session.prefill(&wrong, &output, None).is_err());
+    let cancel = AtomicBool::new(true);
+    assert!(
+        session
+            .prefill(&reference.prompt, &output, Some(&cancel))
+            .is_err()
+    );
+    assert_eq!(session.binding(), initial);
+    let start = std::time::Instant::now();
+    let prefill = session.prefill(&reference.prompt, &output, None).unwrap();
+    println!(
+        "AUDIO_LANGUAGE_PREFILL tokens={} elapsed={:.3}s",
+        reference.prompt.len(),
+        start.elapsed().as_secs_f64()
+    );
+    assert_eq!(session.binding().frontier(), reference.prompt.len() as u64);
+    assert_eq!(prefill.as_slice().unwrap().len(), 262144);
+    // Whole vocabulary, independent original F32 PyTorch arithmetic.
+    compare(
+        "audio-conditioned prefill logits",
+        prefill.as_slice().unwrap(),
+        &reference.prefill,
+        0.01,
+        0.002,
+    );
+    assert_eq!(
+        argmax(prefill.as_slice().unwrap()),
+        reference.decode_token as usize
+    );
+    drop(prefill);
+    let before = session.binding();
+    let start = std::time::Instant::now();
+    let decode = session.decode(reference.decode_token, None).unwrap();
+    println!(
+        "AUDIO_LANGUAGE_DECODE elapsed={:.3}s",
+        start.elapsed().as_secs_f64()
+    );
+    assert_eq!(session.binding().frontier(), before.frontier() + 1);
+    compare(
+        "audio-conditioned cached decode logits",
+        decode.as_slice().unwrap(),
+        &reference.decode,
+        0.01,
+        0.002,
+    );
+    assert_eq!(
+        argmax(decode.as_slice().unwrap()),
+        argmax(&reference.decode)
+    );
+    drop(decode);
+    let before_cancel = session.binding();
+    let before_bytes = reserved(&admission);
+    cancel.store(false, Ordering::Release);
+    // Cancel after real provisional state allocation; the old audio/text
+    // frontier and every KV owner remain authoritative.
+    std::thread::scope(|scope| {
+        let signal = scope.spawn(|| {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            while reserved(&admission) == before_bytes {
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "decoder did not admit private state"
+                );
+                std::thread::yield_now();
+            }
+            cancel.store(true, Ordering::Release);
+        });
+        assert!(
+            session
+                .decode(reference.decode_token, Some(&cancel))
+                .is_err()
+        );
+        signal.join().unwrap();
+    });
+    assert_eq!(session.binding(), before_cancel);
+    assert_eq!(reserved(&admission), before_bytes);
+    drop(session);
+    drop(model);
+    assert!(
+        !witness.retained(),
+        "encoder result must not retain checkpoint backing"
+    );
+    assert_eq!(
+        reserved(&admission),
+        baseline + output.values().len() as u64 * 4
+    );
+    drop(output);
+    assert_eq!(reserved(&admission), baseline);
+    println!("AUDIO_LANGUAGE_ORIGINAL_SOURCE_REFERENCE_PASS");
 }

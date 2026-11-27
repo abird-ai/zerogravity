@@ -226,13 +226,19 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   max abs 4.77e-7, cancellation and ownership pass (28.20s). Focused
   125/0/13, strict lint. No download, ASR or public audio eligibility.
 - [x] OA-7A assembled workspace gate: 2,587/0/110 (322 Rust suites, 570s), complete isolated gate passed.
-- [ ] OA-7B: reuse one original authenticated source for audio/language;
-  model-owned multimodal placeholder/per-layer input/attention and state,
-  qualified actual audio-conditioned text execution and genuine speech
-  through shared Runtime/registry/scheduler/receipt. Then native
-  transcription endpoint via existing bounded multipart. Translation,
-  speech synthesis and streaming remain gated by real capability.
-  No second source/runtime, fake transcript or HTTP-only model math.
+- [x] OA-7B: one original authenticated window source for audio/language,
+  bounded original scalar/conv parameters, same family traversal/StateRoot
+  audio prefill and cached decode. Exact PAD lookup + audio PLE projection.
+  Actual independent 524288 logits max abs0.000320435/0.000189781,
+  relL2 0.000004470/0.000009288, exact argmax. Combined retained
+  74,392,844 bytes, existing two learned audio cases and cancellation/
+  result retirement passed. Focused222/0/14 strict lint; no ASR claim.
+- [x] OA-7B assembled workspace gate: 2,591/0/111 (322 Rust suites, 679s), complete isolated gate passed.
+- [ ] OA-7C: original model-owned audio prompt/template, genuine speech,
+  actual native transcription parity through shared Runtime/registry/
+  scheduler/receipt, joined lifecycle. OA-7D bounded multipart public
+  transcription after qualification; translation/synthesis/streaming
+  only actual supported capability. No second source/runtime or fake text.
 
 ### Current continuation — 22 Nov 2026
 

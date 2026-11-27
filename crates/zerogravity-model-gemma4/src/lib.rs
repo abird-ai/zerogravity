@@ -21,3 +21,9 @@ pub mod execution;
 
 #[cfg(all(feature = "audio-reference", target_os = "linux"))]
 pub mod audio;
+
+#[cfg(all(
+    any(feature = "execution", feature = "audio-reference"),
+    target_os = "linux"
+))]
+mod managed_source;

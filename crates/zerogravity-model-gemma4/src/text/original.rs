@@ -397,6 +397,51 @@ impl Gemma4ReferenceSession {
             validate,
         )
     }
+    #[cfg(feature = "audio-reference")]
+    pub(crate) fn forward_audio(
+        &mut self,
+        tokens: &[u32],
+        audio: &crate::audio::AudioTokens,
+        slots: std::ops::Range<usize>,
+        pad: u32,
+        need_logits: bool,
+        cancelled: Option<&AtomicBool>,
+    ) -> Result<Option<ReferenceTextValue>> {
+        if self.arithmetic != ReferenceTextArithmetic::AnalyticF32
+            || audio.source() != self.model.source_identity()
+            || audio.width() != self.model.geometry.hidden
+            || slots.end > tokens.len()
+            || slots.len() != audio.rows()
+            || slots.is_empty()
+            || pad as usize >= self.model.geometry.vocab
+            || self.state.frontier() != 0
+        {
+            return Err(Error::State(
+                "Gemma audio prefill source/slots/frontier".into(),
+            ));
+        }
+        evaluate_inputs(
+            self.model.as_ref(),
+            self.model.source.as_ref(),
+            &mut self.state,
+            &mut self.authority,
+            tokens,
+            need_logits,
+            EvaluationOptions {
+                cancelled,
+                observer: None,
+                arithmetic: self.arithmetic,
+            },
+            Some(SoftRows {
+                source: audio.source(),
+                values: audio.values(),
+                width: audio.width(),
+                slots,
+                pad,
+            }),
+            |_| Ok(()),
+        )
+    }
     pub fn arithmetic(&self) -> ReferenceTextArithmetic {
         self.arithmetic
     }
@@ -498,6 +543,38 @@ pub(super) fn evaluate_configured(
     tokens: &[u32],
     need_logits: bool,
     options: EvaluationOptions<'_>,
+    validate: impl FnMut(Gemma4ReferenceReadback<'_>) -> Result<()>,
+) -> Result<Option<ReferenceTextValue>> {
+    evaluate_inputs(
+        weights,
+        source,
+        state,
+        authority,
+        tokens,
+        need_logits,
+        options,
+        None,
+        validate,
+    )
+}
+
+struct SoftRows<'a> {
+    source: SourceIdentity,
+    values: &'a [f32],
+    width: usize,
+    slots: std::ops::Range<usize>,
+    pad: u32,
+}
+#[expect(clippy::too_many_arguments)]
+fn evaluate_inputs(
+    weights: &impl Weights,
+    source: &dyn ReferenceTextSource,
+    state: &mut ReferenceTextState,
+    authority: &mut SessionAuthority,
+    tokens: &[u32],
+    need_logits: bool,
+    options: EvaluationOptions<'_>,
+    soft: Option<SoftRows<'_>>,
     mut validate: impl FnMut(Gemma4ReferenceReadback<'_>) -> Result<()>,
 ) -> Result<Option<ReferenceTextValue>> {
     let cancelled = options.cancelled;
@@ -543,15 +620,26 @@ pub(super) fn evaluate_configured(
             base: weights,
             arithmetic: options.arithmetic,
         };
-        logits = forward(
+        let (token, embedding) = match soft.as_ref().filter(|rows| rows.slots.contains(&index)) {
+            Some(rows) => {
+                let at = (index - rows.slots.start) * rows.width;
+                (
+                    rows.pad,
+                    Some(math.import_activation(rows.source, &rows.values[at..at + rows.width])?),
+                )
+            }
+            None => (*token, None),
+        };
+        logits = forward_embedding(
             &weights,
             &mut math,
             ForwardInputs {
-                token: *token as usize,
+                token: token as usize,
                 position,
                 valid_tokens: position + 1,
             },
             need_logits && index + 1 == tokens.len(),
+            embedding,
         )?;
     }
     proposed.validate_complete()?;

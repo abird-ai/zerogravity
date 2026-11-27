@@ -354,6 +354,23 @@ impl<'a> ReferenceTextMath<'a> {
             arithmetic: self.arithmetic,
         })
     }
+    /// Model-owned external activation (e.g. a completed encoder row).
+    /// Preserve the original source/precision, charge before copying, and
+    /// never grant a KV/state publication or infer a model capability.
+    pub fn import_activation(
+        &self,
+        source: SourceIdentity,
+        values: &[f32],
+    ) -> Result<ReferenceTextValue> {
+        if source != self.source.source_identity()
+            || self.arithmetic != ReferenceTextArithmetic::AnalyticF32
+        {
+            return Err(Error::State(
+                "external reference activation source/precision".into(),
+            ));
+        }
+        self.produce(values.len(), false, || Ok(values.to_vec()))
+    }
     fn produce_observed(
         &self,
         label: &str,

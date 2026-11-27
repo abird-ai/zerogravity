@@ -829,9 +829,13 @@ acceptance. Continue ready OA-7 audio work using existing original Gemma
 4 E2B checkpoint: OA-7A native CPU F32 waveform frontend, all 12 learned
 audio layers and language projector; actual independent Transformers
 parity (4/16 x1536 rows), cancellation and ownership pass. Focused
-125/0/13, strict lint. Assembled: 2,587/0/110 (322 Rust suites, 570s), complete isolated gate passed. Next shared original
-source + actual multimodal decoder/Runtime transcription; no audio
-endpoint or ASR claim until real completion.
+125/0/13, strict lint. Assembled: 2,587/0/110 (322 Rust suites, 570s), complete isolated gate passed. OA-7B shared original window source
+(74.4 MB retained combined), native same traversal/StateRoot audio
+conditioned prefill and cached decode, actual independent full vocabulary
+logit parity (524288 values, max abs0.000320435), cancellation and
+retirement pass; focused222/0/14 strict lint. Assembled:
+2,591/0/111 (322 Rust suites, 679s), complete isolated gate passed. OA-7C actual model template/genuine speech and
+shared Runtime transcription; no public endpoint or ASR claim yet.
 Preserve the original runtime, admission and listener owner.
 
 - [ ] Close the [OpenAI-compatible serving iteration](serving-and-speculation/NEXT_ITERATION_OPENAI_COMPATIBLE_SERVING.md):

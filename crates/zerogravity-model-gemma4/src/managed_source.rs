@@ -1,18 +1,30 @@
 //! Original managed source only; no expected archives or runtime run paths.
-use super::*;
+use crate::text::{Gemma4CpuInventory, OriginalGemma4Text};
+use crate::{Error, Result};
+use std::sync::atomic::{AtomicBool, Ordering};
+use zerogravity_artifacts::cache::{SnapshotLease, TransferAdmission};
+use zerogravity_artifacts::source_weights::VerifiedTensorSource;
+use zerogravity_core::resource_arbiter::{AllocationClass, AllocationRequest};
+
+fn cancelled_check(cancelled: Option<&AtomicBool>) -> Result<()> {
+    if cancelled.is_some_and(|flag| flag.load(Ordering::Acquire)) {
+        Err(Error::State("Gemma source preparation cancelled".into()))
+    } else {
+        Ok(())
+    }
+}
 use crate::text::Gemma4SourcePins;
 use serde_json::Value;
+#[cfg(feature = "execution")]
 use sha2::{Digest, Sha256};
-use std::{
-    fs::File,
-    os::unix::fs::{FileExt, MetadataExt},
-    path::Path,
-};
+#[cfg(feature = "execution")]
+use std::os::unix::fs::FileExt;
+use std::{fs::File, os::unix::fs::MetadataExt, path::Path};
 use zerogravity_artifacts::artifact::Artifact;
 use zerogravity_artifacts::cache::FileRole;
 use zerogravity_artifacts::source_weights::{ExpectedSourceShard, SourceWeights, WindowOpenLimits};
 fn pins() -> Result<Value> {
-    serde_json::from_slice(include_bytes!("source.json"))
+    serde_json::from_slice(include_bytes!("execution/source.json"))
         .map_err(|e| Error::Malformed(format!("compiled Gemma source registry: {e}")))
 }
 fn field<'a>(value: &'a Value, name: &str) -> Result<&'a str> {
@@ -35,7 +47,7 @@ fn stamp(file: &File) -> Result<[u64; 7]> {
         m.ctime_nsec() as u64,
     ])
 }
-pub(super) fn require(snapshot: &SnapshotLease) -> Result<()> {
+pub(crate) fn require(snapshot: &SnapshotLease) -> Result<()> {
     let pins = pins()?;
     let manifest = snapshot.manifest();
     let source = manifest.source();
@@ -77,16 +89,15 @@ pub(super) fn require(snapshot: &SnapshotLease) -> Result<()> {
     }
     Ok(())
 }
-pub(super) fn load(
+pub(crate) fn open(
     snapshot: &SnapshotLease,
     host: &TransferAdmission,
+    maximum: u64,
     cancelled: Option<&AtomicBool>,
-) -> Result<(OriginalGemma4Text, Gemma4CpuInventory)> {
+) -> Result<VerifiedTensorSource> {
     require(snapshot)?;
     cancelled_check(cancelled)?;
     let pins = pins()?;
-    let config = snapshot.read_verified("config.json", 65536)?;
-    let _declared = OriginalGemma4Text::cpu_declared_inventory(&config)?;
     let row = pins["files"]
         .as_array()
         .ok_or_else(|| Error::Malformed("source registry".into()))?
@@ -113,11 +124,11 @@ pub(super) fn load(
         field(row, "sha256")?.into(),
     )?;
     let plan = SourceWeights::prepare_verified_windows(
-        include_bytes!("header-index.json"),
+        include_bytes!("execution/header-index.json"),
         field(&pins, "index_sha256")?,
         vec![shard],
         WindowOpenLimits {
-            max_source_bytes: 12 * 1024 * 1024 * 1024,
+            max_source_bytes: maximum.min(12 * 1024 * 1024 * 1024),
             max_metadata_bytes: 64 * 1024 * 1024,
             max_shards: 1,
             max_tensors: 2011,
@@ -126,14 +137,33 @@ pub(super) fn load(
         host,
     )?;
     drop(parser); // VerifiedWindowPlan now owns the admitted carried metadata.
-    let source = match cancelled {
-        Some(flag) => plan.open_cancellable(flag)?,
-        None => plan.open()?,
-    };
-    let inventory = OriginalGemma4Text::cpu_inventory(&source, &config)?;
+    match cancelled {
+        Some(flag) => plan.open_cancellable(flag),
+        None => plan.open(),
+    }
+}
+#[cfg(feature = "execution")]
+pub(crate) fn load(
+    snapshot: &SnapshotLease,
+    host: &TransferAdmission,
+    cancelled: Option<&AtomicBool>,
+) -> Result<(OriginalGemma4Text, Gemma4CpuInventory)> {
+    require(snapshot)?;
+    let config = snapshot.read_verified("config.json", 65536)?;
+    OriginalGemma4Text::cpu_declared_inventory(&config)?;
+    let source = open(snapshot, host, 12 * 1024 * 1024 * 1024, cancelled)?;
+    bind_text(source, &config, cancelled)
+}
+pub(crate) fn bind_text(
+    source: VerifiedTensorSource,
+    config: &[u8],
+    cancelled: Option<&AtomicBool>,
+) -> Result<(OriginalGemma4Text, Gemma4CpuInventory)> {
+    let pins = pins()?;
+    let inventory = OriginalGemma4Text::cpu_inventory(&source, config)?;
     let model = OriginalGemma4Text::bind(
         source,
-        &config,
+        config,
         Gemma4SourcePins {
             repository: field(&pins, "repository")?,
             revision: field(&pins, "revision")?,
@@ -145,7 +175,8 @@ pub(super) fn load(
     )?;
     Ok((model, inventory))
 }
-pub(super) fn after(snapshot: &SnapshotLease, cancelled: Option<&AtomicBool>) -> Result<()> {
+#[cfg(feature = "execution")]
+pub(crate) fn after(snapshot: &SnapshotLease, cancelled: Option<&AtomicBool>) -> Result<()> {
     require(snapshot)?;
     for entry in snapshot.manifest().entries() {
         cancelled_check(cancelled)?;
