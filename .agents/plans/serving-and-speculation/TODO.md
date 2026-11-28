@@ -317,8 +317,13 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   joined retirement. See handoff for measurement scope.
 - [x] Approved pinned vLLM restore and actual optimized original-source
   HTTP C1/C8 on X2, all three models 81/81 exact IDs/usage and retired.
-- [ ] Fresh paired optimized baseline through existing owned comparator;
-  device feedback/state/paged/prefix work belongs to measured Phase3.
+- [x] Native HIP V2 compact device feedback (f79dce28): actual original
+  singleton/cohort differential and all three C1/C8 public canaries
+  passed. Existing width/alignment, resource and receipt owners retained.
+- [x] Fresh paired 0.8B C1/C8 optimized baseline through existing owned
+  comparator; c0440c15 honors configured foreground shutdown grace.
+- [ ] Fresh paired 2B/27B and full assembled gate completion;
+  temporal/state/paged/prefix work belongs to measured Phase3.
 
 ### Ordinary serving benchmark / bounded Phase 2 exit — 27 Nov
 

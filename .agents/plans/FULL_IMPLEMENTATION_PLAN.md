@@ -922,9 +922,15 @@ GC-rooted and real optimized BF16 public 47+3 C1/C8 qualified for all
 three original models, 81/81 exact IDs/usage and joined retirement.
 Fresh standalone medians 53.59/214.71, 36.33/141.58, 3.80/13.48
 tok/s; no fresh paired parity claim. Retain source/numerical/ownership
-rules. Device
-feedback and prefix/paged/ragged/region improvements remain ordered
-measured work, not inferred from configuration.
+rules. P3B compact HIP V2 greedy feedback at f79dce28 physically
+validated: original singleton/cohort exact full-logit differential,
+compact packet/committed-device embedding and three original model
+C1/C8 public canaries. Existing source/reference profiles preserved.
+Fresh owned 0.8B C1/C8 paired native/vLLM medians 24.18/65.22 and
+42.62/226.57 tok/s, all exact response IDs/text/usage/finish, joined
+retirement. Configured envelope matched; no independent state or SLO
+parity claim. 2B/27B paired and complete assembled gate remain open.
+Prefix/paged/ragged/region improvements remain ordered measured work.
 
 - [x] Restore the approved pinned optimized vLLM provider and qualify
   actual original-source 0.8B/2B/27B C1/C8 serving on X2.

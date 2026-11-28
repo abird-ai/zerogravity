@@ -54,10 +54,18 @@ Architecture: [Astra high shared/family/model boundary review](../pipeline-compo
   retirement. Width8 actual publications at both small C8 cells;
   width0 explicit control. Rates 23.26/41.28, 10.59/29.47, 2.22
   tok/s respectively, sequential 0.8B C8 23.89. Scope/logs in handoff.
-- [ ] Fresh paired optimized vLLM baseline after exact pinned restore.
-  No historical ratio as acceptance.
-- [ ] Measure and close largest real native costs, including device
-  feedback/greedy, row-wise and attention regions, ragged/stateful
+- [x] Fresh paired optimized 0.8B C1/C8 baseline after pinned restore:
+  24.1796/65.21545 and 42.62495/226.56605 native/vLLM tok/s;
+  exact response IDs/text/usage/finish, accepted owned retirement.
+- [ ] Fresh paired 2B/27B and complete assembled gate (retry stopped
+  during test-dependency compilation). No historical ratio as acceptance.
+- [x] HIP native V2 compact device greedy feedback (f79dce28):
+  shared BF16 reduction and committed packet, resident embedding gather;
+  cold prepared arena, original root/flight, reference profile preserved.
+  Actual original 0.8B differential and 0.8B/2B/27B C1/C8 public
+  canaries passed, with real sampler stages and retirement.
+- [ ] Measure and close largest real native costs, including row-wise
+  and attention regions, ragged/stateful
   cohort work, paged/prefix reuse and sustained refill. Reuse existing
   shared primitives and original state owners; do not promote by
   compile-only or narrow timing. No separate GPU engine.

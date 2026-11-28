@@ -59,7 +59,68 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — P3A public native preparation and baseline recovery (27 Nov)
+### Current checkpoint — P3B native HIP compact token feedback (28 Nov)
+
+Signed native source f79dce28, exact bundle transfer to X2 (clean main).
+L5 source only; preserve unrelated unstaged Cargo.toml debug profile.
+Native V2 (HipRocBlasBf16MixedV2) now performs greedy selection within
+the original resident flight for singleton and aligned 2/4/8 cohorts.
+One shared cold reduction arena (admitted and compiled), original
+private 12-byte token/status packet, checked BF16-widened finite
+values and numeric first-tie semantics, original root/receipt
+publication. The next embedding gathers directly from the verified
+resident BF16 matrix using the committed device packet, checking
+actual token ID against the bound invocation. No host vocabulary
+readback or separate token-ID buffer upload in the steady greedy
+loop (the bound invocation ID remains a validation scalar). Existing full-logit reference/diagnostic paths retained.
+HIP decode frontier compatibility stays aligned; independent of
+compact readout. Existing CUDA sampler and root ownership reused.
+Native sampler stages reported through existing fused_sampler counter.
+
+HIP CLI/SDK compilation passed. X2 actual original 0.8B differential
+(native_hip_compact_feedback_matches_full_readout, 22.04s) passes:
+singleton and two-row aligned cohort compact IDs/value bits equal
+full-logit oracle, 12-byte readbacks, foreign/stale committed packets
+refused, original root publication and retirement. All original
+0.8B/2B/27B public 47+3 C1/C8 canaries pass at configured envelopes
+24/24/75GiB; actual width8 cohorts and twelve sampler stages each
+C8 wave, exact IDs and 47/3/50 usage, no active/failed owners after
+settle. Standalone rates 23.2965/42.5450, 10.5066/30.4600,
+2.2104/5.2262 output tok/s. Prior 27B C8 absent. Physical device
+returns to idle allocation after the joined processes exit.
+X2 target/p3b-physical-differential.log, p3b-public.log and
+p3b-public-{08,2b,27b}/. Do not treat these narrow canaries as
+paired performance or sustained-generation parity.
+
+Owned comparator exposed a real lifecycle issue: prior hardcoded
+300ms foreground SIGTERM grace escalated vLLM shutdown to SIGKILL
+despite the configured 60s interval. First paired sample correctly
+rejected, original processes and GPU allocation retired. Signed
+c0440c15 uses the specified bounded foreground grace, keeps short
+auxiliary-command cleanup and the original strict exit/evidence
+criteria. Delayed-SIGTERM and full source-free lifecycle/comparator
+self-tests pass (20s). First assembled gate stopped on a new strict
+Clippy then/then_some lint after feature compilation; signed
+4f148fed applies the behavior-identical fix. Retry passed the preceding
+HIP/Vulkan/CUDA/default feature checks and strict lint, but was stopped
+during subsequent test-dependency compilation at the turn boundary.
+Full assembled gate remains outstanding (target/p3b-assembled-retry.log);
+do not claim full workspace acceptance.
+Fresh 0.8B paired optimized campaign completed (X2 c0440c15, native
+executable f79dce28, 8 fresh owned provider lifecycles, 64 timed requests,
+47+3, context1024, configured 24GiB, ABBA per C1/C8, manifest files
+authenticated). Exact response-bound output IDs/text, usage and finish,
+all successful and clean shutdown. C1 native/vLLM 24.1796/65.21545
+tok/s (37.076%); C8 42.62495/226.56605 (18.813%). No independent
+numerical/state equivalence or SLO goodput claim. Idle VRAM restored
+274452480 bytes, GPU busy0. Logs X2 target/p3b-paired-retry.log and
+p3b-paired-08/comparison.json; 2B/27B paired campaigns remain open.
+Remaining: measured native rowwise/attention closed regions, reducing
+host dispatch and repeated private temporal work, paged/hybrid KV,
+prefix/COW sharing and ragged refill/regroup. Reuse existing source,
+state, resource, and compiled-region primitives. No separate engine.
+
+### Prior checkpoint — P3A public native preparation and baseline recovery (27 Nov)
 
 Fresh review at signed Phase 2 exit 02b4fbb2 confirmed L5 clean,
 previous full gate 2,603/0/112. X2 was 62 commits behind at 450cea55;

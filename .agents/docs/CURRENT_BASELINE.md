@@ -5,6 +5,51 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 28 Nov — native V2 compact feedback candidate f79dce28
+
+X2 actual original BF16, exact configured 24/24/75GiB envelopes,
+active8/cohort auto, context1024, raw47+3 greedy Completions.
+Physical compact/full-readout differential passed (0.8B singleton
+prefill and aligned decode, exact token/value bits, 12-byte packet,
+foreign/stale root rejection). Public canary cells: one warm-up,
+one timed request wave at each C1/C8. Standalone, not paired medians.
+
+| Original model | C1 output tok/s | C8 output tok/s | C1/C8 TTFT p95 (ms) |
+| --- | ---: | ---: | ---: |
+| Qwen3.5-0.8B | 23.2965 | 42.5450 | 72.55 / 417.11 |
+| Qwen3.5-2B | 10.5066 | 30.4600 | 134.46 / 538.17 |
+| Qwen3.8-27B | 2.2104 | 5.2262 | 677.30 / 3515.85 |
+
+27 measured requests / 81 output tokens plus warmups (three models,
+C1+C8 each), exact expected IDs and complete usage, actual width8
+publications and 12 native sampler dispatches per C8 cell. No
+failure/pending/active owners; joined provider shutdown, device
+retired. Complete native feedback path removes the vocabulary
+readback (993280 to 12 bytes per selected token); no large speedup
+in this short workload. Optimize dominant native compute/dispatch
+next, not a new host orchestration loop. Logs X2 p3b-public.log,
+p3b-physical-differential.log and per-cell JSON directories.
+
+### Fresh owned paired 0.8B optimized baseline
+
+X2 native f79dce28, lifecycle c0440c15, restored pinned vLLM, exact
+original manifest files and tokenizer authenticated. Eight fresh owned
+provider processes (ABBA per concurrency), 64 measured requests,
+47+3 raw greedy Completions, context1024, configured 24GiB each.
+
+| Concurrency | Native median output tok/s | vLLM median output tok/s | Native/vLLM |
+| --- | ---: | ---: | ---: |
+| 1 | 24.1796 | 65.21545 | 37.076% |
+| 8 | 42.62495 | 226.56605 | 18.813% |
+
+Exact response-bound IDs, text hash, input/output/total usage and
+finish; complete requests and accepted shutdowns, GPU returned to
+idle. Throughput only, not SLO goodput or independent numeric/state
+equivalence. Actual admission and provider policies are not asserted
+identical beyond declared workload and configured envelope.
+X2 target/p3b-paired-08/comparison.json; first rejected lifecycle
+attempt retained. 2B/27B fresh paired campaigns and full gate pending.
+
 ## 28 Nov — pinned X2 optimized vLLM restored and qualified
 
 X2 exact original Nix provider vLLM0.33.0+rocm72 restored with unchanged
