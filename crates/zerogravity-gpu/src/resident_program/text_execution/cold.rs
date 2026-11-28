@@ -140,7 +140,7 @@ impl Admission {
         // One reusable reduction arena covers every admitted physical width.
         let greedy_width = (layout.plan.numerical_profile()
             == zerogravity_core::numerics::NumericalProfile::HipRocBlasBf16MixedV2)
-            .then(|| match max_sessions {
+            .then_some(match max_sessions {
                 8.. => 8,
                 4..=7 => 4,
                 2..=3 => 2,
