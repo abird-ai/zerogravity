@@ -1,8 +1,12 @@
 //! Observations of the existing foreground worker, not another task owner.
 #[cfg(feature = "tui")]
 use super::work::Completed;
-use super::{actions::ActionSummary, work::Request};
-use std::{sync::Mutex, time::Instant};
+use super::{actions::ActionSummary, execution::Execution, work::Request};
+use std::{
+    cell::Cell,
+    sync::{Arc, Mutex},
+    time::{Duration, Instant},
+};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Subject {
@@ -35,7 +39,6 @@ pub(crate) enum Stage {
     Retiring,
 }
 impl Stage {
-    #[cfg(feature = "tui")]
     pub fn label(self) -> &'static str {
         match self {
             Self::Starting => "Starting",
@@ -88,7 +91,7 @@ pub(crate) struct FinishedTask {
 
 #[cfg(feature = "tui")]
 impl FinishedTask {
-    pub fn new(task: Task, result: &zerogravity::Result<Completed>) -> Self {
+    pub fn new(task: Task, result: &super::work::ActionResult<Completed>) -> Self {
         let (failed, message) = match result {
             Ok(Completed::Message(message)) => (false, message.clone()),
             #[cfg(all(feature = "cache", target_os = "linux"))]
@@ -119,11 +122,46 @@ impl FinishedTask {
 }
 
 impl Task {
+    pub fn correlation(&self) -> String {
+        match self.subject.as_ref() {
+            Some(Subject::Snapshot(digest))
+                if digest.len() == 64 && digest.bytes().all(|b| b.is_ascii_hexdigit()) =>
+            {
+                format!("sha256:{digest}")
+            }
+            Some(Subject::Catalog(name))
+                if zerogravity::targets::MODEL_TARGETS
+                    .iter()
+                    .any(|target| target.slug == name) =>
+            {
+                format!("catalog:{name}")
+            }
+            Some(Subject::Registration(id)) => format!("registration {id}"),
+            #[cfg(all(feature = "acquisition", target_os = "linux"))]
+            Some(Subject::Repository {
+                provider,
+                repository,
+                revision,
+            }) => {
+                use super::inventory::{public_repository, public_revision};
+                crate::output::operational::bounded_message(&format!(
+                    "source {}@{}",
+                    public_repository(provider, repository),
+                    public_revision(provider, revision)
+                ))
+            }
+            _ => "local source".into(),
+        }
+    }
     pub fn new(action: ActionSummary, request: &Request, profile: &str) -> Self {
         let (subject, requested) = match request {
             Request::Load {
                 source, execution, ..
             } => (source_subject(source), Some(execution.summary(profile))),
+            Request::CheckFit { source, device } => (
+                source_subject(source),
+                Some(Execution::on_device(device.clone()).summary(profile)),
+            ),
             Request::Verify(digest)
             | Request::Inspect(digest)
             | Request::Reclaim { digest, .. }
@@ -158,14 +196,51 @@ fn source_subject(source: &str) -> Option<Subject> {
     }
 }
 
-pub(crate) fn update(progress: &Mutex<Progress>, change: impl FnOnce(&mut Progress)) {
-    change(
-        &mut progress
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner),
-    );
+/// One worker's observational channel; never holds the action-slot lock.
+pub(super) struct Observer {
+    task: Task,
+    state: Arc<Mutex<Progress>>,
+    log: Arc<Mutex<super::logs::Ring>>,
+    last: Cell<Instant>,
 }
-
-pub(crate) fn stage(progress: &Mutex<Progress>, stage: Stage) {
+impl Observer {
+    pub fn new(
+        task: Task,
+        state: Arc<Mutex<Progress>>,
+        log: Arc<Mutex<super::logs::Ring>>,
+    ) -> Self {
+        Self {
+            task,
+            state,
+            log,
+            last: Cell::new(Instant::now()),
+        }
+    }
+}
+pub(super) fn update(observer: &Observer, change: impl FnOnce(&mut Progress)) {
+    let mut progress = observer
+        .state
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let before = progress.clone();
+    change(&mut progress);
+    if *progress == before {
+        return;
+    }
+    let changed_stage = progress.stage != before.stage || progress.resolved != before.resolved;
+    if !changed_stage && observer.last.get().elapsed() < Duration::from_secs(1) {
+        return;
+    }
+    let mut task = observer.task.clone();
+    task.progress = progress.clone();
+    drop(progress);
+    observer.last.set(Instant::now());
+    observer
+        .log
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .task(&task, None);
+}
+pub(super) fn stage(progress: &Observer, stage: Stage) {
     update(progress, |progress| progress.stage = stage);
 }

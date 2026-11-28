@@ -33,6 +33,12 @@ pub(super) fn run(command: Command) -> ExitCode {
         Command::WithDocument { command, selection } => (*command, Some(selection)),
         command => (command, None),
     };
+    if !matches!(
+        &command,
+        Command::Home { .. } | Command::Web { .. } | Command::Serve(_)
+    ) {
+        super::output::operational::start(super::output::operational::Mode::Command);
+    }
     if matches!(
         command,
         Command::Model(_) | Command::Devices(_) | Command::DeviceInspect { model: None, .. }
@@ -174,7 +180,7 @@ pub(super) fn run(command: Command) -> ExitCode {
                     Err(error) => {
                         // Preserve the original service code/status, not a lossy
                         // translation back into an engine error category.
-                        fail(Failure::new("serve", error.code, &error, None));
+                        fail(Failure::service("serve", &error));
                         ExitCode::from(2)
                     }
                 }

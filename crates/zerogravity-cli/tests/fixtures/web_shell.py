@@ -117,7 +117,27 @@ def smoke(binary):
         original = "schema: zerogravity.pipeline.v2\nrun:\n  task:\n    prompt: PRIVATE_PROMPT_NOT_IN_WIRE\n"
         profile.write_text(original)
         env = dict(os.environ, HOME=tmp, XDG_CONFIG_HOME=str(root / "config"),
-                   XDG_CACHE_HOME=str(root / "cache"), ZEROGRAVITY_API_KEY="fixture-inference-only")
+                   XDG_CACHE_HOME=str(root / "cache"), XDG_STATE_HOME=str(root / "state"),
+                   ZEROGRAVITY_API_KEY="fixture-inference-only")
+        env.pop("ZEROGRAVITY_LOG_FILE", None)
+        env.pop("ZEROGRAVITY_LOG_FORMAT", None)
+        env.pop("ZEROGRAVITY_LOG_LEVEL", None)
+        log_root = root / "state/abird/zerogravity/logs"
+
+        def records():
+            files = sorted(log_root.glob("session-*/events-*.jsonl"))
+            assert files and all(path.stat().st_mode & 0o777 == 0o600 for path in files)
+            assert all(path.parent.stat().st_mode & 0o777 == 0o700 for path in files)
+            values = [json.loads(line) for path in files for line in path.read_text().splitlines()]
+            assert values and all(value["schema"] == "zerogravity.operational.v1" for value in values)
+            assert [v["sequence"] for v in values] == list(range(len(values)))
+            assert all(v["event"]["timestamp_unix_ms"] > 0 for v in values)
+            assert all(secret not in json.dumps(values) for secret in [
+                "PRIVATE_PROMPT_NOT_IN_WIRE", "PRIVATE_WEB_PROMPT_NOT_IN_WIRE",
+                "PRIVATE_COMMENT_NOT_IN_WIRE", "fixture-inference-only",
+                client.key,
+            ])
+            return [value["event"] for value in values]
         invalid = subprocess.run([binary, "web", "--listen", "0.0.0.0:0"], env=env,
                                  cwd=root, capture_output=True)
         assert invalid.returncode != 0 and b"loopback" in invalid.stderr
@@ -225,8 +245,16 @@ def smoke(binary):
             client.post({"kind": "cancel", "id": identity}, status=409)
             assert "PRIVATE_WEB_PROMPT_NOT_IN_WIRE" not in json.dumps(client.snapshot())
             assert client.snapshot()["runtime"]["status"]["phase"] == "empty"
+            live_failure = next(event for event in records()
+                if event["level"] == "ERROR" and event["correlation"].startswith("action #" + identity + " ·"))
+            assert live_failure["details"]["code"] and live_failure["stage"]
+            assert live_failure["elapsed_ms"] >= 0
             if value["capabilities"]["cache"]:
-                client.action({"kind": "inspect", "digest": digest}, state="failed")
+                inspected = client.action({"kind": "inspect", "digest": digest}, state="failed")
+                local_failure = next(event for event in records()
+                    if event["level"] == "ERROR" and event["correlation"].startswith("action #" + inspected["id"] + " ·"))
+                assert local_failure["causes"] and "sha256:" + digest in local_failure["correlation"]
+                assert all("causes" not in row for row in client.inventory("logs")["entries"])
             if value["capabilities"]["acquisition"]:
                 preview = client.action({"kind": "pull_preview", "source": source, "selection": "model.gguf"})
                 assert source.removeprefix("hf:") in preview["message"]
@@ -299,6 +327,8 @@ def smoke(binary):
             client.action(setting("activate", snapshot=desk["snapshot"]))
             assert client.snapshot()["configuration"]["profile"] == "desk"
             logs = client.inventory("logs")
+            assert logs["sink_available"] is True
+            assert all(row["timestamp_unix_ms"] > 0 for row in logs["entries"])
             assert len(logs["entries"]) <= 128
             assert any(row["message"] == "Save config completed" for row in logs["entries"])
             assert any(row["message"] == "Save config returned error" for row in logs["entries"])
@@ -317,6 +347,8 @@ def smoke(binary):
                 assert process.wait(timeout=8) == 0
                 assert all(response.read() == b"" for response in streams)
             client.closed()
+            assert any(event["message"] == "Web control host retired" for event in records())
+            print("Operational logs: live private JSONL, typed terminal errors, safe browser projection and persisted joined shutdown")
             assert profile.read_text() == original
             assert not (root / "cache").exists()
             print("Web control HTTP: assets, independent bearer, bounded typed POST, cold model/device inventory, offline/stale refusal, owner snapshot/SSE and joined retirement")

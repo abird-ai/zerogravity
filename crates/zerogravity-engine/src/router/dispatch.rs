@@ -58,7 +58,7 @@ pub fn vecdeque_backing_bytes<T>(capacity: usize) -> Result<u64, ServiceError> {
     ])
 }
 
-pub use super::error::{FailureDetails, ServiceError};
+pub use super::error::{FailureCategory, FailureDetails, ServiceError};
 
 /// Legacy single-text request. Compatibility adapter into SemanticRequest.
 pub struct Request {
@@ -171,7 +171,7 @@ fn prompt_bounds(
             crate::Error::Limit(message) if matches!(input, TextInput::Conversation(_)) => {
                 ServiceError::new(413, "input_too_large", message)
             }
-            error => ServiceError::new(400, "size_overflow", error.to_string()),
+            error => ServiceError::from_core(400, "size_overflow", error),
         })?;
     // Preserve the configured structured-chat limit on rendered as well
     // as semantic bytes; legacy single text retains its original contract.
@@ -1008,7 +1008,7 @@ impl Router {
                     for handle in handles.drain(..) {
                         let _ = handle.join();
                     }
-                    return Err(ServiceError::new(500, "worker_spawn", error.to_string()));
+                    return Err(ServiceError::from_core(500, "worker_spawn", error.into()));
                 }
             }
         }
@@ -1183,12 +1183,12 @@ impl Router {
             fields.insert(
                 "catalog".into(),
                 serde_json::to_value(self.catalog_snapshot()?)
-                    .map_err(|e| ServiceError::new(500, "diagnostics", e.to_string()))?,
+                    .map_err(|e| ServiceError::from_cause(500, "diagnostics", e))?,
             );
             fields.insert(
                 "scheduler".into(),
                 serde_json::to_value(scheduler)
-                    .map_err(|e| ServiceError::new(500, "diagnostics", e.to_string()))?,
+                    .map_err(|e| ServiceError::from_cause(500, "diagnostics", e))?,
             );
         }
         Ok(report)

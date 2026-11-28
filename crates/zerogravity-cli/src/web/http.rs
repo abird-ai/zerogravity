@@ -245,10 +245,13 @@ pub(super) fn connection(
                     serde_json::json!({
                         "revision": ring.revision().to_string(),
                         "dropped": ring.dropped().to_string(),
+                        "sink_available": crate::output::operational::failure_message().is_none(),
                         "entries": ring.entries().iter().map(|entry| serde_json::json!({
                             "sequence": entry.sequence.to_string(),
+                            "timestamp_unix_ms": entry.timestamp_unix_ms,
                             "level": entry.level.label(), "component": entry.component.label(),
                             "correlation": entry.correlation, "message": entry.message,
+                            "stage": entry.stage, "elapsed_ms": entry.elapsed_ms,
                             "details": entry.details,
                         })).collect::<Vec<_>>(),
                     })

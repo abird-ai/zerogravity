@@ -5,8 +5,8 @@ use super::progress::FinishedTask;
 use super::{
     Selection,
     logs::Ring,
-    progress::{Progress, Task},
-    work::{self, Completed, Request, Response},
+    progress::{Observer, Progress, Task},
+    work::{self, ActionResult, Completed, Request, Response},
 };
 use std::{
     sync::{
@@ -15,6 +15,9 @@ use std::{
     },
     thread::{self, JoinHandle},
 };
+#[cfg(feature = "web")]
+use zerogravity::runtime::text::FailureCategory;
+use zerogravity::runtime::text::ServiceError;
 use zerogravity::{Error, Result, Runtime};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
@@ -44,7 +47,7 @@ struct Active {
     response: Arc<Mutex<Response>>,
     task: Task,
     progress: Arc<Mutex<Progress>>,
-    worker: JoinHandle<Result<Completed>>,
+    worker: JoinHandle<ActionResult<Completed>>,
 }
 impl Active {
     fn summary(&self) -> ActionSummary {
@@ -75,7 +78,7 @@ impl Active {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         (revision != Some(response.revision)).then(|| response.clone())
     }
-    fn join(self) -> Result<Completed> {
+    fn join(self) -> ActionResult<Completed> {
         self.worker
             .join()
             .map_err(|_| Error::State("control action worker panicked".into()))?
@@ -97,15 +100,58 @@ struct Slot {
     closed: bool,
     revision: u64,
     active: Option<Active>,
-    logs: Ring,
+    logs: Arc<Mutex<Ring>>,
     #[cfg(feature = "tui")]
     last_task: Option<FinishedTask>,
     #[cfg(feature = "web")]
     latest: Option<WebResult>,
 }
 impl Slot {
+    fn logs(&self) -> MutexGuard<'_, Ring> {
+        self.logs
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
     fn changed(&mut self) {
         self.revision = self.revision.wrapping_add(1);
+    }
+    fn record_terminal(&self, task: &Task, result: &ActionResult<Completed>) {
+        let (success, details, causes) = match result {
+            Err(error) => {
+                let details = error.details();
+                let load_failure = matches!(task.progress.stage, super::progress::Stage::Loading)
+                    || (task.progress.stage == super::progress::Stage::Resolving
+                        && matches!(
+                            details.category,
+                            zerogravity::runtime::text::FailureCategory::Resource
+                                | zerogravity::runtime::text::FailureCategory::Unsupported
+                        ));
+                let sensitive = (task.subject.is_none() && !load_failure)
+                    || task.progress.stage == super::progress::Stage::Generating;
+                #[cfg(all(feature = "acquisition", target_os = "linux"))]
+                let sensitive =
+                    sensitive || task.progress.stage == super::progress::Stage::Downloading;
+                let causes = if sensitive {
+                    vec![details.public_message().into()]
+                } else {
+                    crate::output::operational::causes(error)
+                };
+                (false, Some(details), causes)
+            }
+            #[cfg(all(feature = "cache", target_os = "linux"))]
+            Ok(Completed::Refused {
+                message,
+                native_detail,
+            }) => {
+                let mut causes = vec![crate::output::operational::bounded_message(message)];
+                if let Some(detail) = native_detail {
+                    causes.push(crate::output::operational::bounded_message(detail));
+                }
+                (false, None, causes)
+            }
+            _ => (true, None, Vec::new()),
+        };
+        self.logs().task(task, Some((success, details, causes)));
     }
     #[cfg(feature = "web")]
     fn reap_web(&mut self) {
@@ -118,15 +164,11 @@ impl Slot {
         }
         let job = self.active.take().expect("finished Web worker");
         let summary = job.summary();
-        #[cfg(feature = "tui")]
         let task = job.task();
         let response = job.sample(None);
         let settings = job.settings;
         let result = job.join();
-        let details = result
-            .as_ref()
-            .err()
-            .map(zerogravity::runtime::text::FailureDetails::core);
+        self.record_terminal(&task, &result);
         #[cfg(feature = "tui")]
         if task.subject.is_some() {
             self.last_task = Some(FinishedTask::new(task, &result));
@@ -146,16 +188,14 @@ impl Slot {
                 ("completed", outcome.message)
             }
             Err(error) => ("failed", if settings {
-                match error {
-                    Error::State(_) => "Configuration changed, already exists, or publication is uncertain; refresh before retrying.",
-                    Error::Unsupported(_) => "Configuration action refused; default and active profiles are protected.",
-                    Error::Malformed(_) => "Configuration validation refused the draft.",
+                match error.details().category {
+                    FailureCategory::State => "Configuration changed, already exists, or publication is uncertain; refresh before retrying.",
+                    FailureCategory::Unsupported => "Configuration action refused; default and active profiles are protected.",
+                    FailureCategory::Artifact => "Configuration validation refused the draft.",
                     _ => safe_error(&error),
                 }
             } else { safe_error(&error) }.into()),
         };
-        self.logs
-            .finish(summary.id, summary.title, state == "completed", details);
         self.latest = Some(WebResult {
             summary,
             state,
@@ -187,10 +227,10 @@ impl Actions {
     }
 
     pub fn with_logs<T>(&self, f: impl FnOnce(&Ring) -> T) -> T {
-        f(&self.lock().logs)
+        f(&self.lock().logs())
     }
     pub fn with_logs_mut<T>(&self, f: impl FnOnce(&mut Ring) -> T) -> T {
-        f(&mut self.lock().logs)
+        f(&mut self.lock().logs())
     }
 
     pub fn start(
@@ -213,7 +253,7 @@ impl Actions {
             .checked_add(1)
             .ok_or_else(|| Error::Limit("control action identities exhausted".into()))?;
         let title = request.title();
-        let correlation = request.correlation();
+
         let generates = request.generates();
         #[cfg(feature = "web")]
         let settings = matches!(&request, Request::Settings(_));
@@ -233,7 +273,10 @@ impl Actions {
             &document.execution_default,
         );
         let progress = Arc::new(Mutex::new(Progress::default()));
-        let observation = Arc::clone(&progress);
+        let observation =
+            Observer::new(task.clone(), Arc::clone(&progress), Arc::clone(&slot.logs));
+        slot.next = id;
+        slot.logs().start(id, title, task.correlation());
         let flag = Arc::clone(&cancel);
         let output = Arc::clone(&response);
         let worker = thread::Builder::new()
@@ -251,9 +294,17 @@ impl Actions {
                         progress: &observation,
                     },
                 )
-            })?;
-        slot.next = id;
-        slot.logs.start(id, title, correlation);
+            });
+        let worker = match worker {
+            Ok(worker) => worker,
+            Err(error) => {
+                let error = ServiceError::inference(Error::Io(error));
+                slot.record_terminal(&task, &Err(error.clone()));
+                slot.changed();
+                return Err(error.into_core());
+            }
+        };
+
         #[cfg(feature = "web")]
         if origin == Origin::Web {
             slot.latest = None;
@@ -308,7 +359,7 @@ impl Actions {
             .filter(|job| job.id == id && origin.is_none_or(|origin| origin == job.origin))
             .ok_or_else(|| Error::State("Selected action is no longer active".into()))?;
         if !job.cancel.swap(true, Ordering::AcqRel) {
-            slot.logs.cancel(id);
+            slot.logs().cancel(id);
             slot.changed();
         }
         Ok(())
@@ -319,7 +370,7 @@ impl Actions {
         &self,
         id: u64,
         revision: u64,
-    ) -> (Option<Response>, Option<Result<Completed>>) {
+    ) -> (Option<Response>, Option<ActionResult<Completed>>) {
         let mut slot = self.lock();
         let Some(job) = slot
             .active
@@ -328,7 +379,9 @@ impl Actions {
         else {
             return (
                 None,
-                Some(Err(Error::State("Native action ownership lost".into()))),
+                Some(Err(
+                    Error::State("Native action ownership lost".into()).into()
+                )),
             );
         };
         let response = job.sample(Some(revision));
@@ -339,17 +392,9 @@ impl Actions {
         // Completion may have arrived between the first sample and finished
         // check; take the exact final bounded output before joining.
         let response = job.sample(Some(revision));
-        let title = job.title;
         let task = job.task();
         let result = job.join();
-        let success = result.is_ok();
-        #[cfg(all(feature = "cache", target_os = "linux"))]
-        let success = success && !matches!(&result, Ok(Completed::Refused { .. }));
-        let details = result
-            .as_ref()
-            .err()
-            .map(zerogravity::runtime::text::FailureDetails::core);
-        slot.logs.finish(id, title, success, details);
+        slot.record_terminal(&task, &result);
         if task.subject.is_some() {
             slot.last_task = Some(FinishedTask::new(task, &result));
         }
@@ -401,7 +446,15 @@ impl Actions {
         };
         if let Some(job) = active {
             job.cancel.store(true, Ordering::Release);
-            job.join().map(|_| ())
+            let progress = Arc::clone(&job.progress);
+            let mut task = job.task();
+            let result = job.join();
+            task.progress = progress
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .clone();
+            self.lock().record_terminal(&task, &result);
+            result.map(|_| ()).map_err(ServiceError::into_core)
         } else {
             Ok(())
         }
@@ -409,24 +462,26 @@ impl Actions {
 }
 
 #[cfg(feature = "web")]
-fn safe_error(error: &Error) -> &'static str {
+fn safe_error(error: &ServiceError) -> &'static str {
     // The original native error is useful locally but may contain paths,
     // provider URLs or arbitrary artifact text. Never forward it verbatim.
-    match error {
-        Error::Io(_) => {
+    match error.details().category {
+        FailureCategory::Io => {
             "Source or local I/O unavailable; inspect the selected cache/configuration in the native client."
         }
-        Error::Malformed(_) => "The original source or artifact validator refused this action.",
-        Error::InvalidInput(_) => {
+        FailureCategory::Artifact => {
+            "The original source or artifact validator refused this action."
+        }
+        FailureCategory::Input => {
             "The configuration or request is invalid; check the selected settings and input."
         }
-        Error::Unsupported(_) => {
+        FailureCategory::Unsupported => {
             "The selected source or execution route is unavailable; check the cached model and compiled backend."
         }
-        Error::Resource(_) | Error::Limit(_) => {
+        FailureCategory::Resource | FailureCategory::Limit => {
             "The original resource or execution bound refused this action."
         }
-        Error::State(_) => {
+        FailureCategory::State => {
             "The action could not complete in the current runtime state; refresh and inspect the owner."
         }
     }

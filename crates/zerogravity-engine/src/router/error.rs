@@ -144,6 +144,12 @@ fn service_category(status: u16, code: &str) -> FailureCategory {
     }
 }
 
+#[derive(Debug, Clone)]
+enum Origin {
+    Core(Arc<Error>),
+    External(Arc<dyn std::error::Error + Send + Sync>),
+}
+
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ServiceError {
     pub status: u16,
@@ -151,7 +157,7 @@ pub struct ServiceError {
     /// Trusted in-process diagnostic. HTTP must use its explicit public projection.
     pub message: String,
     #[serde(skip)]
-    origin: Option<Arc<Error>>,
+    origin: Option<Origin>,
     #[serde(skip)]
     parameter: Option<&'static str>,
 }
@@ -165,6 +171,32 @@ impl ServiceError {
             parameter: None,
         }
     }
+    /// Attach a protocol classification without throwing away the original
+    /// typed failure (including resource bounds and I/O cause).
+    pub fn from_core(status: u16, code: &'static str, error: Error) -> Self {
+        Self {
+            status,
+            code,
+            message: error.to_string(),
+            origin: Some(Origin::Core(Arc::new(error))),
+            parameter: None,
+        }
+    }
+    /// Keep the concrete parser/transport cause for trusted in-process
+    /// diagnostics, without making it part of the HTTP wire projection.
+    pub fn from_cause(
+        status: u16,
+        code: &'static str,
+        cause: impl std::error::Error + Send + Sync + 'static,
+    ) -> Self {
+        Self {
+            status,
+            code,
+            message: cause.to_string(),
+            origin: Some(Origin::External(Arc::new(cause))),
+            parameter: None,
+        }
+    }
     pub fn inference(error: Error) -> Self {
         let details = FailureDetails::core(&error);
         let status = match details.category {
@@ -172,13 +204,7 @@ impl ServiceError {
             FailureCategory::State | FailureCategory::Io => 500,
             _ => 400,
         };
-        Self {
-            status,
-            code: details.code,
-            message: error.to_string(),
-            origin: Some(Arc::new(error)),
-            parameter: None,
-        }
+        Self::from_core(status, details.code, error)
     }
     /// Only static protocol parameter names, never arbitrary request values.
     pub fn with_parameter(mut self, parameter: &'static str) -> Self {
@@ -189,19 +215,16 @@ impl ServiceError {
         self.parameter
     }
     pub fn details(&self) -> FailureDetails {
-        let mut details = self
-            .origin
-            .as_deref()
-            .map(FailureDetails::core)
-            .unwrap_or_else(|| {
-                FailureDetails::new(service_category(self.status, self.code), self.code)
-            });
+        let mut details = match &self.origin {
+            Some(Origin::Core(error)) => FailureDetails::core(error),
+            _ => FailureDetails::new(service_category(self.status, self.code), self.code),
+        };
         details.code = self.code;
         details.status = Some(self.status);
         details
     }
     pub fn into_core(self) -> Error {
-        if let Some(origin) = self.origin {
+        if let Some(Origin::Core(origin)) = self.origin {
             return Arc::try_unwrap(origin).unwrap_or_else(shared_core_error);
         }
         // An HTTP status is not evidence of artifact corruption. A
@@ -259,9 +282,11 @@ impl std::fmt::Display for ServiceError {
 }
 impl std::error::Error for ServiceError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        self.origin
-            .as_deref()
-            .map(|origin| origin as &dyn std::error::Error)
+        match &self.origin {
+            Some(Origin::Core(error)) => Some(error.as_ref()),
+            Some(Origin::External(error)) => Some(error.as_ref()),
+            None => None,
+        }
     }
 }
 impl From<zerogravity_core::Error> for ServiceError {
@@ -273,6 +298,29 @@ impl From<zerogravity_core::Error> for ServiceError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn external_cause_remains_typed_and_is_not_in_safe_details() {
+        use std::error::Error as _;
+        let cause = serde_json::from_str::<serde_json::Value>("{").unwrap_err();
+        let error = ServiceError::from_cause(500, "diagnostics", cause);
+        let clone = error.clone();
+        assert!(
+            clone
+                .source()
+                .unwrap()
+                .downcast_ref::<serde_json::Error>()
+                .is_some()
+        );
+        assert_eq!(clone.details().code, "diagnostics");
+        assert_eq!(clone.details().status, Some(500));
+        assert!(
+            serde_json::to_value(clone.details())
+                .unwrap()
+                .get("message")
+                .is_none()
+        );
+    }
+
     #[test]
     fn core_errors_keep_stable_public_classification_and_clean_messages() {
         let resource = ServiceError::inference(zerogravity_core::Error::resource(

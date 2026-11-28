@@ -41,7 +41,7 @@ observation; no blanket "verify first" admission gate. Native retained
 error text is bounded and not serialized by browser projection.
 Unknown totals/stages remain unknown.
 
-**C (next):** audit typed failure propagation end to end (cold
+**C (implemented; focused qualification passed):** audit typed failure propagation end to end (cold
 selection/configuration, admission, source/loader, original runtime
 and control/serve). Preserve original causal chain, typed codes,
 stage, requested/available resources and requested/resolved execution
@@ -102,13 +102,59 @@ Auto/CUDA/ROCm failures using the appropriate full-feature build,
 exact selected sources/device, original owners; do not change runtime
 qualification to make an action look successful.
 
-**D:** exact source/route eligibility and actionable refusal/preflight
+**C outcome (L5, 28 Nov):** shared CLI host sink and original event
+projection implemented; typed action results preserve actual service
+codes and bounded local causes. Four 4 MiB segments/session, retain 16
+closed sessions at startup, active locks and private permissions;
+`ZEROGRAVITY_LOG_FILE`, `_FORMAT`, `_LEVEL` override destinations as
+specified in CLI.md. Explicit files are operator-retained. UI exposes
+current destination (native only), timestamp and safe status; history
+inspection is through files/journal, not a new historical UI. Request
+failures observed through the existing transient stream can report a
+gap, not a lossless audit. Raw generation/download/settings errors stay
+suppressed where arbitrary input or credentials could appear. No claim
+of universal third-party error preservation or power-loss durability.
+Actual process qualification passed: stdout isolation, private live
+JSONL, level/format/destination, fallback, safe browser projection,
+real CPU listener error without UI and joined shutdown, native PTY.
+Actual Qwen 0.8B verification: 11/11 files, 1,769,917,190 bytes,
+40 live progress observations, terminal totals exact. Final focused
+Rust/Clippy/default CLI/Web build passed; full assembled gate outstanding.
+
+Actual L5 load reproduction used original cache, full-feature debug
+CLI, 1024 context, 3 output, one worker/active request. Metadata-only
+Gemma 4cd7a8f5 lacks weights; full Gemma ba32b769 was refused by current
+GGUF-oriented route, not proven corrupt. Without runtime SDK paths,
+CUDA had no eligible bound CUDA device, Auto selected HIP and HIP
+reported unavailable. With existing Nix CUDA13.5/CCCL/NVRTC/cuBLAS and
+ROCm7.2.4/rocBLAS and matched glibc loader, CUDA on RTX3060 SM86 at
+0000:01:00.0 loaded original Qwen 0.8B d7c7bf56 and completed 11 input /
+3 output tokens, length finish, original unload and joined retirement.
+HIP on 0000:05:00.0 reached real workspace/native/root admission:
+503 resource_exhausted, requested 9,885,299,712, available
+8,870,966,887 bytes. No allocation-limit workaround or silent fallback.
+This reproduces comparable current failures; older lost logs and the
+user's exact earlier process environment are not recoverable.
+Run-local validated launcher `target/ux11c-l5-launch.sh --offline`
+uses existing store paths (not a durable package fix). No install,
+service enablement, downloads or deployment performed.
+
+**D (next):** exact source/route eligibility and actionable refusal/preflight
 from the existing planner, consistent menu/keyboard/Web enforcement.
 Metadata-only snapshots lack weight payloads; present actual missing
 role/refusal and supported acquisition/inspection actions. A complete
 unverified snapshot can be loadable because load authenticates its own
 reader; verification is not execution admission. Preserve real memory
-and backend eligibility, no silent downgrade or automatic acquisition.
+and backend eligibility, no silent downgrade or automatic acquisition. Separate
+metadata-only missing roles from valid original Safetensors families
+without a qualified consumer. Distinguish compiled backend from usable
+runtime/device and actual memory admission. Close the Nix/default
+launch environment gap with existing pinned runtime dependencies and
+verified installed-package behavior, not hard-coded host paths in
+production. Any new acquisitions require approval. Auto policy must
+use actual eligibility; no relabeling of unsupported Gemma or HIP
+capacity refusal as a successful load. Recheck load/serve/menu action
+consistency; then resume measured P3D.
 
 ## 1. Intent
 

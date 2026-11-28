@@ -59,7 +59,88 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — UX-11A/B explicit search and model tasks (28 Nov)
+### Current checkpoint — UX-11C operational logging and L5 reproduction (28 Nov)
+
+Source-authoring only L5, one persistent main checkout. Preserve unrelated
+Cargo.toml debug profile and root README. User requested live logs,
+actual error causes and L5 failure diagnosis before more optimization.
+C extends original control/runtime owners, not a second action system.
+A/B and accepted P3C evidence below remain valid. New `output/operational`
+process sink and shared bounded ring: command stderr (no implicit file),
+private XDG interactive/standalone Web JSONL session, foreground serve
+plain timestamped stderr suitable for existing systemd journal. Explicit
+`ZEROGRAVITY_LOG_FILE`, `_FORMAT`, `_LEVEL`; four 4 MiB segments/session,
+retain 16 closed sessions on startup, preserve live sessions via locks,
+private permissions, visible sink failure, flush/live and sync/retire.
+Explicit file retention operator-owned. No deployment. Native Logs shows
+current path, UTC time, stage, elapsed and bounded local causes; Web only
+safe fields, rebuilt assets. Prior sessions inspected via files/journal,
+not historical in-app browser. Transient runtime stream reports gaps;
+not lossless audit, no per-token logging or private response contents.
+Generation/download/settings failures can suppress raw causes to avoid
+sensitive input. Local third-party diagnostics bounded/sanitized, not
+universal secret recognition. Preserve original `ServiceError` through
+action worker, core and external origins, resource byte fields, parser
+and spawn causes; safe public projection retained. Route observation
+before cold capacity checks, actual loaded placement from registration.
+Serve consumes owner events without UI; joined retirement retained.
+NixOS module stale description corrected, existing policy unchanged.
+
+Actual full-feature L5 debug CLI reproduction, original cached model
+sources and isolated config/state, 1024 context, 3 output, one worker and
+active request. Plain Gemma metadata-only 4cd7a8f5 missing required roles;
+full ba32b769 ambiguous roles in current GGUF-oriented route (not proof
+of corrupt original Safetensors). Plain CUDA had no bound eligible CUDA
+device, Auto selected HIP then unavailable, explicit HIP unavailable.
+With existing Nix glibc2.44 loader, CUDA13.5/CCCL/NVRTC/cuBLAS and ROCm7.2.4/
+rocBLAS, HIP PCI 0000:05:00.0 real fixed-workspace/native/root admission
+503 `resource_exhausted`, exact required 9,885,299,712 bytes vs available
+8,870,966,887 bytes (84.393s). Do not equate HIP available pool with DRM
+VRAM alone. Configured CUDA PCI 0000:01:00.0 RTX3060 SM86 loaded original
+Qwen0.8B d7c7bf56 and actual 11 input +3 output tokens, length finish;
+164.650s cold debug run (not performance evidence), original unload and
+clean process/device retirement. No model downloads/weight changes.
+Old failing process environment not recovered: these are comparable
+current reproductions. Run-local existing-store-path workaround
+`bash target/ux11c-l5-launch.sh --offline` passes device list; not a
+stable packaged fix or installed service. Launcher retains the validated
+full binary in its run-local configured directory independently of
+feature-specific Cargo output; rechecked CUDA physical binding.
+Logs `target/ux11c-l5-repro.log`
+and run-local XDG state. No user shell/profile/install changes.
+
+Focused validation: final 69 CLI unit passed/0 failed/3 ignored; engine
+error tests 4/0 and control event test 1/0. Strict Clippy default full
+feature, TUI/Web/serve/no-default and combined frontend/CPU/cache/
+acquisition/serve; default CLI build passed; npm tests/build assets,
+Nix parse and Rust fmt/diff checks passed. Early compile/lint errors
+corrected, not claimed passing attempts. Real process fixture one-off
+JSON purity/no state, private file/mode/threshold, fallback, actual CPU
+listener HTTP failure on live stderr, safe Web log projection, control
+settings lifecycle and joined retirement passed. Native PTY shell and
+settings pass. Original cache verification 1,769,917,190 bytes, 11/11
+files, 40 samples while running, exact monotonic terminal totals in
+39.585s. Final logs `target/ux11c-close-gate.log`,
+`target/ux11c-acceptance.log`, `target/ux11c-full-build-retry.log`,
+`target/ux11c-process-tests.log`, `target/ux11c-close-process.log`.
+Process regression fixture is wired into assembled checks and its exact
+CPU+serve integration invocation passed 1/0 (`target/ux11c-regression.log`).
+Architecture checker and its self-test passed. Additional broader GPU
+feature gate stopped at checkpoint boundary during HIP compilation;
+full assembled gate remains open. No new physical parity claim.
+
+Next UX-11D: source/route-aware eligibility and precise actionable
+refusal across menu/keyboard/Web and planner. Distinguish absent weights
+from valid unsupported original family, compiled backend from real
+SDK/device binding and memory admission. Durable Nix/default launch
+runtime environment using existing pinned dependencies, no hard-coded
+host paths in product, no implicit downloads or deployment. Actual HIP
+capacity constraint must not be relaxed to hide error. No mandatory
+verification before original authenticating load. Retain current typed
+failure boundaries, audit remaining lossy upstream conversions where
+needed. Finish assembled gate; then return to measured P3D.
+
+### Prior checkpoint — UX-11A/B explicit search and model tasks (28 Nov)
 
 User interrupts P3C to improve native UX before further optimization.
 Only source-authoring L5. Existing unrelated Cargo.toml debug profile

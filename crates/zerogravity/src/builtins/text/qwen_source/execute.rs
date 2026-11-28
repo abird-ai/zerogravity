@@ -787,7 +787,7 @@ impl Executor for SourceText {
                 })?;
                 // Legacy wire projection of the actual typed inventory.
                 let mut report = serde_json::to_value(fit)
-                    .map_err(|error| ServiceError::new(500, "diagnostics", error.to_string()))?;
+                    .map_err(|error| ServiceError::from_cause(500, "diagnostics", error))?;
                 report["device"] = serde_json::json!({ "namespace": fit.device.backend, "identity": fit.device.device });
                 report["provider"] = serde_json::json!(format!("{:?}", prepared.selected().provider));
                 report["mode"] = serde_json::json!(format!("{:?}", prepared.selected().mode));

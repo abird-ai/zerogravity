@@ -312,6 +312,14 @@ pub(super) fn run(
         settings.enable_error_details.unwrap_or(false),
     )?;
     let offer = crate::run_cli::input::interaction().map_err(core)? && !offline && ask_before_pull;
+    crate::output::operational::status(
+        "models",
+        crate::output::operational::Level::Info,
+        &format!(
+            "Resolving model routes · backend {:?} · context {} · output {}",
+            request.backend, request.task.context, request.task.max_tokens
+        ),
+    );
     let Some(plan) = crate::resident::prepare(
         request,
         settings,
@@ -320,6 +328,13 @@ pub(super) fn run(
             offer,
             pull,
             cancel: shutdown.requested.clone(),
+        },
+        &|route| {
+            crate::output::operational::status(
+                "models",
+                crate::output::operational::Level::Info,
+                &format!("Selected route · {route}"),
+            )
         },
     )?
     else {

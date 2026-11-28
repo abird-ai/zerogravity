@@ -322,10 +322,17 @@ pub fn run(args: &[String]) -> Result<(), ServiceError> {
         return Ok(());
     }
 
+    crate::output::operational::start(crate::output::operational::Mode::Service);
+    crate::output::operational::status(
+        "serve",
+        crate::output::operational::Level::Info,
+        "Serving process started",
+    );
+
     // Install before config/source loading, including when serving is PID 1.
     // Keep the guard alive until all HTTP and inference workers have joined.
     let mut shutdown = shutdown::Shutdown::install()
-        .map_err(|error| ServiceError::new(500, "signal_handler", error.to_string()))?;
+        .map_err(|error| ServiceError::from_core(500, "signal_handler", error.into()))?;
     match canonical::Invocation::parse(args)? {
         canonical::Invocation::Legacy(options) => legacy(*options, &mut shutdown),
         canonical::Invocation::Canonical(options) => canonical::run(options, &mut shutdown),
@@ -439,11 +446,15 @@ fn launch(
             ..Default::default()
         })
         .build()
-        .map_err(|error| ServiceError::new(400, "invalid_config", error.to_string()))?;
+        .map_err(|error| ServiceError::from_core(400, "invalid_config", error))?;
     let control = runtime.control();
+    let mut events = control.subscribe();
+    let mut logs = crate::output::operational::ring::Ring::default();
     let result = (|| {
         crate::output::emit!(Status, "zerogravity: loading selected model routes");
-        load(control)?;
+        let loaded = load(control);
+        logs.drain(&mut events);
+        loaded?;
         shutdown.admit(&runtime)?;
         if shutdown.is_requested() {
             return Ok(());
@@ -452,7 +463,7 @@ fn launch(
         let snapshot = control.snapshot().map_err(ServiceError::inference)?;
         let binding = control
             .start_serving(listener.options())
-            .map_err(|error| ServiceError::new(500, "bind_failed", error.to_string()))?;
+            .map_err(|error| ServiceError::from_core(500, "bind_failed", error))?;
         // A monitoring/presentation error must still stop the exact listener.
         let waited = {
             if !shutdown.is_requested() {
@@ -499,16 +510,18 @@ fn launch(
                     );
                 }
             }
-            shutdown.wait_control(control, &runtime, binding)
+            shutdown.wait_control(control, &runtime, binding, &mut events, &mut logs)
         };
         let stopped = control
             .stop_serving(binding.generation)
-            .map_err(|error| ServiceError::new(500, "http_error", error.to_string()));
+            .map_err(|error| ServiceError::from_core(500, "http_error", error));
+        logs.drain(&mut events);
         combine(waited, stopped, "listener retirement")
     })();
     let joined = runtime
         .shutdown()
-        .map_err(|error| ServiceError::new(500, "shutdown_failed", error.to_string()));
+        .map_err(|error| ServiceError::from_core(500, "shutdown_failed", error));
+    logs.drain(&mut events);
     let result = combine(result, joined, "source retirement");
     if result.is_ok() {
         crate::output::emit!(
@@ -527,11 +540,22 @@ fn combine(
     match (first, second) {
         (Ok(()), Ok(())) => Ok(()),
         (Err(error), Ok(())) | (Ok(()), Err(error)) => Err(error),
-        (Err(error), Err(close)) => Err(ServiceError::new(
-            error.status,
-            error.code,
-            format!("{}; {phase}: {}", error.message, close.message),
-        )),
+        (Err(error), Err(close)) => {
+            let causes = crate::output::operational::causes(&close);
+            crate::output::operational::record(crate::output::operational::Record {
+                timestamp_unix_ms: crate::output::operational::now_ms(),
+                level: crate::output::operational::Level::Error,
+                component: "serve",
+                correlation: "cleanup",
+                message: phase,
+                details: Some(close.details()),
+                stage: Some("retiring"),
+                elapsed_ms: None,
+                causes: &causes,
+            });
+            // Keep the original protocol code and error source.
+            Err(error)
+        }
     }
 }
 

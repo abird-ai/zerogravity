@@ -1040,6 +1040,22 @@ fn provider_variant_ambiguity_refuses_exactly_without_silent_pick() {
 
 #[cfg(all(feature = "serve", feature = "cache", target_os = "linux"))]
 #[test]
+fn operational_logging_modes_preserve_output_and_diagnostics() {
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/operational_logs.py");
+    let status = Command::new("python3")
+        .arg("-B")
+        .arg(fixture)
+        .arg(env!("CARGO_BIN_EXE_zerogravity"))
+        .status()
+        .unwrap();
+    assert!(
+        status.success(),
+        "operational process logging fixture failed"
+    );
+}
+
+#[cfg(all(feature = "serve", feature = "cache", target_os = "linux"))]
+#[test]
 fn canonical_serve_refuses_incompatible_routes_before_cache_effects() {
     let f = fixture_named("serve-preflight");
     // Preflight refuses remote bind, duplicate aliases, and conflicting

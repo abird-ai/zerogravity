@@ -313,7 +313,7 @@ impl ServingHost {
                 ResourceOwner::new(alias, session).map_err(ServiceError::inference)?,
                 &[AllocationRequest { kind, bytes }],
             )
-            .map_err(|error| ServiceError::new(503, "host_budget", error.to_string()))
+            .map_err(|error| ServiceError::from_core(503, "host_budget", error))
     }
 }
 

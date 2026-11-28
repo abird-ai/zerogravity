@@ -207,6 +207,7 @@ pub(crate) struct Failure<'a> {
     summary: &'a dyn Display,
     hint: Option<&'static str>,
     cause: Option<&'a (dyn std::error::Error + 'static)>,
+    details: Option<zerogravity::runtime::text::FailureDetails>,
 }
 
 impl<'a> Failure<'a> {
@@ -222,6 +223,20 @@ impl<'a> Failure<'a> {
             summary,
             hint,
             cause: None,
+            details: None,
+        }
+    }
+
+    #[cfg(feature = "serve")]
+    pub(crate) fn service(
+        command: &'static str,
+        error: &'a zerogravity::runtime::text::ServiceError,
+    ) -> Self {
+        use std::error::Error as _;
+        Self {
+            cause: error.source(),
+            details: Some(error.details()),
+            ..Self::new(command, error.code, error, None)
         }
     }
 
@@ -245,6 +260,7 @@ impl<'a> Failure<'a> {
         };
         Self {
             cause: error.source(),
+            details: Some(zerogravity::runtime::text::FailureDetails::core(error)),
             ..Self::new(command, code, error, hint)
         }
     }
@@ -311,11 +327,52 @@ pub(crate) fn report(event: Event<'_>) {
     // Presentation is best-effort and cannot change an execution outcome.
     let reporter = reporter();
     if reporter.allows(event) {
+        use super::operational;
+        if operational::active() {
+            let observed = match event {
+                Event::Status(message) | Event::Progress(message) => {
+                    Some((operational::Level::Info, message))
+                }
+                Event::Warning(message) => Some((operational::Level::Warning, message)),
+                // Explicit/raw diagnostics can contain model values or input.
+                _ => None,
+            };
+            if let Some((level, message)) = observed {
+                operational::status("runtime", level, &message.to_string());
+                return;
+            }
+            if operational::interactive() && !matches!(event, Event::Explicit(_)) {
+                return;
+            }
+        }
         let _ = reporter.write(event, &mut io::stderr().lock());
     }
 }
 
 pub(crate) fn fail(failure: Failure<'_>) {
+    use super::operational;
+    if operational::active() {
+        let mut causes = vec![operational::bounded_message(&failure.summary.to_string())];
+        if let Some(cause) = failure.cause {
+            causes.extend(operational::causes(cause));
+        }
+        operational::record(operational::Record {
+            timestamp_unix_ms: operational::now_ms(),
+            level: operational::Level::Error,
+            component: failure.command,
+            correlation: failure.code,
+            message: "Command failed",
+            details: failure.details,
+            stage: None,
+            elapsed_ms: None,
+            causes: &causes,
+        });
+        // Preserve ordinary terminal failure behavior if the selected file
+        // is unavailable; a logging failure must not hide the actual error.
+        if operational::replaces_terminal_failure() {
+            return;
+        }
+    }
     let _ = reporter().failure(failure, &mut io::stderr().lock());
 }
 

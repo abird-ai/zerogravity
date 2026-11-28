@@ -18,7 +18,7 @@ The latest [comprehensive takeover through OA-7D](../docs/FULL_COMPREHENSIVE_HAN
 work and the recovered OA-7E work. The
 [OA-7E takeover prompt](../docs/NEXT_AGENT_2026-11-27_OA7E.md) is historical;
 OA-7E landed at signed 1585b579, actual learned SDK and assembled gate passed.
-User-priority [UX-11 A/B presentation follow-up](cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md#28-nov--ux-11-follow-up-user-priority-before-rocm-continuation) landed; next UX-11C typed error chains and operational logs, then D source-aware action guidance. Pause measured ROCm work at P3C; do not reopen accepted operator evidence.
+User-priority [UX-11 A/B/C presentation and operational diagnostics](cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md#28-nov--ux-11-follow-up-user-priority-before-rocm-continuation) landed; next D source-aware action guidance and durable runtime launch environment. L5 configured CUDA original 0.8B generation passed; actual HIP capacity refusal remains. Focused C gates passed; full assembled gate outstanding. Pause measured ROCm work at P3C; do not reopen accepted operator evidence.
 Prior unit: [Phase 3 ROCm readiness](FULL_IMPLEMENTATION_PLAN.md#3-rocm--match-vllm-first) on X2 after bounded Phase 2 acceptance and [OA-10 closeout](serving-and-speculation/NEXT_ITERATION_OPENAI_COMPATIBLE_SERVING.md#oa-10--compatibility-closeout).
 P3A ordinary cold cohort/exact device envelope and comparator usage
 completeness implemented at 50f6e276; X2 exact commit sync and locked

@@ -129,7 +129,24 @@ impl Logs {
                     format!("Component: {}", entry.component.label()),
                     format!("Correlation: {}", entry.correlation),
                     format!("Sequence: {}", entry.sequence),
+                    crate::output::operational::location().unwrap_or_default(),
+                    format!(
+                        "Timestamp: {} (UTC; Unix ms {})",
+                        crate::output::operational::clock(entry.timestamp_unix_ms),
+                        entry.timestamp_unix_ms
+                    ),
                 ];
+                if let Some(stage) = entry.stage {
+                    lines.push(format!("Stage: {stage}"));
+                }
+                if let Some(elapsed) = entry.elapsed_ms {
+                    lines.push(format!("Elapsed: {elapsed} ms"));
+                }
+                if !entry.causes.is_empty() {
+                    lines.push(String::new());
+                    lines.push("Causes (local diagnostics):".into());
+                    lines.extend(entry.causes.into_iter().map(|cause| format!("  {cause}")));
+                }
                 if let Some(details) = entry.details {
                     lines.push(String::new());
                     lines.push(format!(
@@ -175,6 +192,7 @@ mod tests {
         logs.actions.with_logs_mut(|ring| {
             ring.event(ControlEvent {
                 sequence: 2,
+                timestamp_unix_ms: 1795829000000,
                 kind: ControlEventKind::RequestAccepted {
                     registration_id: 17,
                 },

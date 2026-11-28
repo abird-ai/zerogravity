@@ -1,4 +1,5 @@
 //! CLI presentation.
+pub(crate) mod operational;
 mod presentation;
 pub(crate) use presentation::{
     Event, Failure, Options, Switch, Verbosity, emit, fail, install, report,

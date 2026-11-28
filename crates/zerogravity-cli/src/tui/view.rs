@@ -2182,7 +2182,9 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
         }
     }
     divider(frame, &mut app.navigation, theme, track);
-    let status = if let Some(job) = &app.active {
+    let status = if let Some(failure) = crate::output::operational::failure_message() {
+        format!("Log unavailable · {failure}")
+    } else if let Some(job) = &app.active {
         format!(
             "{} · {:?} · {}",
             job.title,
@@ -3204,9 +3206,16 @@ fn render_logs(frame: &mut Frame<'_>, area: Rect, app: &mut App, theme: Theme) {
         "Operational logs",
     );
     pane_actions(frame, &mut app.navigation, theme, area);
-    let [head, body] =
-        Layout::vertical([Constraint::Length(1.min(inner.height)), Constraint::Min(0)])
-            .areas(inner);
+    let location = crate::output::operational::location();
+    let [head, path, body] = Layout::vertical([
+        Constraint::Length(1.min(inner.height)),
+        Constraint::Length(u16::from(location.is_some() && inner.height >= 3)),
+        Constraint::Min(0),
+    ])
+    .areas(inner);
+    if let Some(location) = location {
+        frame.render_widget(Paragraph::new(text(location)).style(theme.muted()), path);
+    }
     let mut heading = app.logs.heading();
     let dropped = app.logs.dropped();
     if dropped > 0 {

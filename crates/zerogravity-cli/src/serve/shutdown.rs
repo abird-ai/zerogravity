@@ -60,13 +60,16 @@ impl Shutdown {
         control: zerogravity::control::ControlPlane<'_>,
         runtime: &zerogravity::Runtime,
         binding: zerogravity::control::ServeBinding,
+        events: &mut zerogravity::control::ControlEvents<'_>,
+        logs: &mut crate::output::operational::ring::Ring,
     ) -> Result<(), super::ServiceError> {
         use std::time::{Duration, Instant};
         use zerogravity::control::ServeSummary;
-        let live = crate::output::reporter().serve_status();
+        let live = crate::output::operational::active() || crate::output::reporter().serve_status();
         let mut sampled = Instant::now();
         let mut previous = None;
         while !self.is_requested() {
+            logs.drain(events);
             match control.serving().map_err(super::ServiceError::inference)? {
                 ServeSummary::Listening {
                     binding: current,

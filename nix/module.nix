@@ -1,6 +1,5 @@
-# NixOS service wiring for the future zerogravity server.
-# The CLI deliberately rejects serve until the server is implemented.
-# Keep disabled by default and avoid a systemd restart loop until implemented.
+# Optional foreground ZeroGravity HTTP service. The host retains runtime
+# ownership; systemd collects continuous operational stderr in the journal.
 {self}: {
   config,
   lib,
@@ -11,7 +10,7 @@
   cfg = config.services.zerogravity;
 in {
   options.services.zerogravity = {
-    enable = mkEnableOption "zerogravity (server command is currently unimplemented)";
+    enable = mkEnableOption "zerogravity foreground model-serving service";
     package = mkOption {
       type = types.package;
       default = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
@@ -21,12 +20,12 @@ in {
       type = types.str;
       default = "/var/lib/zerogravity";
       example = "/srv/models";
-      description = "Absolute working directory for a future model-serving service.";
+      description = "Absolute working directory for the model-serving service.";
     };
     extraArgs = mkOption {
       type = types.listOf types.str;
       default = [];
-      description = "Extra arguments for a future 'zerogravity serve' command; currently not implemented.";
+      description = "Arguments for 'zerogravity serve'; select a supported model and execution policy.";
     };
     environment = mkOption {
       type = types.attrsOf types.str;
@@ -50,7 +49,7 @@ in {
     ];
 
     systemd.services.zerogravity = {
-      description = "Zerogravity AI runtime (future service; serve is not implemented)";
+      description = "ZeroGravity AI runtime";
       wantedBy = ["multi-user.target"];
       after = ["network.target"];
       environment = cfg.environment;
@@ -65,7 +64,7 @@ in {
             [(lib.getExe cfg.package) "serve"]
             ++ map lib.escapeShellArg cfg.extraArgs
           );
-          # The bootstrap serve command exits 2; do not restart it indefinitely.
+          # Explicit service restart policy; do not loop on admission or config failures.
           Restart = "no";
           StandardInput = "null";
           StandardOutput = "journal";

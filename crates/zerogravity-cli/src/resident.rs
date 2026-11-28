@@ -64,8 +64,6 @@ pub(crate) struct Plan {
     )]
     pub limits: SchedulerLimits,
     load: Load,
-    #[cfg(any(feature = "tui", feature = "web"))]
-    execution_label: String,
 }
 enum Load {
     #[cfg_attr(
@@ -88,10 +86,6 @@ enum Load {
     Native(zerogravity::models::ModelLoadRequest),
 }
 impl Plan {
-    #[cfg(any(feature = "tui", feature = "web"))]
-    pub(crate) fn execution_label(&self) -> &str {
-        &self.execution_label
-    }
     pub(crate) fn load(self, control: ControlPlane<'_>) -> Result<(), ServiceError> {
         match self.load {
             Load::Declared(models, config) => control.load_declared(
@@ -150,6 +144,7 @@ pub(crate) fn prepare(
     settings: ServeDoc,
     pending_override: Option<Option<usize>>,
     acquisition: Acquisition,
+    observe_route: &dyn Fn(&str),
 ) -> Result<Option<Plan>, ServiceError> {
     let pending = pending_override.unwrap_or(settings.max_pending_requests);
     let active = settings.active_per_worker.unwrap_or(DEFAULT_ACTIVE);
@@ -185,7 +180,14 @@ pub(crate) fn prepare(
         target_os = "linux"
     ))]
     {
-        prepare_routes(request, settings, pending, active, acquisition)
+        prepare_routes(
+            request,
+            settings,
+            pending,
+            active,
+            acquisition,
+            observe_route,
+        )
     }
     #[cfg(not(all(
         feature = "model-qwen35",
@@ -201,6 +203,7 @@ pub(crate) fn prepare(
             active,
             acquisition.offer,
             acquisition.pull,
+            observe_route,
         );
         Err(ServiceError::new(
             400,
@@ -236,6 +239,7 @@ fn prepare_routes(
     pending: Option<usize>,
     active: usize,
     acquisition: Acquisition,
+    observe_route: &dyn Fn(&str),
 ) -> Result<Option<Plan>, ServiceError> {
     use crate::run_cli::source;
     use zerogravity::run_policy::Backend;
@@ -329,6 +333,12 @@ fn prepare_routes(
                 zerogravity::models::qwen_target_for_snapshot(&digest).expect("approved digest");
             let selected =
                 qwen_source::require_source_backend(&request, &inventory, target).map_err(core)?;
+            // Record the selected route before device budget/weight admission.
+            // The loaded registration remains authoritative for physical placement.
+            observe_route(match selected {
+                qwen_source::SelectedBackend::Cuda => "CUDA · device 0",
+                qwen_source::SelectedBackend::Hip => "ROCm · device 0",
+            });
             if settings.device_mib.is_some() && selected != qwen_source::SelectedBackend::Hip {
                 return Err(invalid(
                     "canonical device-mib currently requires original ROCm source",
@@ -406,12 +416,6 @@ fn prepare_routes(
             return Ok(Some(Plan {
                 limits: limits(active, pending),
                 load: Load::Native(load),
-                #[cfg(any(feature = "tui", feature = "web"))]
-                execution_label: match selected {
-                    qwen_source::SelectedBackend::Cuda => "CUDA",
-                    qwen_source::SelectedBackend::Hip => "ROCm",
-                }
-                .into(),
             }));
         }
         #[cfg(not(any(feature = "cuda", feature = "hip")))]
@@ -452,6 +456,7 @@ fn prepare_routes(
         .iter()
         .find(|device| device.class == "host-memory")
         .ok_or_else(|| invalid("selected devices do not include CPU"))?;
+    observe_route("CPU · cpu:0");
     let (ceiling, available) = cpu
         .ceiling
         .zip(cpu.available)
@@ -485,7 +490,5 @@ fn prepare_routes(
     Ok(Some(Plan {
         limits: limits(workers * active, pending),
         load: Load::Declared(request.graph.models, config),
-        #[cfg(any(feature = "tui", feature = "web"))]
-        execution_label: "CPU · cpu:0".into(),
     }))
 }

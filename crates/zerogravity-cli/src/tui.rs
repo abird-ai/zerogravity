@@ -54,7 +54,17 @@ pub(super) fn launch(selection: Option<(&str, &str)>, offline: bool) -> Result<(
         output::reporter().color_enabled(),
         &stop,
     );
-    work::combine(result, work::retire(&runtime))
+    let result = work::combine(result, work::retire(&runtime));
+    output::operational::status(
+        "control",
+        if result.is_ok() {
+            crate::output::operational::Level::Info
+        } else {
+            crate::output::operational::Level::Error
+        },
+        "Interactive host retirement finished",
+    );
+    result
 }
 
 #[cfg(all(test, feature = "acquisition", target_os = "linux"))]
@@ -73,6 +83,12 @@ fn session(
     color: bool,
     stop: &terminal::Stop,
 ) -> Result<()> {
+    output::operational::start(output::operational::Mode::Interactive);
+    output::operational::status(
+        "control",
+        crate::output::operational::Level::Info,
+        "Interactive session started",
+    );
     let control = runtime.control();
     let mut events = control.subscribe();
     let snapshot = control.snapshot()?;
@@ -270,6 +286,15 @@ fn session(
     // Never hold raw terminal state over a synchronous load/retirement join.
     let joined = app.actions.shutdown();
     let observed = app.library.join();
+    output::operational::status(
+        "control",
+        if joined.is_ok() && observed.is_ok() {
+            crate::output::operational::Level::Info
+        } else {
+            crate::output::operational::Level::Error
+        },
+        "Interactive client and owned actions joined",
+    );
     work::combine(
         work::combine(work::combine(result, restored), joined),
         observed,

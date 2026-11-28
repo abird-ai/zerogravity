@@ -2,10 +2,12 @@
 //! OutputStream remain the only execution owners.
 use super::{Document, execution::Execution};
 use super::{
-    progress::{self, Progress, Stage},
+    progress::{self, Observer, Stage},
     settings,
 };
 use crate::resident;
+use zerogravity::runtime::text::ServiceError;
+pub(super) type ActionResult<T> = std::result::Result<T, ServiceError>;
 use std::{
     num::NonZeroUsize,
     sync::{
@@ -100,20 +102,6 @@ impl Request {
             Self::PullPreview(_) => "Pull preview",
         }
     }
-    pub fn correlation(&self) -> String {
-        match self {
-            Self::Invoke { owner, .. } | Self::Unload(owner) => {
-                format!("registration {}", owner.registration)
-            }
-            Self::Stop(generation) => format!("generation {generation}"),
-            Self::Inspect(digest)
-            | Self::Verify(digest)
-            | Self::Reclaim { digest, .. }
-            | Self::Alias { digest, .. } => format!("sha256:{digest}"),
-            Self::Settings(_) => "configuration".into(),
-            _ => "local".into(),
-        }
-    }
     pub fn generates(&self) -> bool {
         matches!(
             self,
@@ -178,7 +166,7 @@ fn resolve_request(
     document: &Document,
     source: &str,
     execution: Execution,
-) -> Result<(
+) -> ActionResult<(
     zerogravity::run_policy::Request,
     zerogravity::pipelines::ServeDoc,
 )> {
@@ -196,20 +184,21 @@ fn resolve_request(
         } else {
             resident::route(None, source)
         };
-        vec![route.map_err(|e| e.into_core())?]
+        vec![route?]
     };
     resolve_serving(
         document.read()?,
         execution.overrides(),
         models,
-        &std::env::current_dir()?,
+        &std::env::current_dir().map_err(Error::from)?,
     )
+    .map_err(ServiceError::inference)
 }
 
 /// Borrow the two independent presentation channels for one owned worker.
 pub(super) struct Observation<'a> {
     pub response: &'a Mutex<Response>,
-    pub progress: &'a Mutex<Progress>,
+    pub progress: &'a Observer,
 }
 
 pub(super) fn perform(
@@ -223,7 +212,7 @@ pub(super) fn perform(
         response: output,
         progress,
     }: Observation<'_>,
-) -> Result<Completed> {
+) -> ActionResult<Completed> {
     if let Request::Settings(action) = request {
         if cancel.load(Ordering::Acquire) {
             return Ok(Completed::Message("Cancelled before starting".into()));
@@ -272,7 +261,8 @@ pub(super) fn perform(
             cancel,
             browser,
             progress,
-        ),
+        )
+        .map_err(ServiceError::inference),
         Request::Verify(digest) => cache_action(
             control,
             CacheAction::Verify,
@@ -280,7 +270,8 @@ pub(super) fn perform(
             cancel,
             browser,
             progress,
-        ),
+        )
+        .map_err(ServiceError::inference),
         Request::Reclaim { digest, apply } => cache_action(
             control,
             CacheAction::Reclaim(apply),
@@ -288,7 +279,8 @@ pub(super) fn perform(
             cancel,
             browser,
             progress,
-        ),
+        )
+        .map_err(ServiceError::inference),
         Request::Alias { digest, name } => cache_action(
             control,
             CacheAction::Alias(name),
@@ -296,7 +288,8 @@ pub(super) fn perform(
             cancel,
             browser,
             progress,
-        ),
+        )
+        .map_err(ServiceError::inference),
         other => {
             execute(runtime, document, other, cancel, output, progress).map(Completed::Message)
         }
@@ -309,8 +302,8 @@ fn execute(
     request: Request,
     cancel: &Arc<AtomicBool>,
     output: &Mutex<Response>,
-    progress: &Mutex<Progress>,
-) -> Result<String> {
+    progress: &Observer,
+) -> ActionResult<String> {
     if cancel.load(Ordering::Acquire) {
         return Ok("Cancelled before starting".into());
     }
@@ -334,8 +327,8 @@ fn execute(
                     pull: false,
                     cancel: Arc::clone(cancel),
                 },
-            )
-            .map_err(|error| error.into_core())?;
+                &|route| progress::update(progress, |p| p.resolved = Some(route.to_owned())),
+            )?;
             if plan.is_some() {
                 Ok(format!(
                     "Cold source/device policy accepted for {device}.\nMetadata and budget observation only; actual load must revalidate and admit."
@@ -347,10 +340,12 @@ fn execute(
         #[cfg(all(feature = "acquisition", target_os = "linux"))]
         Request::Pull(intent) => {
             progress::stage(progress, Stage::Downloading);
-            intent.execute(runtime, cancel, document.offline)
+            intent
+                .execute(runtime, cancel, document.offline)
+                .map_err(ServiceError::inference)
         }
         #[cfg(all(feature = "web", feature = "acquisition", target_os = "linux"))]
-        Request::PullPreview(intent) => intent.confirmation(),
+        Request::PullPreview(intent) => intent.confirmation().map_err(ServiceError::inference),
         Request::Load {
             source,
             prompt,
@@ -359,12 +354,13 @@ fn execute(
             if runtime.status().phase != RuntimePhase::Empty {
                 return Err(Error::State(
                     "Retire the current route set before loading another".into(),
-                ));
+                )
+                .into());
             }
             progress::stage(progress, Stage::Resolving);
             let (request, settings) = resolve_request(document, &source, execution)?;
             if prompt.is_some() && request.graph.models.len() != 1 {
-                return Err(Error::InvalidInput("Quick run requires one source; load the configured route set and select an owner".into()));
+                return Err(Error::InvalidInput("Quick run requires one source; load the configured route set and select an owner".into()).into());
             }
             let alias = request.graph.models.first().map(|model| model.id.clone());
             let Some(plan) = resident::prepare(
@@ -376,19 +372,16 @@ fn execute(
                     pull: false,
                     cancel: Arc::clone(cancel),
                 },
-            )
-            .map_err(|e| e.into_core())?
+                &|route| progress::update(progress, |p| p.resolved = Some(route.to_owned())),
+            )?
             else {
                 return Ok("Cancelled before model load".into());
             };
             if cancel.load(Ordering::Acquire) {
                 return Ok("Cancelled before model load".into());
             }
-            progress::update(progress, |p| {
-                p.stage = Stage::Loading;
-                p.resolved = Some(plan.execution_label().to_owned());
-            });
-            plan.load(control).map_err(|e| e.into_core())?;
+            progress::stage(progress, Stage::Loading);
+            plan.load(control)?;
             if let Some(prompt) = prompt {
                 if cancel.load(Ordering::Acquire) {
                     return Ok("Load completed; run skipped after cancellation request".into());
@@ -438,7 +431,8 @@ fn execute(
                 if runtime.status().loaded_owners == 0 {
                     return Err(Error::State(
                         "Load a model before starting the inference API".into(),
-                    ));
+                    )
+                    .into());
                 }
                 let settings = document
                     .read()?
@@ -453,8 +447,7 @@ fn execute(
                     address,
                     settings.enable_per_request_metrics.unwrap_or(false),
                     settings.enable_error_details.unwrap_or(false),
-                )
-                .map_err(|e| e.into_core())?;
+                )?;
                 if cancel.load(Ordering::Acquire) {
                     return Ok("Cancelled before listener start".into());
                 }
@@ -464,9 +457,10 @@ fn execute(
             #[cfg(not(feature = "serve"))]
             {
                 let _ = address;
-                Err(Error::Unsupported(
-                    "Inference API requires the optional serve feature".into(),
-                ))
+                Err(
+                    Error::Unsupported("Inference API requires the optional serve feature".into())
+                        .into(),
+                )
             }
         }
         Request::Stop(generation) => {
@@ -478,9 +472,10 @@ fn execute(
             #[cfg(not(feature = "serve"))]
             {
                 let _ = generation;
-                Err(Error::Unsupported(
-                    "Inference API requires the optional serve feature".into(),
-                ))
+                Err(
+                    Error::Unsupported("Inference API requires the optional serve feature".into())
+                        .into(),
+                )
             }
         }
     }
@@ -498,7 +493,7 @@ fn cache_action(
     digest: &str,
     cancel: &AtomicBool,
     browser: bool,
-    progress: &Mutex<Progress>,
+    progress: &Observer,
 ) -> Result<Completed> {
     #[cfg(all(feature = "cache", target_os = "linux"))]
     {
@@ -637,7 +632,7 @@ fn invoke(
     prompt: Prompt,
     cancel: &AtomicBool,
     output: &Mutex<Response>,
-) -> Result<String> {
+) -> ActionResult<String> {
     if cancel.load(Ordering::Acquire) {
         return Ok("Cancelled before request admission".into());
     }
@@ -650,8 +645,7 @@ fn invoke(
     controls.chat = prompt.chat;
     let mut stream = runtime
         .control()
-        .invoke(owner.reference(), &prompt.text, controls)
-        .map_err(|e| e.into_core())?;
+        .invoke(owner.reference(), &prompt.text, controls)?;
     {
         let mut response = output
             .lock()
@@ -664,10 +658,7 @@ fn invoke(
             stream.cancel()?;
             return Ok("Cancellation requested; output stream closed".into());
         }
-        match stream
-            .poll_next(Duration::from_millis(100))
-            .map_err(|e| e.into_core())?
-        {
+        match stream.poll_next(Duration::from_millis(100))? {
             OutputPoll::Pending => {}
             OutputPoll::Event(
                 ResponseEvent::Text(text) | ResponseEvent::TokenText { text, .. },
@@ -700,11 +691,11 @@ fn invoke(
                     "{completion_tokens} output tokens · {prompt_tokens} prompt tokens · {finish_reason}"
                 ));
             }
-            OutputPoll::Event(ResponseEvent::Error(error)) => return Err(error.into_core()),
+            OutputPoll::Event(ResponseEvent::Error(error)) => return Err(error),
             OutputPoll::Finished => {
-                return Err(Error::State(
-                    "Text stream ended without a terminal result".into(),
-                ));
+                return Err(
+                    Error::State("Text stream ended without a terminal result".into()).into(),
+                );
             }
         }
     }

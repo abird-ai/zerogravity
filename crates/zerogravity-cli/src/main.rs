@@ -341,7 +341,9 @@ fn main() -> ExitCode {
     let args = args.collect::<Vec<_>>();
     let (options, command) = args::invocation(&args);
     output::install(options);
-    run(command)
+    let result = run(command);
+    output::operational::finish();
+    result
 }
 
 #[cfg(test)]

@@ -65,6 +65,7 @@ pub enum ControlEventKind {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub struct ControlEvent {
     pub sequence: u64,
+    pub timestamp_unix_ms: u64,
     #[serde(flatten)]
     pub kind: ControlEventKind,
 }
@@ -104,7 +105,16 @@ impl Events {
         if log.events.len() == CAPACITY {
             log.events.pop_front();
         }
-        log.events.push_back(ControlEvent { sequence, kind });
+        let timestamp_unix_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis()
+            .min(u64::MAX as u128) as u64;
+        log.events.push_back(ControlEvent {
+            sequence,
+            timestamp_unix_ms,
+            kind,
+        });
         self.changed.notify_all();
     }
 
@@ -165,12 +175,9 @@ mod tests {
                 registration_id: i as u64,
             };
             events.publish(kind);
-            assert_eq!(
-                fast.poll(Duration::ZERO),
-                ControlPoll::Event(ControlEvent {
-                    sequence: i as u64,
-                    kind
-                })
+            assert!(
+                matches!(fast.poll(Duration::ZERO), ControlPoll::Event(event)
+                if event.sequence == i as u64 && event.kind == kind && event.timestamp_unix_ms > 0)
             );
         }
         assert_eq!(

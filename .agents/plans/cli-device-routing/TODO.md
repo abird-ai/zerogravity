@@ -550,17 +550,21 @@ Design: [TUI polish follow-up](../cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md).
   requested/resolved backend, runtime registration/device, last
   observed native result; distinguish missing weight role.
   Safe Web action wire carries stage/counters, not native error text.
-- [ ] C next: proper typed causal error chains and local/public
-  diagnostic boundaries, timestamped correlated stage/progress/error
-  logs, actual L5 reproduction. Required durable mode-aware logging:
-  one-off stderr/stdout separation, private XDG live session files
-  for interactive hosts with bounded retention, foreground/service
-  stderr suitable for journald; explicit destination override.
-  One shared event contract, no dependence on the currently open UI,
-  no credentials/output contents, no implicit service enablement.
-- [ ] D: source-aware runnable/refusal guidance and action consistency
-  using original planner; no verification prerequisite or fallback
-  inferred from inventory. Return to measured P3D after UX checkpoint.
+- [x] C: typed action failure propagation and local/public boundaries;
+  timestamped mode-aware operational sink, real verification progress,
+  bounded private retention, foreground stderr/journal, explicit
+  file/format/level. Actual L5 source/runtime/capacity reproduction,
+  configured CUDA original 0.8B real generation and retirement passed.
+  Focused process, Rust, strict feature-specific Clippy and Web gates
+  passed; assembled process regression wired and passed.
+  Full assembled gate remains open. See current handoff for exact scope.
+- [ ] D next: source-aware runnable/refusal guidance and action
+  consistency using original planner; distinguish absent payloads from
+  unsupported original family, compiled backend from usable runtime,
+  actual capacity refusal from missing SDK. Durable Nix/default launch
+  environment, not run-local store-path launcher; no implicit acquisition,
+  deployment, verification prerequisite or inventory-derived fallback.
+  Close assembled gate and return to measured P3D.
 
 ### Other deferred work
 

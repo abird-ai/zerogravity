@@ -141,17 +141,18 @@ export function Logs(props) {
   const rows = createMemo(() => (data()?.entries ?? []).filter(row =>
     (!paused() || row.sequence.length < paused().length || (row.sequence.length === paused().length && row.sequence < paused())) &&
     (!level() || row.level === level()) && (!component() || row.component === component()) &&
-    [row.message,row.correlation,row.component,row.level,row.sequence].join(" ").toLowerCase().includes(search().toLowerCase())));
+    [row.message,row.correlation,row.component,row.level,row.sequence,row.stage].join(" ").toLowerCase().includes(search().toLowerCase())));
   return <section class="panel">
     <div class="panel-title"><h2>Operational logs</h2><button disabled={!data()} onClick={()=>setPaused(paused() ? null : data().revision)}>{paused() ? "Follow logs" : "Pause logs"}</button></div>
-    <p class="note">Bounded recent host observations. No model output, credentials or persistent log history. {paused() ? "Paused view; collection continues." : "Following."} {data()?.dropped ?? "0"} older rows dropped.</p>
+    <p class="note">Recent safe host observations. Full operational history remains in the local log destination. {paused() ? "Paused view; collection continues." : "Following."} {data()?.dropped ?? "0"} older rows dropped.</p>
     <Notice inventory={props.inventory}/>
+    <Show when={data()?.sink_available === false}><p class="note">Local log destination unavailable; inspect host diagnostics.</p></Show>
     <div class="form-actions">
       <input aria-label="Search logs" placeholder="Search logs" value={search()} onInput={event=>setSearch(event.currentTarget.value)}/>
       <select aria-label="Log level" value={level()} onChange={event=>setLevel(event.currentTarget.value)}><option value="">All levels</option><For each={["INFO","WARN","ERROR"]}>{name=><option>{name}</option>}</For></select>
       <select aria-label="Log component" value={component()} onChange={event=>setComponent(event.currentTarget.value)}><option value="">All components</option><For each={["action","models","requests","serve","cache","download","control"]}>{name=><option>{name}</option>}</For></select>
     </div>
-    <div class="log-rows"><For each={rows()}>{row=><div class="log-row"><span class="mono subtle">#{row.sequence}</span><span class="mono">{row.level}</span><span>{row.component}</span><span class="wrap">{row.message}<small class="subtle"> · {row.correlation}</small><Show when={row.details}>{detail=><details><summary class="subtle">Details</summary><pre class="mono wrap">{JSON.stringify(detail(),null,2)}</pre></details>}</Show></span></div>}</For></div>
+    <div class="log-rows"><For each={rows()}>{row=><div class="log-row"><span class="mono subtle" title={new Date(row.timestamp_unix_ms).toISOString()}>{new Date(row.timestamp_unix_ms).toISOString().slice(11,23)}Z</span><span class="mono">{row.level}</span><span>{row.component}</span><span class="wrap">{row.message}<small class="subtle"> · {row.correlation}{row.stage ? ` · ${row.stage}` : ""}{row.elapsed_ms == null ? "" : ` · ${row.elapsed_ms} ms`}</small><Show when={row.details}>{detail=><details><summary class="subtle">Details</summary><pre class="mono wrap">{JSON.stringify(detail(),null,2)}</pre></details>}</Show></span></div>}</For></div>
     <Show when={!rows().length}><p class="subtle">{data() ? "No matching operational observations." : "Waiting for operational observations…"}</p></Show>
   </section>;
 }

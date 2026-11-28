@@ -197,6 +197,12 @@ pub(super) fn run(args: &[String], selection: Option<(&str, &str)>, offline: boo
     let document = Selection::new(Document::new(selection, offline)?);
     let runtime = control_host::runtime()?;
     let stop = Stop::install()?;
+    crate::output::operational::start(crate::output::operational::Mode::Web);
+    crate::output::operational::status(
+        "control",
+        crate::output::operational::Level::Info,
+        "Web control host started",
+    );
     let actions = Actions::default();
     let result = (|| {
         let control = runtime.control();
@@ -224,10 +230,20 @@ pub(super) fn run(args: &[String], selection: Option<(&str, &str)>, offline: boo
         }
         host.close()
     })();
-    control_host::combine(
+    let result = control_host::combine(
         control_host::combine(result, actions.shutdown()),
         control_host::retire(&runtime),
-    )
+    );
+    crate::output::operational::status(
+        "control",
+        if result.is_ok() {
+            crate::output::operational::Level::Info
+        } else {
+            crate::output::operational::Level::Error
+        },
+        "Web control host retired",
+    );
+    result
 }
 
 #[cfg(test)]

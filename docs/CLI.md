@@ -194,10 +194,57 @@ selected value in the original YAML form. Enter retains direct YAML
 value editing; raw document repair remains available. Logs Level and
 Component choices are in the pane menu (Alt+l/f, uppercase Alt+L/F
 retain cycling). Click a log row or select it with arrows; Enter,
-its ellipsis or right-click opens the exact safe operational entry.
+its ellipsis or right-click opens the exact operational entry (bounded local
+causes are native-only; browser details use the safe projection).
 Selecting/scrolling off tail pauses the bounded view; End resumes.
 Filtering is client-local and does not trigger any
 provider acquisition or runtime action.
+
+### Operational logs
+
+One-off commands keep their primary output on stdout and diagnostics on
+stderr; they do not create a session log by default. Interactive TUI and
+standalone Web control hosts write private JSONL session logs under
+`$XDG_STATE_HOME/abird/zerogravity/logs` (default
+`$HOME/.local/state/abird/zerogravity/logs`). The native Logs view shows
+its current destination and any sink failure. A standalone Web host
+reports the destination on stderr. Attached Web clients share the host's
+log owner, not another writer or runtime.
+
+Each session owns a separate locked directory and four rotating 4 MiB
+segments. New sessions prune recognized older closed sessions beyond
+16; live sessions and unrelated files are preserved. Files are flushed
+for live readers and synchronized at rotation and joined shutdown.
+Records include UTC timestamps, process-local sequence, elapsed time,
+component, action/source correlation, real progress and typed failure
+details where available. The 128-entry UI ring is a bounded recent view,
+not a history browser. Inspect older retained JSONL segments directly.
+A transient event-stream gap is reported rather than concealed. No log
+can reconstruct errors from older sessions that never persisted them.
+
+Foreground `serve` emits continuous plain timestamped stderr, including
+request failures even with no UI attached. The NixOS service directs
+stdout/stderr to journald; use `journalctl -u zerogravity -f` for live
+service diagnostics. Service enablement and journal retention remain
+operator-owned.
+
+Optional environment overrides:
+
+- `ZEROGRAVITY_LOG_FILE=/absolute/private/path` selects an explicit
+  append-only file (one concurrent writer, operator-managed retention).
+  `stderr` selects the stream; redirect it away from the TUI terminal
+  before use. The parent directory must already exist for explicit files.
+- `ZEROGRAVITY_LOG_FORMAT=jsonl|text` chooses an explicit file or stream
+  format. Automatic interactive session files always use JSONL.
+- `ZEROGRAVITY_LOG_LEVEL=info|warn|error` sets the destination threshold
+  (default `info`); the live view can filter its own bounded ring.
+
+Local causes are bounded and sanitized; generation/download/settings
+failures that could contain private input use safe typed details instead.
+Prompts, generated responses and credentials are not event payloads.
+The Web/HTTP projection never exposes the local cause chain or session
+file path. These logs are operational observations, not an exhaustive
+audit trail. Unknown load totals remain unknown.
 
 Text forms and the raw editor accept click-to-place caret, drag selection,
 Shift+arrow selection, bounded paste/replacement, PageUp/PageDown and
