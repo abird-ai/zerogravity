@@ -62,6 +62,13 @@ Contracts: [P00–P23 roadmap](../IMPLEMENTATION_ROADMAP.md),
   Logs X2 target/x2-hip-reuse-{physical,large}.log. No simultaneous
   multi-model execution, extra-device bootstrap or new numerical claim.
   Preserve fixed-budget SDK/qualification paths and source identity.
+- [ ] Finish assembled workspace gate for GPU lifetime reuse. On L5,
+  formatting/architecture, all GPU feature-boundary compilation and
+  original qualification/serving tests (26 passed, 0 failed, 2 ignored),
+  dependency isolation and CPU Clippy passed; focused HIP budget and
+  arbiter tests 31 passed, CUDA budget fit 1 passed. Full gate stopped
+  during CPU workspace test compilation at the turn checkpoint; remaining
+  CPU and subsequent stages outstanding. See target/gpu-reuse-full-gate.log.
 - [ ] Populate missing optional original-HIP loaded-model snapshot
   provenance in the owner diagnostics: actual Web capabilities.snapshot
   is null for these three exact cached loads; original action correlation,
