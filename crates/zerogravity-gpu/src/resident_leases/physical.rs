@@ -701,7 +701,8 @@ impl ResidentPhysical {
         })?;
         // Bootstrap has completed, but no model allocation was submitted.
         // A real fit refusal releases unused admission, not a fenced context.
-        let effective = live_budget.fit_available(free_bytes as u64)?;
+        let effective =
+            Self::live_cuda_provider_cap(provider_cap, live_budget.device_bytes(), free_bytes)?;
         budget.narrow_unused_provider(effective as u64)?;
         let mut physical = Self::from_budget(device, client, provider, budget)?;
         physical.pinned_cuda_queue = Some(Arc::new(pinned));

@@ -479,3 +479,23 @@ impl<'a> ModelCatalog<'a> {
         self.runtime.engine.models().unload(model)
     }
 }
+
+#[cfg(all(test, feature = "model-qwen35", feature = "cuda", target_os = "linux"))]
+mod cuda_budget_tests {
+    use super::*;
+
+    #[test]
+    fn original_cuda_capacity_fits_live_memory_without_repricing_context() {
+        let budget = ModelLoadRequest::qwen_cuda_budget().unwrap();
+        let available = budget.device_bytes() - 33 * MIB as u64;
+        let fitted = budget.fit_available(available).unwrap();
+        assert_eq!(fitted, budget.provider_bytes() - 33 * MIB);
+        assert_eq!(budget.device_bytes(), QWEN_CUDA_DEVICE_BYTES);
+        assert_eq!(budget.headroom_bytes(), 512 * MIB as u64);
+        assert!(budget.fit_available(budget.headroom_bytes()).is_err());
+        assert_eq!(
+            budget.fit_available(u64::MAX).unwrap(),
+            budget.provider_bytes()
+        );
+    }
+}
