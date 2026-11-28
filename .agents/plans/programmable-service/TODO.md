@@ -1,7 +1,7 @@
 # Programmable service and execution stack
 
 Base: `6986470e46c1cc5d0ac4601dc9163cf041d73e7b`
-Status: UX-11D prerequisite accepted; preparation complete; PS-F1 implementation reserved for the separately assigned agent.
+Status: UX-11D accepted; PS-F1 prepared for the current provider-discovery handoff; foundation implementation not started.
 Owner: @pvl; root coordinates shared contracts and the queue.
 
 See [service/SDK design](README.md),
@@ -16,7 +16,7 @@ backend-specific work stays in its existing owning plans.
 
 ## Committed
 
-### Programmable stack design and developer README — 28 Nov 2026
+### `d8b55472` — Programmable stack design and developer README
 
 Documentation batch; runtime implementation has not started.
 
@@ -38,6 +38,20 @@ Documentation batch; runtime implementation has not started.
   terminal/Web snapshots; link the portable source-install path while the first
   public binary release remains pending.
 
+### `06ce454f` — UX-11D exit and initial foundation preparation
+
+- [x] Reconcile accepted UX-11D package, physical launch and assembled checks
+  recorded at 683ac065; retain packaging fixes and normal dependency acquisition.
+- [x] Prepare the original host/source/receipt extraction boundaries and leave
+  runtime implementation to the separately assigned foundation owner.
+
+### Provider handoff and PS-F1 preparation — this documentation commit
+
+- [x] Audit the incoming native discovery/configuration boundary, current
+  frontend-reaped operations, original receipts and existing qualification
+  coverage. Record the extraction map and five bounded acceptance scopes in
+  [PS-F1 implementation entry](IMPLEMENTATION_PHASES.md#ps-f1--reusable-service-and-simple-sdk).
+
 ## Uncommitted
 
 ### Documentation and prerequisite
@@ -45,51 +59,32 @@ Documentation batch; runtime implementation has not started.
 - [ ] Retain API-preview labels until the examples' actual public SDK and
   execution capabilities are qualified; remaining package/Web/About metadata
   proposals are separate from the applied README and diagram.
-- [x] Reconcile UX-11D source and acceptance: 683ac065 records actual
-  native package/physical L5 launch and full assembled gate 2620/0/112
-  (327 suites). Packaging fixes 28573dc0/3ec574ab and normal acquisition
-  policy are retained. No repeat of accepted gates needed for preparation.
-  Plan publication d8b55472 is documentation-only.
 
-**PS-F1 entry — prepared, not implemented (28 Nov):**
+**PS-F1 entry — prepared; provider handoff pending (28 Nov):**
 
-- Start with current AGENTS.md, CURRENT_HANDOFF, this checklist, the
-  service design §§2–4, 12–14 and IMPLEMENTATION_PHASES §3. Read actual
-  callers rather than treating the design's target signatures as live APIs.
-- Move the shared cold policy, not only the UI host: CLI
-  `resident.rs`, `run_cli/source.rs`, `run_cli/qwen_source.rs`,
-  `config_cli.rs`, `serve/canonical.rs` and the explicit acquisition
-  paths in `pull.rs` / `pull_native.rs` are the starting consumers.
-  Preserve structural eligibility, exact original-source resolution,
-  explicit acquisition consent, backend preflight and final original
-  admission. Terminal prompts, formatting, signals and environment
-  credential selection remain at the appropriate adapter boundary.
-- `control_host.rs` and `control_host/{actions,work,progress,settings}.rs`
-  own the current shared lifecycle; terminal/log ring and Web projections
-  are presentation, not canonical SDK results. The present slot is reaped
-  by clients. Service must own operation completion and joined shutdown
-  independently of any frontend. Reuse Runtime/ControlPlane, registered
-  model identity and original listener generation; no second scheduler.
-- The engine already implements wakeable bounded receive in
-  `router/event_channel.rs::Receiver::poll_recv`. The registered
-  `OutputStream` interface is currently blocking/bounded-polling.
-  Extend that same receipt/transport for native async waits rather than
-  introduce another token channel or per-call executor. Preserve original
-  terminal output, usage, error, cancellation and backpressure semantics.
-- The existing cold atomic route-set transaction is the F1 consumer.
-  Sequential live registration/activation stays F3; no capability claim
-  from a new wrapper alone. Qualify actual embedded load/run/stream/serve
-  and joined shutdown plus migrated frontend behavior. Keep ordinary
-  dependency acquisition enabled under AGENTS.md; no new pins or redundant
-  historical acceptance cycles.
+- [ ] Receive the provider owner's completed supported slice and qualification
+  handoff before taking its overlapping source/configuration/control/UI files.
+  Reconcile actual accepted source, including page/cursor semantics and documented
+  search limits; reuse the owner's checks without a fresh provider/backend
+  matrix or a historical source freeze.
 
-The user asked this owner to stop at preparation. All PS-F1 implementation
-items below remain open; no service/SDK/backend source changed in this pass.
+Start with current AGENTS.md, CURRENT_HANDOFF, this checklist, service design
+§§2–4 and 12–14, and the linked PS-F1 entry. The provider design and acceptance
+remain in [model acquisition](../model-acquisition/TODO.md) and
+[CLI source discovery](../cli-ux/NEXT_ITERATION_CLI_UX_AND_MODEL_LIFECYCLE.md).
+Source-provider definitions already live in the SDK facade. Reuse them and
+move their orchestration into Service; retain execution-provider contracts
+in their original layer. No separate provider registry or UI-private SDK.
+
+This preparation changes plans only. All PS-F1 implementation items remain
+open; the next implementation unit is embedded Service/Client plus the
+migrated frontends and actual load/run/stream/serve/shutdown acceptance.
 
 ### PS-F1 — Reusable Service and simple SDK
 
-- [ ] Extract host plus shared configuration, source selection, acquisition
-  policy and resident preparation together; keep presentation/process glue local.
+- [ ] Extract host plus shared configuration, accepted source discovery,
+  source selection, explicit acquisition and resident preparation together;
+  reuse existing discovery/configuration/cache authorities and keep UI glue local.
 - [ ] Give Service independent management supervision/reaping, operational
   event/sink ownership and reliable joined shutdown.
 - [ ] Provide Service owner and cloneable direct Client with exact source,

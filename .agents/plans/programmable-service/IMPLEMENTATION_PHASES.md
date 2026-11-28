@@ -1,14 +1,14 @@
 Author: Project owner
 Co-authors: GPT-6 Astra Pro; GPT-6.1 Sol (service, composition and execution review)
 Owner: @pvl
-Status: Scheduled after UX-11D acceptance; planning only, implementation not started
+Status: UX-11D accepted; provider-first handoff pending; foundation preparation complete, implementation not started
 Decision: 28 November 2026 (Asia/Singapore)
 
 # Programmable stack — foundations and parallel implementation
 
 ## 1. Delivery decision
 
-Finish the separately owned UX-11D implementation and required qualification first. Then complete the shared foundations below. After their bounded exit, ROCm parity, CUDA parity, MCP/native attachment and capability development can proceed independently through the same SDK and execution contracts.
+UX-11D acceptance is complete. Let the current provider-first discovery owner finish and hand off its supported implementation, then complete the shared foundations below. This handoff serializes ownership of the overlapping source files. After the foundation exit, ROCm parity, CUDA parity, MCP/native attachment and capability development can proceed independently through the same SDK and execution contracts.
 
 This supersedes the earlier serial sequence in the [service design](README.md) and the former requirement to finish ROCm parity before beginning the CUDA campaign. It does not change numerical acceptance, source authorization, device holds or physical lifetime rules. Accepted backend results and useful dormant primitives remain valid within their original scopes.
 
@@ -20,21 +20,20 @@ All interfaces in these documents remain target APIs until implemented and accep
 
 ```mermaid
 flowchart TB
-    U["UX-11D acceptance"] --> F1["F1: reusable service and SDK"]
+    U["UX-11D accepted"] --> D["Provider discovery handoff"]
+    D --> F1["F1: reusable service and SDK"]
     F1 --> F2["F2: programmable native contracts"]
     F2 --> F3["F3: live ownership and foundation exit"]
     F3 --> R["ROCm parity"]
     F3 --> C["CUDA parity"]
     F3 --> M["MCP and attachment"]
-    F3 --> A["Model authoring"]
     F3 --> E["Profiles and baseline experiments"]
     F3 --> K["Execution mapping and transforms"]
-    A -. new definitions .-> K
     E --> P["Qualified adaptive policies"]
     K -. additional candidates .-> P
 ```
 
-Task DAGs, continuation and isolated extension work can also start after the foundation exit; the diagram shows the main integration relationships. Mapping work can start on existing models. A new-definition mapping needs only its particular model definition. A policy using an already available qualified variant need not wait for new mappings.
+Task DAGs, model authoring, continuation and isolated extension work can also start after the foundation exit; the diagram shows the main integration relationships. Mapping work can start on existing models. A new-definition mapping needs only its particular model definition. A policy using an already available qualified variant need not wait for new mappings.
 
 ## 2. Put the shared foundations in place once
 
@@ -72,24 +71,51 @@ Initial task/model/mapping drafts can import and freeze existing supported defin
 
 ### PS-F1 — Reusable Service and simple SDK
 
-**Outcome:** an application can own ZeroGravity as a library, and the existing frontends delegate to that same owner.
+**Outcome:** one embedded Service supports the public SDK and existing CLI/TUI/Web through the original Runtime and execution owners.
 
-Move the complete application responsibility: host, shared configuration, source selection, acquisition policy, resident preparation, management supervision and operational events. Preserve original Runtime, serving and execution ownership. Terminal prompts, presentation, process signals and destination selection stay in the CLI.
+**Entry:** UX-11D is accepted. Complete the current provider-first discovery handoff before taking ownership of its overlapping configuration/control/UI files. Inspect the accepted implementation and its existing qualification; reported commit IDs identify work, not a requirement to restore historical source. Broader provider features remain in their owning plan.
 
-Service supervision must reap operations without a TUI/Web polling loop. A blocking caller and async caller use the same operations and original output stream; async waits must not block their executor on the synchronous stream. The blocking facade uses a long-lived driver.
+#### Incoming source boundary
 
-Give Service its own configurable operational sinks. Embedding does not initialize process-global CLI logging, print unsolicited terminal output, install signal handlers or start a socket/UI.
+Reuse the native `zerogravity::discovery` module introduced by the provider work. Its named `Source`/`Kind`, entries, pages, curated/local browsing, remote browsing and repository inspection are discovery observations. A selected repository or successful pull does not grant execution eligibility. Source providers are distinct from core `RegionExecutionProvider`/`PreparedExecutable` contracts for executable lowering; the current source enum/functions do not require a new plugin trait or registry.
 
-Expose the simple target surface: Service::embedded, service.client, pull, load, model.run/stream, serve, capabilities, inspect and joined shutdown. Preserve advanced Runtime/provider APIs. Keep acquisition explicit; load does not silently download a missing source.
+Keep three operations distinct: discover/select → explicitly resolve and pull → prepare/load through the original source-aware planner. Normal selection can resolve a floating reference to its immutable source identity; users need not enter commits manually. Named sources, direct URLs/locators and local paths converge on those same existing authorities.
 
-**Working exit:**
+| Current boundary | Service responsibility | Retained adapter responsibility |
+| --- | --- | --- |
+| SDK `discovery.rs`, `discovery/remote.rs`; `configuration.rs` / `configuration/file.rs`; `pipelines::Document.sources` | Reuse discovery and original optimistic atomic configuration publication. Preserve observed source list/document checks and source-scoped results. | Navigation, focused search, source forms and rendering. |
+| CLI `control_host.rs` and `control_host/{actions,work,progress,settings}.rs` | Own effective configuration, one Runtime, operation supervision, typed outcomes and joined retirement. Include `Browse`, `Repository`, `SaveSources`, `Pull` and `Load` orchestration. | Terminal preferences, Web projection/authentication, presentation progress and bounded display copies. |
+| CLI `resident.rs`, `run_cli/{source,qwen_source}.rs`, `config_cli.rs`, `serve/canonical.rs` | Share cold policy, exact source resolution, eligibility, backend preflight and resident preparation. | Argv grammar, prompts/offers, process signals and output formatting. |
+| CLI `pull.rs` / `pull_native.rs`; SDK `artifacts/pull.rs` | Reuse `HubSelection`, `HubPull`, `PreparedHubPull`, original receipts, cache publication and transfer controls. Expose owned typed acquisition outcomes before formatting. | Consent UI and progress destinations; credentials stay in the existing credential/transport boundary. |
+| Engine `router/{event_channel,dispatch}.rs` and `output.rs` | Extend original charged receipt waiting for native async use; retain exact output, usage, errors, cancellation and backpressure. | Rendering or forwarding events. |
+| CLI `output/operational.rs` and log views | Own configurable operational event/sink lifetimes without inheriting the process-global CLI singleton. | Select terminal/file destinations and restore terminal state. |
 
-- Already authorized real source → embedded SDK load → run/stream → serve the same registration → joined shutdown.
-- CLI/TUI/Web use the extracted service behavior, including original errors, effective settings, cancellation and cleanup.
-- Operations finish with no frontend attached; a slow/closed view cannot become their supervisor.
-- SDK output and usage come from original committed outcomes. Existing bounded presentation copies cannot become canonical SDK results.
+The provider handoff should state the implemented subset and outstanding limits. Current incoming code covers HF/GitHub/local kinds; custom endpoints, new credential stores, every release/object adapter and full hub enumeration are independent additions. Preserve native page/cursor semantics and documented search limits through Service; a bounded response is not whole-catalog enumeration.
 
-The current cold route-set path can remain the first implementation step. General sequential loading is completed in PS-F3 before the foundation block is accepted. Do not document two successful load calls as implemented before that transaction exists.
+#### One implementation unit
+
+1. Put reusable Service/Client modules in the existing SDK facade and extract the complete cold discovery/acquisition/preparation flow. Preserve advanced Runtime/provider interfaces and explicit acquisition policy. The service does not depend on CLI types, TTY behavior or a Web host.
+2. Give Service autonomous management supervision. Preserve the bounded single management action slot initially; no UI polling or result query may be required to reap work. This slot does not limit ordinary SDK run/stream concurrency: inference admission continues through the original scheduler. Retain typed discovery pages, repository observations, pull receipts and terminal errors independently of the native view or Web `latest` result. Leave durable command/restart storage in F2.
+3. Implement the supported `pull`, `load`, `model.run/stream`, `serve`, capability/inspection and joined-shutdown surface. Native async waits use the existing receiver's `poll_recv`; the blocking facade shares a long-lived driver. Neither creates a second token channel or per-call runtime. Complete output/usage comes from original terminal events, including results larger than the current 64 KiB UI display limit.
+4. Migrate CLI/TUI/Web dispatch to the same Service. Keep model registration and listener generation checks, safe public errors and full native causes. Source edits retain stale-document checks; restricted clients cannot grant new local filesystem roots. Removing a discovery source changes its configuration, while acquired snapshots, aliases, transfers, model owners and user files retain their original lifetimes.
+
+Embedding installs no process-global logging, signals, sockets or UI implicitly. Client/view disconnection does not shut down the owner. Owner shutdown stops new management submissions, cancels and joins work outside shared locks, closes owned listeners, retires the original Runtime and finishes sinks, preserving primary and cleanup errors. Terminal restoration remains adapter work before potentially long joins.
+
+Cancellation requested, observed terminal cancellation and physical retirement remain distinct. The current UI message after `stream.cancel()` cannot become a successful completed SDK receipt. Remote discovery uses bounded cooperative HTTP cancellation; shutdown joins that worker instead of discarding it.
+
+#### Working exit
+
+| Acceptance | Reuse | Required F1 evidence |
+| --- | --- | --- |
+| Embedded model lifecycle | `crates/zerogravity/tests/fabric_sdk.rs` exact control-client lifecycle; CLI `tests/run_unified.rs` serving harness | One already authorized real source: public Service load → run/stream → actual HTTP inference on the same registration → joined shutdown. Compare text, usage and finish; `/v1/models` alone does not qualify serving. |
+| No-UI operation completion | Shared action-slot/cancellation tests and original download outcomes | Drop observer subscriptions to Service-owned management work and make no polling/query calls while gated work completes. Service joins and records its typed outcome; a subsequent operation starts without poll-triggered reaping. Preserve cancellation-on-drop where it is the existing request-scoped inference stream contract. Exercise shutdown/cancel races in this scope. |
+| Async and blocking behavior | Engine `event_channel.rs` wakeups; dispatch/backpressure/lifecycle tests | On a single-thread executor, pending receipt waits yield, unrelated work advances, publication wakes the pending consumer without lost wakeups, and cancellation/disconnect wake correctly. Blocking and async consumers preserve the same result semantics. |
+| Source discovery and exact reuse | Incoming provider acceptance; `fabric_artifacts.rs`, artifact acquisition fixtures and `cache_prepare.rs` | One controlled valid model fixture through discovery → explicit pull → exact cached load. Reuse has no new transfer; missing/ambiguous/offline/stale choices refuse appropriately. Existing LICENSE-byte pulls qualify acquisition mechanics, not model loading. |
+| Presentation-neutral embedding | Minimal SDK feature check, CLI output/privacy/logging and PTY/Web tests | Service/Client compile without TUI/Web; embedding has no unsolicited I/O/global hooks. Long UTF-8 results retain complete native output/usage while UI copies stay bounded. Run affected frontend/logging regression after migration. |
+
+Fold typed errors, exact cancellation identities, stale registrations/configuration and source-removal preservation into these scopes. Reuse unchanged provider/backend evidence; changed physical lifetimes retain their required real-source canary. Run the assembled `scripts/check.sh` gate once the F1 unit is complete, under current AGENTS.md acquisition/isolation rules. Preparation itself needs no build, GPU run or fresh historical acceptance cycle.
+
+The cold atomic route-set transaction is the F1 consumer. Sequential live registration and activation remain F3; durable operations remain F2. Full MCP, daemon/remote attachment, new model families and backend parity do not gate this F1 exit.
 
 ### PS-F2 — Programmable contracts, records and observation
 

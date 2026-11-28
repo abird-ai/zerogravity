@@ -1,7 +1,7 @@
 Author: Project owner
 Co-authors: GPT-6 Astra Pro; GPT-6.1 Sol (independent architecture, SDK and MCP review)
 Owner: @pvl
-Status: Accepted design direction; foundation implementation queued after UX-11D acceptance
+Status: Accepted design direction; UX-11D accepted; foundation implementation follows the current provider-discovery handoff
 Date: 28 November 2026 (Asia/Singapore)
 
 # ZeroGravity — programmable service and execution stack
