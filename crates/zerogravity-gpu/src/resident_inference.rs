@@ -885,8 +885,17 @@ impl ResidentModel {
             ));
         }
 
+        // A discovery-side shrink does not become additional context headroom.
+        // Preserve the stable ledger ceiling while fitting the real model and
+        // original compiler allowance to the latest actor observation.
+        let live_budget = zerogravity_core::provider::ProviderMemoryBudget::new(
+            provider_cap,
+            (provider_cap as u64)
+                .checked_add(crate::physical_service::CUDA_COMPILER_DEVICE_BYTES)
+                .ok_or_else(|| Error::Limit("CUDA live envelope overflow".into()))?,
+        )?;
         let physical =
-            ResidentPhysical::new_pinned_cuda_observed(device, provider_cap, device_cap, observed)?;
+            ResidentPhysical::new_pinned_cuda_fitted(device, device_cap, observed, live_budget)?;
         let effective_cap = physical.available_model_capacity()?;
         let (admission, inventory) = if effective_cap == provider_cap {
             (configured_admission, configured_inventory)

@@ -270,6 +270,33 @@ pub enum ModelLoadRequest {
 }
 
 impl ModelLoadRequest {
+    /// The qualified physical ceiling is stable across model lifetimes.
+    /// The provider portion can be narrowed by actual available memory.
+    #[cfg(all(feature = "model-qwen35", feature = "cuda", target_os = "linux"))]
+    pub fn qwen_cuda_budget() -> crate::Result<crate::provider::ProviderMemoryBudget> {
+        crate::provider::ProviderMemoryBudget::new(QWEN_CUDA_PROVIDER_BYTES, QWEN_CUDA_DEVICE_BYTES)
+    }
+
+    /// Narrow only model capacity; preserve the original device registration
+    /// and its separately admitted context workspace.
+    #[cfg(all(feature = "model-qwen35", feature = "cuda", target_os = "linux"))]
+    pub fn fit_cuda_available(mut self, available: u64) -> crate::Result<Self> {
+        let fitted = Self::qwen_cuda_budget()?.fit_available(available)?;
+        match &mut self {
+            Self::QwenCuda { provider_bytes, .. }
+            | Self::QwenCudaWithStatePolicy { provider_bytes, .. }
+            | Self::QwenCudaWithSmartConfig { provider_bytes, .. } => {
+                *provider_bytes = (*provider_bytes).min(fitted);
+            }
+            _ => {
+                return Err(crate::Error::State(
+                    "CUDA fit requires a CUDA load request".into(),
+                ));
+            }
+        }
+        Ok(self)
+    }
+
     /// Canonical production Qwen CUDA load. Backend/model selection remains
     /// caller policy; this constructor owns the adapter's qualified envelopes.
     #[cfg(all(feature = "model-qwen35", feature = "cuda", target_os = "linux"))]

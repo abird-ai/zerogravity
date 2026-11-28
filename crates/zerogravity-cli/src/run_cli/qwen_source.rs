@@ -4,9 +4,6 @@ use zerogravity::cache::{CacheMetadata, CacheOptions};
 use zerogravity::models::{ModelLoadRequest, QwenServingProfile};
 use zerogravity::runtime::text::{ResponseEvent, SemanticRequest, TextInput};
 
-#[cfg(feature = "cuda")]
-const GIB: u64 = 1024 * 1024 * 1024;
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum SelectedBackend {
     Cuda,
@@ -235,7 +232,11 @@ pub(crate) fn load_request(
                     "canonical device-mib currently requires original ROCm source".into(),
                 ));
             }
-            cuda_load(aliases, cache, snapshot, profile, cohort_width)
+            let target = zerogravity::models::qwen_target_for_snapshot(&snapshot)
+                .ok_or_else(|| Error::State("Unrecognized Qwen source snapshot".into()))?;
+            let allowed = zerogravity::devices::allowed(request, inventory)?;
+            let available = require_cuda(&allowed, target, &request.headroom)?;
+            cuda_load(aliases, cache, snapshot, profile, cohort_width, available)
         }
         SelectedBackend::Hip => hip_load(
             aliases,
@@ -347,7 +348,7 @@ pub(crate) fn require_source_backend(
         }
         Backend::Auto => {
             let cuda = match require_cuda(&allowed, target, &request.headroom) {
-                Ok(()) => return Ok(SelectedBackend::Cuda),
+                Ok(_) => return Ok(SelectedBackend::Cuda),
                 Err(error) => error,
             };
             let hip = match require_hip(&allowed) {
@@ -411,7 +412,11 @@ fn cuda_fit(device: &devices::Observation, headroom: &Headroom) -> Result<u64> {
         .saturating_sub(headroom.bytes(ceiling, false)?))
 }
 
-fn require_cuda(devices: &[devices::Observation], target: &str, headroom: &Headroom) -> Result<()> {
+fn require_cuda(
+    devices: &[devices::Observation],
+    target: &str,
+    headroom: &Headroom,
+) -> Result<u64> {
     #[cfg(not(feature = "cuda"))]
     {
         let _ = (devices, target, headroom);
@@ -453,15 +458,22 @@ fn require_cuda(devices: &[devices::Observation], target: &str, headroom: &Headr
         }
         zerogravity::gpu::cuda::compiler::validate_environment()?;
         let available = cuda_fit(device, headroom)?;
-        if available < 5 * GIB {
+        let budget = ModelLoadRequest::qwen_cuda_budget()?;
+        let ceiling = device
+            .ceiling
+            .ok_or_else(|| Error::State("CUDA capacity unknown".into()))?;
+        if ceiling < budget.device_bytes() {
             return Err(Error::resource(
-                "CUDA VRAM after headroom",
-                "original-source Qwen admission",
-                5 * GIB,
-                available,
+                "CUDA physical capacity",
+                "original-source Qwen device envelope",
+                budget.device_bytes(),
+                ceiling,
             ));
         }
-        Ok(())
+        // Discovery is not a model-size estimate. Narrow the model envelope
+        // with the original budget and let the exact source planner fit it.
+        budget.fit_available(available)?;
+        Ok(available)
     }
 }
 
@@ -486,8 +498,9 @@ fn cuda_load(
     snapshot: String,
     profile: QwenServingProfile,
     cohort_width: Option<usize>,
+    available: u64,
 ) -> Result<ModelLoadRequest> {
-    Ok(match cohort_width {
+    let request = match cohort_width {
         None => ModelLoadRequest::qwen_cuda(aliases, cache, snapshot, profile),
         Some(width) => ModelLoadRequest::qwen_cuda_with_smart_config(
             aliases,
@@ -501,7 +514,8 @@ fn cuda_load(
                 },
             ),
         ),
-    })
+    };
+    request.fit_cuda_available(available)
 }
 #[cfg(not(feature = "cuda"))]
 fn cuda_load(
@@ -510,6 +524,7 @@ fn cuda_load(
     _: String,
     _: QwenServingProfile,
     _: Option<usize>,
+    _: u64,
 ) -> Result<ModelLoadRequest> {
     Err(Error::Unsupported("CUDA backend is not compiled".into()))
 }

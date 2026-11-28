@@ -661,6 +661,30 @@ impl ResidentPhysical {
         device_cap: u64,
         observed: crate::physical_service::ObservedCudaDevice,
     ) -> Result<Arc<Self>> {
+        let live_budget =
+            zerogravity_core::provider::ProviderMemoryBudget::new(provider_cap, device_cap)?;
+        Self::new_pinned_cuda_fitted(device, device_cap, observed, live_budget)
+    }
+
+    /// Cold model envelope and persistent context allowance are independent
+    /// of the stable physical registration ceiling.
+    #[cfg(all(
+        target_os = "linux",
+        feature = "cuda",
+        any(feature = "qualification", feature = "cuda-native")
+    ))]
+    pub(crate) fn new_pinned_cuda_fitted(
+        device: Device,
+        device_cap: u64,
+        observed: crate::physical_service::ObservedCudaDevice,
+        live_budget: zerogravity_core::provider::ProviderMemoryBudget,
+    ) -> Result<Arc<Self>> {
+        let provider_cap = live_budget.provider_bytes();
+        if live_budget.device_bytes() > device_cap {
+            return Err(Error::Limit(
+                "CUDA live envelope exceeds physical registration".into(),
+            ));
+        }
         crate::backend::validate_provider(&device)?;
         let provider = crate::backend::Provider::selected(&device)?;
         let pre = observed.preadmit(provider_cap, device_cap)?;
@@ -677,7 +701,7 @@ impl ResidentPhysical {
         })?;
         // Bootstrap has completed, but no model allocation was submitted.
         // A real fit refusal releases unused admission, not a fenced context.
-        let effective = Self::live_cuda_provider_cap(provider_cap, device_cap, free_bytes)?;
+        let effective = live_budget.fit_available(free_bytes as u64)?;
         budget.narrow_unused_provider(effective as u64)?;
         let mut physical = Self::from_budget(device, client, provider, budget)?;
         physical.pinned_cuda_queue = Some(Arc::new(pinned));
