@@ -45,24 +45,23 @@ Contracts: [P00–P23 roadmap](../IMPLEMENTATION_ROADMAP.md),
   x2-native-launch-physical-retry.log, x2-native-launch-2b.log,
   x2-native-launch-27b.log; per-case results and physical receipts in
   matching run directories. No backend optimization or PS-F1 promotion.
-- [ ] Fix ordinary same-process HIP load/unload/reload on X2 before
-  claiming reusable native model lifecycle. After the actual 0.8B
-  inference/unload, Auto 2B reached HIP but failed 500
-  inference_error: conflicting physical device budget attestation.
-  Source diagnosis: hip_budget derives an operation envelope from
-  current free memory; begin_single_source attempts fresh physical
-  preadmission and register_matching against the initial process cap.
-  The live NativeContextBudget intentionally survives model retirement;
-  configure_single_stream and NATIVE_CONTEXT_CONSTRUCTED are further
-  one-time bootstrap boundaries. Do not relax equality, reset global
-  state, release retained context credit or bypass fencing merely to
-  pass reload. Separate stable physical capacity/context ownership from
-  current model admission, reuse the existing actor and allocate a new
-  source/model lease with current actual capacity and exact retirement.
-  Qualify 0.8B→2B→0.8B in the same process, physical reuse, stale owner
-  refusal and final exact idle. Coordinate with the ordered service/
-  physical-owner migration; existing fixed-budget tests stay valid.
-  Fresh 2B succeeds, so this is not a device capacity refusal.
+- [x] Ordinary same-process HIP load/unload/reload: stable physical
+  registration separate from per-model admission; one source-neutral
+  context/compiler/queue owner, fresh scoped native set and original
+  arbiter lease per model. Drain deferred allocator frees before closing
+  the model namespace. Retain the original context charge; fence and
+  retain on uncertain cleanup. Existing strict attestation unchanged.
+  The 11ae77f7 ordinary X2 package passed 0.8B→2B→0.8B and
+  0.8B→27B→0.8B with default headroom, all 24/24/64 layers on the same
+  physical GPU, 11+3 tokens and the same raw continuation each time.
+  Extended case rejected stale invoke/unload IDs without affecting
+  the new registration. Typical small-model post-unload VRAM ~449 MiB;
+  the 27B release has delayed observed driver reclamation (~14.65 GiB
+  at immediate unload observation), but next model admitted and retired.
+  Exact final 274452480 bytes/busy0/no KFD owners for both sequences.
+  Logs X2 target/x2-hip-reuse-{physical,large}.log. No simultaneous
+  multi-model execution, extra-device bootstrap or new numerical claim.
+  Preserve fixed-budget SDK/qualification paths and source identity.
 - [ ] Populate missing optional original-HIP loaded-model snapshot
   provenance in the owner diagnostics: actual Web capabilities.snapshot
   is null for these three exact cached loads; original action correlation,
@@ -71,12 +70,23 @@ Contracts: [P00–P23 roadmap](../IMPLEMENTATION_ROADMAP.md),
   retained source identity. Initial test harness rejected this optional
   observation; corrected harness independently verified each requested
   digest in its own load event and actual provider/placement.
-- [ ] Investigate same-process CUDA retirement/reload capacity: successful
-  Auto load and unload left the next explicit CUDA cold observation with
-  5335148135 bytes after headroom, just below the qualified 5 GiB device
-  envelope. Fresh explicit CUDA passed; process retirement restored idle
-  device state. Retain the original bound; reconcile shared compiler/
-  context ownership and admission with measured CUDA backend work.
+- [x] Ordinary same-process CUDA reload: preserve stable 5 GiB physical
+  ceiling and 512 MiB compiler allowance; fit only the model envelope
+  against post-headroom availability, then the existing actor's live
+  observation and exact source planner. A discovery-side shrink does
+  not add a second headroom charge. Original compiler context retained,
+  not repriced or released. No fallback after selected-route error.
+  Native L5 package 3d0b1404 passed three 0.8B loads and
+  0.8B→2B→0.8B (Auto and explicit CUDA, all 24 layers), 11+3 tokens and
+  same continuation, stale invoke/unload rejection. On second mixed
+  load the actual model cap narrowed from 4831838208 to 4798277223 bytes;
+  post-unload VRAM 155 MiB; final 37 MiB/busy0/no compute owners exactly.
+  Logs L5 target/l5-cuda-reload-{physical,mixed}.log. Follow-up 9c08ff3b
+  reuses the equivalent existing live-fit helper and adds regression
+  coverage. Neither headroom nor qualified architecture bounds changed.
+  Auto discovery establishes possible capacity; exact model fit remains
+  the source planner's authority.
+
 
 - [ ] Owner23Oct: bring Vulkan execution to CUDA feature/correctness parity;
   use ROCm/HIP for AMD including pvl-x2 gfx1151. Vulkan source catalogue
