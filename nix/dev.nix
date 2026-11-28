@@ -2,6 +2,7 @@
   native,
   sourceRoot,
   gpuPkgs ? null,
+  runtime ? null,
 }: let
   inherit (native) pkgs;
   commonPackages = [
@@ -11,19 +12,13 @@
     pkgs.python3
     pkgs.curl
   ];
-  gpuPackages = [
-    gpuPkgs.cudaPackages.cuda_cudart
-    gpuPkgs.cudaPackages.cuda_nvrtc
-    gpuPkgs.cudaPackages.cccl
-    gpuPkgs.cudaPackages.cuda_nvcc
-    gpuPkgs.cudaPackages.libcublas
-    gpuPkgs.rocmPackages.clr
-    gpuPkgs.rocmPackages."rocm-runtime"
-    gpuPkgs.rocmPackages.hipblas
-    gpuPkgs.rocmPackages.hipblaslt
-    gpuPkgs.rocmPackages.rocblas
-  ];
-  gpuLibraryPath = gpuPkgs.lib.makeLibraryPath (gpuPackages ++ [gpuPkgs.stdenv.cc.cc]);
+  gpuPackages =
+    runtime.packages
+    ++ [
+      gpuPkgs.cudaPackages.cuda_nvcc
+      gpuPkgs.rocmPackages.hipblas
+      gpuPkgs.rocmPackages.hipblaslt
+    ];
   flashAttentionSrc =
     if gpuPkgs == null
     then null
@@ -68,19 +63,12 @@ in {
         packages = commonPackages ++ gpuPackages;
         RUST_BACKTRACE = "1";
         shellHook = ''
-          export HIP_PATH="${gpuPkgs.rocmPackages.clr}"
-          export ROCM_HOME="$HIP_PATH"
-          export ROCM_PATH="$HIP_PATH"
+          ${runtime.shellHook}
+          export LD_LIBRARY_PATH="${gpuPkgs.lib.makeLibraryPath [gpuPkgs.rocmPackages.hipblas gpuPkgs.rocmPackages.hipblaslt]}:$LD_LIBRARY_PATH"
           export ZEROGRAVITY_FLASH_ATTN_SRC="${flashAttentionSrc}"
           export ZEROGRAVITY_FLASH_ATTN_CUTLASS="${flashAttentionCutlass}"
           export ZEROGRAVITY_FLASHINFER_SRC="${flashInferSrc}"
           export ZEROGRAVITY_CUDART_LIB="${gpuPkgs.cudaPackages.cuda_cudart}/lib"
-          export CUDA_PATH="''${TMPDIR:-/tmp}/zerogravity-cuda-$UID"
-          "${sourceRoot}/scripts/cuda-nix-include-view.sh" \
-            "${gpuPkgs.cudaPackages.cuda_cudart}/include" \
-            "${gpuPkgs.cudaPackages.cccl}/include" \
-            "$CUDA_PATH" >/dev/null
-          export LD_LIBRARY_PATH="${gpuLibraryPath}:/run/opengl-driver/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
         '';
       };
 

@@ -820,6 +820,17 @@ impl App {
             self.notice = Some("No observed selection".into());
             return;
         };
+        if let Key::Snapshot(digest) = &key
+            && matches!(action, LibraryAction::Run | LibraryAction::Load(_))
+            && let Some(reason) = self.library.source_refusal(digest)
+        {
+            self.notice = Some(reason.into());
+            return;
+        }
+        if action == LibraryAction::Load(true) && !cfg!(feature = "serve") {
+            self.notice = Some("Serving not compiled".into());
+            return;
+        }
         match (key, action) {
             (Key::Snapshot(digest), LibraryAction::Inspect) => self.start(runtime, Request::Inspect(digest)),
             (Key::Snapshot(digest), LibraryAction::Verify) => self.start(runtime, Request::Verify(digest)),
@@ -833,7 +844,7 @@ impl App {
                 let profile = self.document.snapshot().execution_default;
                 let current = self.library.execution_for(&digest);
                 self.navigation.pick_execution(choice::Picker::execution(
-                    digest, self.document.configuration_revision(), self.library.execution_choices(), current, &profile,
+                    digest.clone(), self.document.configuration_revision(), self.library.execution_choices(&digest), current, &profile,
                 ));
             }
             (Key::Snapshot(digest), LibraryAction::Run) => {

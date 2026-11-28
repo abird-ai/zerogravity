@@ -673,23 +673,34 @@ fn commit_snapshot(
     extra: &[(&str, zerogravity::cache::FileRole)],
     reference: Option<&str>,
 ) -> String {
+    use zerogravity::cache::FileRole;
+    let mut components = vec![
+        ("model.gguf", FileRole::Weights),
+        ("config.json", FileRole::Config),
+        ("tokenizer.json", FileRole::Tokenizer),
+    ];
+    components.extend_from_slice(extra);
+    commit_components(root, store, memory, source, &components, reference)
+}
+
+#[cfg(all(feature = "cache", target_os = "linux"))]
+fn commit_components(
+    root: &Path,
+    store: &zerogravity::cache::CacheStore,
+    memory: &zerogravity::cache::TransferAdmission,
+    source: zerogravity::cache::ManifestSource,
+    components: &[(&str, zerogravity::cache::FileRole)],
+    reference: Option<&str>,
+) -> String {
     use sha2::{Digest, Sha256};
     use std::sync::{Arc, atomic::AtomicBool};
     use zerogravity::cache::*;
-    let mut components = vec![
-        ("model.gguf".to_string(), FileRole::Weights),
-        ("config.json".to_string(), FileRole::Config),
-        ("tokenizer.json".to_string(), FileRole::Tokenizer),
-    ];
-    for (name, role) in extra {
-        components.push((name.to_string(), *role));
-    }
     let entries = components
         .iter()
         .map(|(name, role)| {
             let raw = std::fs::read(root.join(name)).unwrap();
             ManifestEntry::new(
-                name,
+                *name,
                 format!("{:x}", Sha256::digest(&raw)),
                 raw.len() as u64,
                 *role,
@@ -702,7 +713,7 @@ fn commit_snapshot(
     let mut tx = store
         .begin(manifest, memory, Arc::new(AtomicBool::new(false)))
         .unwrap();
-    for (name, _) in &components {
+    for (name, _) in components {
         tx.import_object(name, &mut std::fs::File::open(root.join(name)).unwrap())
             .unwrap();
     }
@@ -1036,6 +1047,71 @@ fn provider_variant_ambiguity_refuses_exactly_without_silent_pick() {
         "{}",
         String::from_utf8_lossy(&refused.stderr)
     );
+}
+
+#[cfg(all(feature = "serve", feature = "cache", target_os = "linux"))]
+#[test]
+fn source_layout_refusals_are_not_reported_as_corruption() {
+    use zerogravity::cache::{FileRole, ManifestSource};
+    let f = fixture_named("source-layout");
+    let (store, memory) = cache_store(&f.0);
+    // Contents remain unqualified. The test exercises refusal before any
+    // payload reader or device admission, not learned Safetensors math.
+    std::fs::write(f.0.join("model-1.safetensors"), b"fixture-original-shard").unwrap();
+    std::fs::write(f.0.join("model-2.safetensors"), b"fixture-original-shard-2").unwrap();
+    let mut components = vec![
+        ("config.json", FileRole::Config),
+        ("tokenizer.json", FileRole::Tokenizer),
+    ];
+    for (revision, reason) in [
+        ("metadata", "no weight payloads"),
+        ("original", "original-source route"),
+    ] {
+        if revision == "original" {
+            components.extend([
+                ("model-1.safetensors", FileRole::Weights),
+                ("model-2.safetensors", FileRole::Weights),
+            ]);
+        }
+        let digest = commit_components(
+            &f.0,
+            &store,
+            &memory,
+            ManifestSource::new("local", "fixture/source-layout", revision).unwrap(),
+            &components,
+            None,
+        );
+        let source = format!("sha256:{digest}");
+        let direct = run(
+            &f.0,
+            &[&["--offline", "run", &source][..], &COMMON].concat(),
+        );
+        assert!(!direct.status.success());
+        let detail = String::from_utf8_lossy(&direct.stderr);
+        assert!(detail.contains(reason), "{detail}");
+        assert!(!detail.contains("malformed model artifact"), "{detail}");
+        let declared = format!("source={source}");
+        let served = run(
+            &f.0,
+            &[
+                "--offline",
+                "serve",
+                "--model",
+                &declared,
+                "--backend",
+                "cpu",
+                "--listen",
+                "127.0.0.1:0",
+            ],
+        );
+        assert!(!served.status.success());
+        let detail = String::from_utf8_lossy(&served.stderr);
+        assert!(
+            detail.contains("unsupported_source_route") && detail.contains(reason),
+            "{detail}"
+        );
+        assert!(!detail.contains("malformed model artifact"), "{detail}");
+    }
 }
 
 #[cfg(all(feature = "serve", feature = "cache", target_os = "linux"))]

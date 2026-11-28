@@ -84,6 +84,7 @@ impl From<ServeSummary> for Listener {
 pub(super) struct Scope {
     view: View,
     selection: Option<Key>,
+    source_refusal: Option<&'static str>,
     shelf: Shelf,
     owner: Option<Owner>,
     editor: Option<Snapshot>,
@@ -128,6 +129,10 @@ impl Scope {
         };
         Self {
             view,
+            source_refusal: match &selection {
+                Some(Key::Snapshot(digest)) => app.library.source_refusal(digest),
+                _ => None,
+            },
             selection,
             shelf: app.library.shelf,
             owner: app.selected.clone(),
@@ -246,8 +251,9 @@ impl Scope {
             },
             View::Models => match &self.selection {
                 Some(Key::Snapshot(_)) => {
-                    add(C::Library(L::Load(false)), "Load", "l", self.load());
-                    add(C::Library(L::Run), "Run", "p", self.load());
+                    let load = self.load().or(self.source_refusal);
+                    add(C::Library(L::Load(false)), "Load", "l", load);
+                    add(C::Library(L::Run), "Run", "p", load);
                     add(C::Details, "Details", "D", None);
                     add(C::Library(L::Inspect), "Inspect manifest", "i", self.busy());
                     add(C::Library(L::Verify), "Verify payloads", "v", self.busy());
@@ -256,7 +262,7 @@ impl Scope {
                         C::Library(L::Load(true)),
                         "Load for Serve",
                         "Alt-s",
-                        self.load(),
+                        load.or((!cfg!(feature = "serve")).then_some("Serving not compiled")),
                     );
                     add(
                         C::Library(L::Reclaim(false)),

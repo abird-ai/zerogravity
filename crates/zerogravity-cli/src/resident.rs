@@ -227,6 +227,139 @@ fn limits(max_active: usize, max_queued: Option<usize>) -> SchedulerLimits {
     }
 }
 
+/// Cold source route observation shared by the canonical planner and
+/// both control clients. Candidate is not authenticated or admitted.
+#[cfg(all(
+    feature = "cache",
+    target_os = "linux",
+    any(
+        feature = "tui",
+        feature = "web",
+        all(feature = "model-qwen35", feature = "text")
+    )
+))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum CachedRoute {
+    #[cfg(feature = "model-qwen35")]
+    OriginalQwen {
+        cuda: bool,
+        hip: bool,
+    },
+    Gguf,
+    Refused {
+        code: &'static str,
+        reason: &'static str,
+    },
+}
+#[cfg(all(
+    feature = "cache",
+    target_os = "linux",
+    any(
+        feature = "tui",
+        feature = "web",
+        all(feature = "model-qwen35", feature = "text")
+    )
+))]
+impl CachedRoute {
+    #[cfg(any(feature = "tui", feature = "web"))]
+    pub fn label(self) -> &'static str {
+        match self {
+            #[cfg(feature = "model-qwen35")]
+            Self::OriginalQwen { .. } => "Original Qwen · GPU candidate",
+            Self::Gguf => "GGUF · CPU candidate",
+            Self::Refused { .. } => "No canonical execution route",
+        }
+    }
+    #[cfg(any(feature = "tui", feature = "web"))]
+    pub fn permits(self, execution: &crate::control_host::execution::Execution) -> bool {
+        use zerogravity::run_policy::Backend;
+        let backend = execution.backend.as_ref();
+        let device = execution.device.as_deref();
+        match self {
+            Self::Refused { .. } => backend.is_none() && device.is_none(),
+            Self::Gguf => {
+                matches!(backend, None | Some(Backend::Auto | Backend::Cpu))
+                    && matches!(device, None | Some("cpu:0"))
+            }
+            #[cfg(feature = "model-qwen35")]
+            Self::OriginalQwen { cuda, hip } => {
+                device != Some("cpu:0")
+                    && match backend {
+                        None | Some(Backend::Auto) => cuda || hip,
+                        Some(Backend::Cuda) => cuda,
+                        Some(Backend::Rocm) => hip,
+                        _ => false,
+                    }
+            }
+        }
+    }
+    #[cfg(any(feature = "tui", feature = "web"))]
+    pub fn refusal(self) -> Option<&'static str> {
+        match self {
+            Self::Refused { reason, .. } => Some(reason),
+            _ => None,
+        }
+    }
+
+    #[cfg(feature = "web")]
+    pub fn refusal_code(self) -> Option<&'static str> {
+        match self {
+            Self::Refused { code, .. } => Some(code),
+            _ => None,
+        }
+    }
+}
+
+#[cfg(all(
+    feature = "cache",
+    target_os = "linux",
+    any(
+        feature = "tui",
+        feature = "web",
+        all(feature = "model-qwen35", feature = "text")
+    )
+))]
+pub(crate) fn cached_route(digest: &str, layout: zerogravity::cache::SourceLayout) -> CachedRoute {
+    use CachedRoute::*;
+    let unsupported = |reason| Refused {
+        code: "unsupported_source_route",
+        reason,
+    };
+    let uncompiled = |reason| Refused {
+        code: "backend_not_compiled",
+        reason,
+    };
+    #[cfg(not(feature = "model-qwen35"))]
+    let _ = digest;
+    if layout.weights == 0 {
+        return unsupported("Snapshot has no weight payloads; acquire a complete model source");
+    }
+    if !cfg!(all(feature = "model-qwen35", feature = "text")) {
+        return uncompiled("Canonical text model consumer is not compiled");
+    }
+    #[cfg(feature = "model-qwen35")]
+    if let Some(target) = zerogravity::models::qwen_target_for_snapshot(digest) {
+        let cuda = cfg!(feature = "cuda") && target != "qwen3.8-27b";
+        let hip = cfg!(feature = "hip");
+        return if cuda || hip {
+            OriginalQwen { cuda, hip }
+        } else if target == "qwen3.8-27b" {
+            uncompiled(
+                "Original Qwen 27B requires the qualified ROCm route; CUDA support is not yet qualified",
+            )
+        } else {
+            uncompiled("Original Qwen requires a compiled CUDA or ROCm backend")
+        };
+    }
+    if let Some(reason) = layout.single_gguf_refusal() {
+        return unsupported(reason);
+    }
+    if !cfg!(feature = "cpu") {
+        return uncompiled("Canonical GGUF requires the compiled CPU route");
+    }
+    Gguf
+}
+
 #[cfg(all(
     feature = "model-qwen35",
     feature = "text",
@@ -269,20 +402,29 @@ fn prepare_routes(
                 "local serving source cannot carry a cache snapshot pin",
             ));
         }
-        let selected = source::select_model(model).map_err(core)?;
-        let original_digest = if let Some(selected) = selected {
-            let digest = selected.expected_snapshot().map_err(core)?.to_owned();
-            if missing.is_none() {
-                missing = Some(selected);
+        let original_digest = match source::select_model(model).map_err(core)? {
+            source::Selection::Local => None,
+            source::Selection::Missing(selected) => {
+                let digest = selected.expected_snapshot().map_err(core)?.to_owned();
+                if missing.is_none() {
+                    missing = Some(selected);
+                }
+                source::bind(model, digest.clone()).map_err(core)?;
+                Some(digest)
             }
-            source::bind(model, digest.clone()).map_err(core)?;
-            Some(digest)
-        } else {
-            model
-                .snapshot
-                .as_ref()
-                .filter(|digest| zerogravity::models::qwen_target_for_snapshot(digest).is_some())
-                .cloned()
+            source::Selection::Cached(snapshot) => {
+                match cached_route(&snapshot.digest, snapshot.manifest.source_layout()) {
+                    CachedRoute::OriginalQwen { .. } => Some(snapshot.digest),
+                    CachedRoute::Gguf => None,
+                    CachedRoute::Refused { code, reason } => {
+                        return Err(ServiceError::from_core(
+                            400,
+                            code,
+                            Error::Unsupported(reason.into()),
+                        ));
+                    }
+                }
+            }
         };
         if let Some(digest) = original_digest {
             if original.as_ref().is_some_and(|old| *old != digest) {
@@ -491,4 +633,65 @@ fn prepare_routes(
         limits: limits(workers * active, pending),
         load: Load::Declared(request.graph.models, config),
     }))
+}
+
+#[cfg(all(
+    test,
+    feature = "model-qwen35",
+    feature = "cache",
+    target_os = "linux",
+    any(feature = "tui", feature = "web")
+))]
+mod tests {
+    use super::*;
+    use crate::control_host::execution::Execution;
+    use zerogravity::{cache::SourceLayout, run_policy::Backend};
+
+    #[test]
+    fn source_candidates_filter_choices_without_granting_execution() {
+        let missing = cached_route("unrelated", SourceLayout::default());
+        assert!(missing.refusal().unwrap().contains("no weight payloads"));
+        assert!(missing.permits(&Execution::default()));
+        let gguf = CachedRoute::Gguf;
+        let hip_only = CachedRoute::OriginalQwen {
+            cuda: false,
+            hip: true,
+        };
+        for (backend, gguf_ok, hip_ok) in [
+            (Backend::Auto, true, true),
+            (Backend::Cpu, true, false),
+            (Backend::Cuda, false, false),
+            (Backend::Rocm, false, true),
+            (Backend::Vulkan, false, false),
+        ] {
+            let choice = Execution {
+                backend: Some(backend),
+                device: None,
+            };
+            assert_eq!(gguf.permits(&choice), gguf_ok);
+            assert_eq!(hip_only.permits(&choice), hip_ok);
+            assert!(!missing.permits(&choice));
+        }
+        assert!(!gguf.permits(&Execution {
+            backend: Some(Backend::Auto),
+            device: Some("pci:0000:01:00.0".into())
+        }));
+        assert!(!hip_only.permits(&Execution::on_device("cpu:0".into())));
+        let original = SourceLayout {
+            weights: 2,
+            safetensors: 2,
+            configs: 1,
+            tokenizers: 1,
+            ..Default::default()
+        };
+        assert!(cached_route("unapproved", original).refusal().is_some());
+        #[cfg(all(feature = "model-qwen35", feature = "text", feature = "hip"))]
+        assert_eq!(
+            cached_route(
+                zerogravity::models::qwen_source_snapshot("qwen3.8-27b").unwrap(),
+                original
+            ),
+            hip_only
+        );
+    }
 }

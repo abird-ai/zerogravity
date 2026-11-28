@@ -1,5 +1,5 @@
 {
-  description = "zerogravity — composable AI execution runtime and CPU text frontend";
+  description = "zerogravity — composable AI execution runtime and native text frontend";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";

@@ -558,13 +558,26 @@ Design: [TUI polish follow-up](../cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md).
   Focused process, Rust, strict feature-specific Clippy and Web gates
   passed; assembled process regression wired and passed.
   Full assembled gate remains open. See current handoff for exact scope.
-- [ ] D next: source-aware runnable/refusal guidance and action
-  consistency using original planner; distinguish absent payloads from
-  unsupported original family, compiled backend from usable runtime,
-  actual capacity refusal from missing SDK. Durable Nix/default launch
-  environment, not run-local store-path launcher; no implicit acquisition,
-  deployment, verification prerequisite or inventory-derived fallback.
-  Close assembled gate and return to measured P3D.
+- [x] D source-aware guidance: shared manifest layout and canonical
+  route classification; TUI/Web compatible choices and structural
+  action refusals; actual planner differentiates missing payload,
+  unsupported format/consumer and unavailable runtime. Auto checks
+  CUDA compiler/binding and exact HIP PCI before selection; native
+  numerical policy requires HIP. No post-selection fallback or
+  metadata-derived admission.
+  Actual L5 Web inventory, missing/unsupported source refusals,
+  unavailable plain GPU bindings, configured HIP exact resource
+  refusal and configured Auto->CUDA original 0.8B generation passed;
+  native PTY/Web, focused integration and strict lint passed.
+- [x] D native Nix launch contract: x86-64 Linux default uses Cargo
+  defaults, portable CPU packages separate; shared pinned GPU SDK
+  paths/header view/library closure, matching cudarc SDK version,
+  normal wrapped launch. Actual derivation evaluation passed.
+- [ ] D remaining package qualification: realize pinned native
+  package and exercise ordinary packaged startup/physical load.
+  Missing CUDA12.9/ROCm7.2.3 and build closure (3457 derivations in
+  offline plan); no lock changes or implicit acquisitions.
+  Complete assembled gate and return to measured P3D.
 
 ### Other deferred work
 

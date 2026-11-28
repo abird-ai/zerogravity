@@ -22,11 +22,13 @@ pub struct CachedModelSummary {
     pub payload_verified: bool,
     /// Manifest declares at least one weight payload; not a runnable guarantee.
     pub has_weights: bool,
+    pub source_layout: crate::cache::SourceLayout,
 }
 
 impl From<SnapshotMetadata> for CachedModelSummary {
     fn from(value: SnapshotMetadata) -> Self {
         let source = value.manifest.source();
+        let source_layout = value.manifest.source_layout();
         Self {
             snapshot: value.digest,
             provider: source.provider().into(),
@@ -35,11 +37,8 @@ impl From<SnapshotMetadata> for CachedModelSummary {
             bytes: value.manifest.total_bytes(),
             files: value.manifest.entries().len(),
             payload_verified: false,
-            has_weights: value
-                .manifest
-                .entries()
-                .iter()
-                .any(|entry| entry.role() == crate::cache::FileRole::Weights),
+            has_weights: source_layout.weights != 0,
+            source_layout,
         }
     }
 }

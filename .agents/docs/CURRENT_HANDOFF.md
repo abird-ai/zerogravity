@@ -59,7 +59,68 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — UX-11C operational logging and L5 reproduction (28 Nov)
+### Current checkpoint — UX-11D source eligibility and native package (28 Nov)
+
+Recovered interrupted D work on L5 main, including owned staged runtime
+module. Preserve unrelated Cargo.toml and programmable-service planning.
+Canonical planner and both control clients share declared source layout
+and exact approved-source classification. Missing weights and unknown
+original Safetensors get source-route refusal instead of misleading
+GGUF role corruption. Model-specific choices reflect compiled candidate
+routes, not an admission permit; native menu/keyboard and Web follow
+the same structural refusal. Actual loader authenticates independently.
+Original CUDA checks real driver/compiler binding and memory; HIP
+checks runtime and exact physical device 0 before selection. Auto
+reports unavailable alternatives, preserves measured bounds, and
+does not silently change route after selection. Native numerical policy
+requires ROCm. Existing public backend-not-compiled code preserved.
+
+Nix x86-64 Linux default now selects full Cargo defaults; portable
+CPU and cross releases remain separate. Shared gpu-runtime module
+defines immutable CUDA/CCCL headers, HIP device libs, library and
+compiler paths, runtime wrapper and GPU dev shell. Cudarc build SDK
+version follows pinned CUDA (12090). Evaluated actual native/portable
+derivations and wrapper contract. Not a realized native package:
+pinned CUDA12.9/ROCm7.2.3 and build closure unavailable on L5, offline
+plan required 3457 derivations; own acquisition attempt cancelled.
+Do not change flake.lock, host drivers, installed app or services.
+Host-local validation uses existing CUDA13.5/ROCm7.2.4, separate from
+the pinned package. Run-local launcher target/ux11d-l5-launch.sh
+targets retained full build, not a packaged install.
+
+Recovered focused validation: cache transactions 18/0; final combined
+CPU frontend 70/0/3, run_unified 7/0/1 (actual CPU equivalence and
+source refusal included). Final full-feature CLI 72/0/3. Strict
+Clippy full defaults and cache+UI, cache-only, CPU+serve, serve+cache
+passed after feature-variant correction. Actual Web HTTP and native
+PTY shell/settings/appearance/mouse/controls/editor/ergonomics pass;
+Web assets rebuilt/tested. Nix eval, format and diff checks pass.
+Logs target/ux11d-recovered-gate.log, ux11d-final-gate.log,
+ux11d-lint-retry.log, ux11d-frontend-process.log, package-contract2.json.
+Full assembled project gate remains open.
+
+Actual L5 control-host reproduction: exact cached metadata Gemma
+4cd7a8f5 and full Gemma ba32b769 refused with unsupported_source_route
+and distinct missing-weight/original-format causes. All three GPU
+policy attempts without runtime environment refused before load;
+Auto reports both unavailable bindings instead of choosing unusable
+HIP. Model inventory execution choices agree. Configured HIP reaches
+actual capacity refusal 503 resource_exhausted, required 9885299712,
+available 8870966887, no published model. Configured Auto then selected
+CUDA device 0 on L5 RTX3060, loaded original Qwen 0.8B d7c7bf56,
+11 input +3 actual output tokens, length finish (165.007s cold debug
+run, not performance evidence). Original unload and joined host
+retirement; final NVIDIA37MiB/idle, no compute/KFD owner. Actual
+inventory and both host lifecycles passed (target/ux11d-l5-repro.log).
+Use bash target/ux11d-l5-launch.sh --offline for the retained local
+full-feature executable and existing toolkits. Not an installed package.
+
+Remaining: pinned package realization/ordinary packaged physical
+qualification, full assembled gate, then P3D measured temporal/GDN
+and attention regions. Do not repeat accepted local canaries just
+because the pinned package closure is missing.
+
+### Prior checkpoint — UX-11C operational logging and L5 reproduction (28 Nov)
 
 Source-authoring only L5, one persistent main checkout. Preserve unrelated
 Cargo.toml debug profile and root README. User requested live logs,

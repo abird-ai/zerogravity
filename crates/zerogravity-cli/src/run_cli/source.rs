@@ -25,9 +25,28 @@ pub(super) fn resolve(
         }
         return Ok(());
     }
-    if let Some(missing) = select_model(&mut request.graph.models[i])? {
-        let digest = acquire_missing(request, inventory, mode.offer, mode.pull, &missing, None)?;
-        bind(&mut request.graph.models[i], digest)?;
+    match select_model(&mut request.graph.models[i])? {
+        Selection::Missing(missing) => {
+            let digest =
+                acquire_missing(request, inventory, mode.offer, mode.pull, &missing, None)?;
+            bind(&mut request.graph.models[i], digest)?;
+        }
+        Selection::Cached(snapshot) => {
+            // The exact original snapshot cannot fall through to the GGUF
+            // loader just because this CLI lacks its execution backend.
+            #[cfg(feature = "model-qwen35")]
+            if zerogravity::models::qwen_target_for_snapshot(&snapshot.digest).is_some()
+                && !cfg!(all(
+                    feature = "text",
+                    any(feature = "cuda", feature = "hip")
+                ))
+            {
+                return Err(Error::Unsupported("Original Qwen requires a compiled CUDA or ROCm text route; choose a supported GGUF for CPU".into()));
+            }
+            // Read the same selected metadata in minimal cache-only builds.
+            let _ = snapshot;
+        }
+        Selection::Local => {}
     }
     Ok(())
 }
@@ -69,16 +88,21 @@ impl MissingSource {
 }
 
 #[cfg(all(feature = "cache", target_os = "linux"))]
-pub(crate) fn select_model(
-    model: &mut zerogravity::pipeline::ModelInstance,
-) -> Result<Option<MissingSource>> {
+pub(crate) enum Selection {
+    Local,
+    Cached(zerogravity::cache::SnapshotMetadata),
+    Missing(MissingSource),
+}
+
+#[cfg(all(feature = "cache", target_os = "linux"))]
+pub(crate) fn select_model(model: &mut zerogravity::pipeline::ModelInstance) -> Result<Selection> {
     use zerogravity::cache::{CacheMetadata, paths};
     let Some(source) = model.source.as_deref() else {
-        return Ok(None);
+        return Ok(Selection::Local);
     };
     let selector = SourceSelector::parse(source)?;
     if matches!(selector, SourceSelector::Local(_)) {
-        return Ok(None);
+        return Ok(Selection::Local);
     }
     match &selector {
         SourceSelector::HuggingFace(value) => {
@@ -110,7 +134,7 @@ pub(crate) fn select_model(
         Err(Error::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => None,
         Err(error) => return Err(error),
     };
-    let digest = if let SourceSelector::Name(name) = &selector {
+    let selected = if let SourceSelector::Name(name) = &selector {
         let selected = metadata
             .as_ref()
             .map(|metadata| {
@@ -119,7 +143,7 @@ pub(crate) fn select_model(
             .transpose()?
             .flatten();
         if let Some(selected) = selected {
-            selected.digest
+            selected
         } else {
             if model.snapshot.is_some() {
                 return Err(Error::Unsupported(
@@ -132,7 +156,7 @@ pub(crate) fn select_model(
                     "declared model target differs from requested missing catalog name",
                 ));
             }
-            return Ok(Some(MissingSource {
+            return Ok(Selection::Missing(MissingSource {
                 target: name.clone(),
                 root,
                 disk: metadata
@@ -152,7 +176,7 @@ pub(crate) fn select_model(
             .transpose()?
             .flatten();
         if let Some(selected) = selected {
-            selected.digest
+            selected
         } else {
             #[cfg(feature = "model-qwen35")]
             if let SourceSelector::HuggingFace(locator) = &selector
@@ -163,7 +187,7 @@ pub(crate) fn select_model(
                         "declared model target differs from requested exact catalog source",
                     ));
                 }
-                return Ok(Some(MissingSource {
+                return Ok(Selection::Missing(MissingSource {
                     target: target.into(),
                     root,
                     disk: metadata
@@ -180,10 +204,10 @@ pub(crate) fn select_model(
                 "model source is not cached; use model pull with explicit source selection".into(),
             )
         })?;
-        zerogravity::models::select_cached(&metadata, &selector, model.snapshot.as_deref())?.digest
+        zerogravity::models::select_cached(&metadata, &selector, model.snapshot.as_deref())?
     };
-    bind(model, digest)?;
-    Ok(None)
+    bind(model, selected.digest.clone())?;
+    Ok(Selection::Cached(selected))
 }
 
 #[cfg(all(feature = "cache", target_os = "linux"))]

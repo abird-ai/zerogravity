@@ -17,7 +17,7 @@ mod store;
 
 pub use leases::{SnapshotDescriptorLease, SnapshotLease};
 pub use manifest::{
-    CacheLimits, DigestProvenance, FileRole, Manifest, ManifestEntry, ManifestSource,
+    CacheLimits, DigestProvenance, FileRole, Manifest, ManifestEntry, ManifestSource, SourceLayout,
 };
 pub use store::{
     CacheMetadata, CacheStore, CacheTransaction, DiscoveredEntry, DiscoveredObject,

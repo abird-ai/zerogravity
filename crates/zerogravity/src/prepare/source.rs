@@ -208,6 +208,9 @@ impl CachedGguf {
         let metadata = CacheMetadata::open(&root)?;
         let snapshot =
             crate::models::select_cached(&metadata, &selector, model.snapshot.as_deref())?;
+        if let Some(reason) = snapshot.manifest.source_layout().single_gguf_refusal() {
+            return Err(Error::Unsupported(reason.into()));
+        }
         let unique = |role| -> Result<crate::cache::ManifestEntry> {
             let mut entries = snapshot
                 .manifest

@@ -274,6 +274,21 @@ impl Library {
         self.sources.iter().find(|source| source.snapshot == digest)
     }
 
+    /// Only a structural route refusal, never a cached capacity grant.
+    pub fn source_refusal(&self, digest: &str) -> Option<&'static str> {
+        #[cfg(all(feature = "cache", target_os = "linux"))]
+        {
+            self.source(digest).and_then(|model| {
+                crate::resident::cached_route(&model.snapshot, model.source_layout).refusal()
+            })
+        }
+        #[cfg(not(all(feature = "cache", target_os = "linux")))]
+        {
+            let _ = digest;
+            None
+        }
+    }
+
     pub fn execution_for(&self, digest: &str) -> Execution {
         self.execution
             .as_ref()
@@ -284,7 +299,18 @@ impl Library {
     pub fn set_execution(&mut self, digest: String, execution: Execution) {
         self.execution = (execution != Execution::default()).then_some((digest, execution));
     }
-    pub fn execution_choices(&self) -> Vec<Choice> {
+    pub fn execution_choices(&self, digest: &str) -> Vec<Choice> {
+        #[cfg(all(feature = "cache", target_os = "linux"))]
+        if let Some(model) = self.source(digest) {
+            let route = crate::resident::cached_route(&model.snapshot, model.source_layout);
+            return self
+                .execution_choices
+                .iter()
+                .filter(|choice| route.permits(&choice.execution))
+                .cloned()
+                .collect();
+        }
+        let _ = digest;
         self.execution_choices.clone()
     }
     pub fn set_editor(&mut self, target: Target) {
@@ -473,6 +499,13 @@ fn models(control: ControlPlane<'_>) -> Models {
                         } else {
                             "Metadata-only snapshot · no weights".into()
                         },
+                        crate::resident::cached_route(&model.snapshot, model.source_layout)
+                            .label()
+                            .into(),
+                        crate::resident::cached_route(&model.snapshot, model.source_layout)
+                            .refusal()
+                            .unwrap_or("Candidate only · planner revalidates before load")
+                            .into(),
                     ],
                     technical: vec![
                         format!("Snapshot: sha256:{}", model.snapshot),

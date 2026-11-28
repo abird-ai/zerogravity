@@ -177,17 +177,48 @@ pub(super) fn models(runtime: &Runtime) -> Value {
 
     let mut result = json!({"cached": [], "catalog": catalog, "partial": [], "warning": null});
     #[cfg(all(feature = "cache", target_os = "linux"))]
+    let observation = crate::control_host::inventory::cache(runtime.control());
+    // Same cold observation as Devices. A failed observation leaves
+    // backend-only choices available, never an admission guarantee.
+    #[cfg(all(feature = "cache", target_os = "linux"))]
+    let inventory = observation
+        .as_ref()
+        .ok()
+        .filter(|row| !row.cached.is_empty())
+        .and_then(|_| runtime.control().devices().ok());
+    #[cfg(not(all(feature = "cache", target_os = "linux")))]
+    let inventory: Option<zerogravity::devices::Inventory> = None;
+    let choices = crate::control_host::execution::choices(
+        inventory.as_ref().map_or(&[], |row| row.devices.as_slice()),
+    );
+    let wire_choice = |choice: &crate::control_host::execution::Choice| {
+        json!({
+            "label": choice.label,
+            "execution": choice.execution.backend.as_ref().map(|backend| json!({
+                "backend": backend.label(),
+                "device": choice.execution.device,
+            })),
+        })
+    };
+    #[cfg(all(feature = "cache", target_os = "linux"))]
     {
         use crate::control_host::inventory;
-        match inventory::cache(runtime.control()) {
+        match observation {
             Ok(observation) => {
-                result["cached"] = json!(observation.cached.iter().map(|model| json!({
-                    "digest": model.snapshot,
-                    "provider": model.provider,
-                    "repository": inventory::public_repository(&model.provider, &model.repository),
-                    "revision": inventory::public_revision(&model.provider, &model.revision),
-                    "files": model.files, "bytes": model.bytes, "payload_verified": model.payload_verified, "has_weights": model.has_weights,
-                })).collect::<Vec<_>>());
+                result["cached"] = json!(observation.cached.iter().map(|model| {
+                    let route = crate::resident::cached_route(&model.snapshot, model.source_layout);
+                    json!({
+                        "digest": model.snapshot,
+                        "provider": model.provider,
+                        "repository": inventory::public_repository(&model.provider, &model.repository),
+                        "revision": inventory::public_revision(&model.provider, &model.revision),
+                        "files": model.files, "bytes": model.bytes, "payload_verified": model.payload_verified, "has_weights": model.has_weights,
+                        "source_layout": model.source_layout,
+                        "route": route.label(), "route_refusal": route.refusal(),
+                        "route_refusal_code": route.refusal_code(),
+                        "execution_choices": choices.iter().filter(|choice| route.permits(&choice.execution)).map(wire_choice).collect::<Vec<_>>(),
+                    })
+                }).collect::<Vec<_>>());
                 match observation.partial {
                     Ok(partial) => result["partial"] = json!(partial),
                     Err(_) => {
@@ -209,30 +240,7 @@ pub(super) fn models(runtime: &Runtime) -> Value {
         let _ = runtime;
         result["warning"] = json!("Cache inspection is unavailable in this build.");
     }
-    // This is the same cold observation used by Devices. No polling, load or
-    // admission; a failed observation leaves the backend-only choices usable.
-    let inventory = if result["cached"]
-        .as_array()
-        .is_some_and(|rows| !rows.is_empty())
-    {
-        runtime.control().devices().ok()
-    } else {
-        None
-    };
-    result["execution_choices"] = json!(
-        crate::control_host::execution::choices(
-            inventory.as_ref().map_or(&[], |row| row.devices.as_slice())
-        )
-        .into_iter()
-        .map(|choice| json!({
-            "label": choice.label,
-            "execution": choice.execution.backend.as_ref().map(|backend| json!({
-                "backend": backend.label(),
-                "device": choice.execution.device,
-            })),
-        }))
-        .collect::<Vec<_>>()
-    );
+    result["execution_choices"] = json!(choices.iter().map(wire_choice).collect::<Vec<_>>());
     result
 }
 

@@ -139,7 +139,7 @@ Run-local validated launcher `target/ux11c-l5-launch.sh --offline`
 uses existing store paths (not a durable package fix). No install,
 service enablement, downloads or deployment performed.
 
-**D (next):** exact source/route eligibility and actionable refusal/preflight
+**D (source and launch contract implemented):** exact source/route eligibility and actionable refusal/preflight
 from the existing planner, consistent menu/keyboard/Web enforcement.
 Metadata-only snapshots lack weight payloads; present actual missing
 role/refusal and supported acquisition/inspection actions. A complete
@@ -155,6 +155,43 @@ production. Any new acquisitions require approval. Auto policy must
 use actual eligibility; no relabeling of unsupported Gemma or HIP
 capacity refusal as a successful load. Recheck load/serve/menu action
 consistency; then resume measured P3D.
+
+D implementation: manifest role/format layout observation shared by
+canonical planner, TUI and Web. Exact approved original Qwen identity
+stays separate from GGUF; unknown original Safetensors sources do not
+fall through to ambiguous GGUF role validation. Missing weights and
+unsupported source routes receive an actionable refusal, not a claim
+of content corruption. Compatible explicit execution choices are
+filtered by source route, compiled backend and existing target limits.
+Native menu/keyboard use the same structural refusal; actual worker
+revalidates from the selected source. No metadata-only admission.
+Original CUDA preflight includes compiler environment; HIP observes the
+selected physical device 0, not merely AMD DRM presence. Auto retains
+measured resource limits and explains unavailable routes. Native
+numerical policy selects HIP or refuses; no post-selection fallback.
+
+Nix x86-64 Linux default now builds Cargo defaults; portable CPU
+package/cross assets remain separate. Shared pinned GPU runtime module
+supplies immutable CUDA/CCCL include view, CUDA/HIP/ROCm paths, HIP
+device libraries and loader paths; same SDK version in cudarc build
+and development shell. Actual evaluated derivations prove feature and
+wrapper contract. Full pinned package realization remains open: offline
+build planned 3457 derivations with missing pinned CUDA12.9/ROCm7.2.3
+outputs; own build cancelled rather than expand acquisition. Current
+host-local 13.5/7.2.4 runtime is not package realization evidence.
+
+Recovered D qualification: actual L5 metadata-only/full Gemma refusal
+and compatible source-specific inventory choices; raw development
+binary reports both unavailable Auto alternatives, configured HIP
+refuses exact 9885299712/8870966887 byte resource envelope. Configured
+Auto selects CUDA and generates 11+3 tokens on original Qwen 0.8B,
+original unload/join and physical retirement passed. All six native
+PTY groups and real Web host fixture passed. Focused combined CPU
+frontend 70/0/3, CLI integration 7/0/1, cache transactions 18/0,
+full-feature CLI 72/0/3 and strict feature-specific Clippy. No
+changed numerical contract or full assembled/package realization
+claim.
+
 
 ## 1. Intent
 

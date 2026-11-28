@@ -5,6 +5,27 @@ cache and configuration authority. Use `zerogravity help COMMAND` for
 the compiled binary's current options. Feature availability is not a
 promise of model or hardware qualification.
 
+### Native Nix package
+
+On x86-64 Linux, the default Nix package builds the normal CPU, CUDA,
+ROCm and Vulkan features and the supported model/control frontends.
+Its launcher supplies the pinned runtime libraries, CUDA/CCCL headers
+and HIP device libraries without a development shell. CUDA compiler
+bindings use the version of the pinned SDK. Host driver modules, device
+access, source support and resource admission remain independent
+requirements.
+
+```sh
+nix run .# -- --offline
+nix run .# -- --format json doctor
+nix build .#default
+```
+
+The `portable` Nix package and existing cross-platform release assets
+retain their portable CPU feature set. Native package realization may
+need additional pinned Nix dependencies; it does not acquire model
+weights. Explicit GPU runtime environment overrides remain supported.
+
 ## Start and run
 
 ```sh
@@ -157,8 +178,18 @@ stages, elapsed time, observed verification/download counters and
 the most recent matching action outcome. Related repository pulls
 are not exact snapshot operations. Verification reports bytes hashed
 and files authenticated separately; inventory/verification does not
-grant execution. Actual loaded backend/device comes from the runtime
-registration. No fabricated load percentage or persistent task history. Details in the context menu (Alt-D)
+grant execution. The canonical text planner and Models view share a
+metadata-only route classification: missing weight payloads, unsupported
+original Safetensors source, role-bound GGUF candidate, or approved
+original Qwen source. Known structural refusals disable Load/Run and
+Load for Serve but leave inspection, verification and cache actions
+available. Model-specific execution choices omit unsupported backends;
+a candidate is never a memory-fit or authentication guarantee.
+Auto checks the actual CUDA compiler/runtime binding and HIP device
+identity before choosing a route; native numerical selection requires
+ROCm. After selection, admission and source loading may still refuse
+without silently trying a different device or numerical contract.
+Actual loaded backend/device comes from the runtime registration. No fabricated load percentage or persistent task history. Details in the context menu (Alt-D)
 opens exact metadata, full digest/revision, raw bytes and last action
 result without executing inspection or verification. Disabled actions
 cannot activate; changed observations require choosing again.

@@ -4,6 +4,7 @@ use zerogravity::cache::{CacheMetadata, CacheOptions};
 use zerogravity::models::{ModelLoadRequest, QwenServingProfile};
 use zerogravity::runtime::text::{ResponseEvent, SemanticRequest, TextInput};
 
+#[cfg(feature = "cuda")]
 const GIB: u64 = 1024 * 1024 * 1024;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -19,13 +20,8 @@ struct Resolved {
     target: String,
 }
 
-pub(super) fn candidate(request: &Request, model: &zerogravity::pipeline::ModelInstance) -> bool {
-    if model.native_artifacts.is_some()
-        || !matches!(
-            request.backend,
-            Backend::Auto | Backend::Cuda | Backend::Rocm
-        )
-    {
+fn candidate(model: &zerogravity::pipeline::ModelInstance) -> bool {
+    if model.native_artifacts.is_some() {
         return false;
     }
     target(model).is_some()
@@ -36,12 +32,12 @@ pub(super) fn selected_backend(
     model: &zerogravity::pipeline::ModelInstance,
     inventory: &devices::Inventory,
 ) -> Result<Option<SelectedBackend>> {
-    if !candidate(request, model) {
+    if !candidate(model) {
         return Ok(None);
     }
     zerogravity::devices::fresh(inventory)?;
     let target = target(model).expect("candidate has Qwen target");
-    select_backend(request, inventory, &target)
+    require_source_backend(request, inventory, &target).map(Some)
 }
 
 pub(super) fn run(
@@ -315,54 +311,62 @@ pub(crate) fn select_backend(
     inventory: &devices::Inventory,
     target: &str,
 ) -> Result<Option<SelectedBackend>> {
-    let allowed = zerogravity::devices::allowed(request, inventory)?;
-    match request.backend {
-        Backend::Cuda => {
-            require_cuda(&allowed, target, &request.headroom)?;
-            Ok(Some(SelectedBackend::Cuda))
-        }
-        Backend::Rocm => {
-            require_hip(&allowed)?;
-            Ok(Some(SelectedBackend::Hip))
-        }
-        Backend::Auto => {
-            if cuda_candidate(&allowed, target, &request.headroom) {
-                Ok(Some(SelectedBackend::Cuda))
-            } else if hip_candidate(&allowed) {
-                Ok(Some(SelectedBackend::Hip))
-            } else {
-                Ok(None)
-            }
-        }
-        Backend::Cpu | Backend::Vulkan => Ok(None),
+    if matches!(request.backend, Backend::Cpu | Backend::Vulkan) {
+        return Ok(None);
     }
+    require_source_backend(request, inventory, target).map(Some)
 }
 
-/// Resident original-source routes require an eligible GPU. Report why
-/// selection refused instead of treating missing capability as corruption.
+/// Check actual cold bindings before selecting. Auto may choose another
+/// eligible backend here, but never after a route has been selected/loaded.
 pub(crate) fn require_source_backend(
     request: &Request,
     inventory: &devices::Inventory,
     target: &str,
 ) -> Result<SelectedBackend> {
-    if let Some(backend) = select_backend(request, inventory, target)? {
-        return Ok(backend);
-    }
-    if matches!(request.backend, Backend::Cpu | Backend::Vulkan) {
-        return Err(Error::Unsupported(
-            "Original-source Qwen execution currently requires CUDA or ROCm/HIP; CPU and Vulkan are not eligible for this source route. Select an eligible GPU or a supported GGUF for CPU.".into(),
-        ));
-    }
     let allowed = zerogravity::devices::allowed(request, inventory)?;
-    let cuda = require_cuda(&allowed, target, &request.headroom)
-        .err()
-        .map_or_else(|| "not eligible".into(), |error| error.to_string());
-    let hip = require_hip(&allowed)
-        .err()
-        .map_or_else(|| "not eligible".into(), |error| error.to_string());
-    Err(Error::Unsupported(format!(
-        "No eligible original-source Qwen GPU route. CUDA: {cuda}; ROCm/HIP: {hip}. Select an eligible device or a supported GGUF for CPU."
-    )))
+    // Native arithmetic is a route constraint, not permission to execute
+    // the source-reference CUDA numerical profile under another label.
+    if request.numerical.as_deref() == Some("native") {
+        if !matches!(request.backend, Backend::Auto | Backend::Rocm) {
+            return Err(Error::Unsupported(
+                "native numerical profile requires ROCm".into(),
+            ));
+        }
+        require_hip(&allowed)?;
+        return Ok(SelectedBackend::Hip);
+    }
+    match request.backend {
+        Backend::Cuda => {
+            require_cuda(&allowed, target, &request.headroom)?;
+            Ok(SelectedBackend::Cuda)
+        }
+        Backend::Rocm => {
+            require_hip(&allowed)?;
+            Ok(SelectedBackend::Hip)
+        }
+        Backend::Auto => {
+            let cuda = match require_cuda(&allowed, target, &request.headroom) {
+                Ok(()) => return Ok(SelectedBackend::Cuda),
+                Err(error) => error,
+            };
+            let hip = match require_hip(&allowed) {
+                Ok(()) => return Ok(SelectedBackend::Hip),
+                Err(error) => error,
+            };
+            // Retain measured byte bounds if an otherwise eligible CUDA
+            // route was refused by capacity and no HIP binding is usable.
+            if matches!(cuda, Error::Resource(_)) {
+                return Err(cuda);
+            }
+            Err(Error::Unsupported(format!(
+                "No eligible original-source Qwen GPU route. CUDA: {cuda}; ROCm/HIP: {hip}. Check the runtime environment and selected devices, or use a supported GGUF for CPU."
+            )))
+        }
+        Backend::Cpu | Backend::Vulkan => Err(Error::Unsupported(
+            "Original-source Qwen execution currently requires CUDA or ROCm/HIP; CPU and Vulkan are not eligible for this source route. Select an eligible GPU or a supported GGUF for CPU.".into(),
+        )),
+    }
 }
 
 #[cfg(feature = "acquisition")]
@@ -394,25 +398,7 @@ pub(super) fn preflight_acquisition(
     Ok(())
 }
 
-fn cuda_candidate(devices: &[devices::Observation], target: &str, headroom: &Headroom) -> bool {
-    cfg!(feature = "cuda")
-        && target != "qwen3.8-27b"
-        && devices.iter().any(|device| {
-            device.class == "gpu"
-                && device.vendor == "nvidia"
-                && device.cuda_ordinal == Some(0)
-                && device.cuda_cc == Some((8, 6))
-                && cuda_fit(device, headroom).is_ok_and(|bytes| bytes >= 5 * GIB)
-        })
-}
-
-fn hip_candidate(devices: &[devices::Observation]) -> bool {
-    cfg!(feature = "hip")
-        && devices
-            .iter()
-            .any(|device| device.class == "gpu" && device.vendor == "amd")
-}
-
+#[cfg(feature = "cuda")]
 fn cuda_fit(device: &devices::Observation, headroom: &Headroom) -> Result<u64> {
     let ceiling = device
         .ceiling
@@ -435,7 +421,7 @@ fn require_cuda(devices: &[devices::Observation], target: &str, headroom: &Headr
     {
         if target == "qwen3.8-27b" {
             return Err(Error::Unsupported(
-                "current resident Qwen CUDA envelope cannot fit qwen3.8-27b".into(),
+                "Original Qwen 27B CUDA execution is not yet qualified; select the eligible ROCm route".into(),
             ));
         }
         let device = devices
@@ -444,9 +430,17 @@ fn require_cuda(devices: &[devices::Observation], target: &str, headroom: &Headr
                 device.class == "gpu" && device.vendor == "nvidia" && device.cuda_ordinal == Some(0)
             })
             .ok_or_else(|| {
-                Error::Unsupported(
-                    "selected devices do not include the original CUDA device 0".into(),
-                )
+                let nvidia = devices.iter().filter(|device|
+                    device.class == "gpu" && device.vendor == "nvidia");
+                let observed = nvidia.clone().any(|device| device.cuda_ordinal.is_some());
+                let present = nvidia.count() != 0;
+                Error::Unsupported(if observed {
+                    "Original Qwen CUDA requires selected CUDA device 0; another ordinal is not qualified"
+                } else if present {
+                    "Selected NVIDIA GPU has no usable CUDA runtime/driver binding; check installed driver and packaged runtime libraries"
+                } else {
+                    "No NVIDIA GPU in the selected device policy"
+                }.into())
             })?;
         if device.cuda_cc != Some((8, 6)) {
             return Err(Error::Unsupported(format!(
@@ -457,6 +451,7 @@ fn require_cuda(devices: &[devices::Observation], target: &str, headroom: &Headr
                     .unwrap_or_else(|| "unknown".into())
             )));
         }
+        zerogravity::gpu::cuda::compiler::validate_environment()?;
         let available = cuda_fit(device, headroom)?;
         if available < 5 * GIB {
             return Err(Error::resource(
@@ -480,11 +475,7 @@ fn require_hip(devices: &[devices::Observation]) -> Result<()> {
     }
     #[cfg(feature = "hip")]
     {
-        devices
-            .iter()
-            .any(|device| device.class == "gpu" && device.vendor == "amd")
-            .then_some(())
-            .ok_or_else(|| Error::Unsupported("no selected AMD HIP device".into()))
+        observe_selected_hip(devices).map(|_| ())
     }
 }
 
@@ -553,30 +544,48 @@ fn hip_load(
 }
 
 #[cfg(feature = "hip")]
+fn observe_selected_hip(
+    devices: &[devices::Observation],
+) -> Result<zerogravity::gpu::HipDeviceMetadata> {
+    if !devices
+        .iter()
+        .any(|device| device.class == "gpu" && device.vendor == "amd")
+    {
+        return Err(Error::Unsupported(
+            "No AMD GPU in the selected device policy".into(),
+        ));
+    }
+    if !zerogravity::gpu::hip_runtime_libraries_available() {
+        return Err(Error::Unsupported(
+            "ROCm/HIP runtime libraries unavailable; check the packaged runtime environment".into(),
+        ));
+    }
+    let observed = zerogravity::gpu::observe_hip_device(Default::default())
+        .ok_or_else(|| Error::Unsupported("HIP runtime cannot observe device 0; check driver/device access and runtime compatibility".into()))?;
+    let selected = observed
+        .physical
+        .pci_address
+        .and_then(|pci| zerogravity::devices::normalize_pci(&pci.to_string()).ok())
+        .is_some_and(|pci| {
+            let id = format!("pci:{pci}");
+            devices
+                .iter()
+                .any(|device| device.class == "gpu" && device.vendor == "amd" && device.id == id)
+        });
+    if !selected {
+        return Err(Error::Unsupported("HIP device 0 is outside the selected device policy or its physical identity is unavailable".into()));
+    }
+    Ok(observed)
+}
+
+#[cfg(feature = "hip")]
 fn hip_budget(
     request: &Request,
     inventory: &devices::Inventory,
     device_mib: Option<usize>,
 ) -> Result<zerogravity::models::HipSourceBudget> {
     let allowed = zerogravity::devices::allowed(request, inventory)?;
-    let observed = zerogravity::gpu::observe_hip_device(Default::default())
-        .ok_or_else(|| Error::Unsupported("HIP device 0 is unavailable".into()))?;
-    let observed_pci = observed
-        .physical
-        .pci_address
-        .map(|pci| pci.to_string())
-        .and_then(|pci| zerogravity::devices::normalize_pci(&pci).ok());
-    let selected = observed_pci.as_ref().is_some_and(|pci| {
-        let id = format!("pci:{pci}");
-        allowed
-            .iter()
-            .any(|device| device.class == "gpu" && device.vendor == "amd" && device.id == id)
-    });
-    if !selected {
-        return Err(Error::Unsupported(
-            "HIP device 0 is outside the selected device policy".into(),
-        ));
-    }
+    let observed = observe_selected_hip(&allowed)?;
 
     // HIP's own allocator/runtime reports the allocatable pool, including UMA
     // on integrated GPUs. Do not infer capacity from DRM GTT addressability.

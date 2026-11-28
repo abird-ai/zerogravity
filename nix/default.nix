@@ -17,6 +17,17 @@
       then base
       else base.override {targets = [target];});
 
+  # The portable CPU artifacts remain independent of native GPU packages.
+  gpuPkgs = import nixpkgs {
+    system = "x86_64-linux";
+    overlays = [overlay];
+    config.allowUnfree = true;
+  };
+  gpuRuntime = import ./gpu-runtime.nix {
+    pkgs = gpuPkgs;
+    inherit sourceRoot;
+  };
+
   native = forAllSystems (system:
     import ./native.nix {
       pkgs = import nixpkgs {
@@ -26,6 +37,16 @@
       inherit sourceRoot version mkCraneLib;
     });
 
+  full = import ./native.nix {
+    pkgs = gpuPkgs;
+    runtime = gpuRuntime;
+    inherit sourceRoot version mkCraneLib;
+  };
+  selected = system:
+    if system == "x86_64-linux"
+    then full
+    else native.${system};
+
   cross = import ./cross.nix {inherit nixpkgs overlay sourceRoot version mkCraneLib;};
 
   development = forAllSystems (system:
@@ -34,12 +55,11 @@
       inherit sourceRoot;
       gpuPkgs =
         if system == "x86_64-linux"
-        then
-          import nixpkgs {
-            inherit system;
-            overlays = [overlay];
-            config.allowUnfree = true;
-          }
+        then gpuPkgs
+        else null;
+      runtime =
+        if system == "x86_64-linux"
+        then gpuRuntime
         else null;
     });
   vllm = forAllSystems (system:
@@ -55,11 +75,13 @@ in {
 
   packages = forAllSystems (system:
     {
-      default = native.${system}.package;
-      zerogravity = native.${system}.package;
-      deps = native.${system}.cargoArtifacts;
+      default = (selected system).package;
+      zerogravity = (selected system).package;
+      portable = native.${system}.package;
+      deps = (selected system).cargoArtifacts;
     }
     // nixpkgs.lib.optionalAttrs (system == "x86_64-linux") {
+      gpu-runtime-headers = gpuRuntime.cudaPath;
       vllm-cuda = vllm.${system}.cuda.provider;
       vllm-rocm = vllm.${system}.rocm.provider;
     }
@@ -73,7 +95,7 @@ in {
     {
       default = {
         type = "app";
-        program = "${native.${system}.package}/bin/zerogravity";
+        program = "${(selected system).package}/bin/zerogravity";
       };
       zerogravity = self.apps.${system}.default;
     }
@@ -89,10 +111,13 @@ in {
     });
 
   checks = forAllSystems (system:
-    import ./checks.nix {
+    (import ./checks.nix {
       inherit sourceRoot;
       native = native.${system};
       module = self.nixosModules.default;
+    })
+    // nixpkgs.lib.optionalAttrs (system == "x86_64-linux") {
+      native-package = full.package;
     });
 
   devShells = forAllSystems (system:

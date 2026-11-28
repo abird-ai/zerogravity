@@ -56,6 +56,37 @@ pub enum FileRole {
     Auxiliary,
 }
 
+/// Declared source shape only. File suffixes are format hints; the
+/// authenticated reader still validates contents, family and geometry.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
+pub struct SourceLayout {
+    pub weights: usize,
+    pub gguf: usize,
+    pub safetensors: usize,
+    pub configs: usize,
+    pub tokenizers: usize,
+}
+
+impl SourceLayout {
+    /// The canonical GGUF reader accepts one role-bound component of
+    /// each kind. Original multi-shard sources require their own consumer.
+    pub fn single_gguf_refusal(self) -> Option<&'static str> {
+        if self.weights == 0 {
+            Some("Snapshot has no weight payloads; acquire a complete model source")
+        } else if self.safetensors != 0 {
+            Some(
+                "Original Safetensors payloads require a supported original-source route; this is not a GGUF source",
+            )
+        } else if self.weights != 1 || self.gguf != 1 {
+            Some("Canonical GGUF execution requires exactly one GGUF weight file")
+        } else if self.configs != 1 || self.tokenizers != 1 {
+            Some("Canonical GGUF execution requires one role-bound config and tokenizer")
+        } else {
+            None
+        }
+    }
+}
+
 /// A local content hash does not authenticate an upstream source. This records
 /// whether the resolver supplied a raw SHA256 or observed bytes for the first
 /// time. Older/local manifests conservatively report Unspecified.
@@ -314,6 +345,29 @@ impl Manifest {
             .collect::<Result<Vec<_>>>()?;
         Self::new(source, entries, limits)
     }
+    pub fn source_layout(&self) -> SourceLayout {
+        let mut layout = SourceLayout::default();
+        for entry in self.entries() {
+            match entry.role() {
+                FileRole::Weights => {
+                    layout.weights += 1;
+                    match std::path::Path::new(entry.path())
+                        .extension()
+                        .and_then(|ext| ext.to_str())
+                    {
+                        Some("gguf") => layout.gguf += 1,
+                        Some("safetensors") => layout.safetensors += 1,
+                        _ => {}
+                    }
+                }
+                FileRole::Config => layout.configs += 1,
+                FileRole::Tokenizer => layout.tokenizers += 1,
+                _ => {}
+            }
+        }
+        layout
+    }
+
     pub fn entries(&self) -> &[ManifestEntry] {
         &self.entries
     }
@@ -385,6 +439,58 @@ mod tests {
     fn source() -> ManifestSource {
         ManifestSource::new("local", "tiny-fixture", "v1").unwrap()
     }
+    #[test]
+    fn source_layout_is_role_bound_and_does_not_authenticate_payloads() {
+        let role = |path, role| ManifestEntry::new(path, "0".repeat(64), 1, role).unwrap();
+        let build = |weights: Vec<ManifestEntry>| {
+            let mut entries = vec![
+                role("config.json", FileRole::Config),
+                role("tokenizer.json", FileRole::Tokenizer),
+                role("preview.gguf", FileRole::Auxiliary),
+            ];
+            entries.extend(weights);
+            Manifest::new(source(), entries, &CacheLimits::default())
+                .unwrap()
+                .source_layout()
+        };
+        let metadata = build(vec![]);
+        assert_eq!(metadata.weights, 0);
+        assert!(
+            metadata
+                .single_gguf_refusal()
+                .unwrap()
+                .contains("no weight payloads")
+        );
+        let original = build(vec![
+            role("model-1.safetensors", FileRole::Weights),
+            role("model-2.safetensors", FileRole::Weights),
+        ]);
+        assert_eq!(
+            (original.weights, original.safetensors, original.gguf),
+            (2, 2, 0)
+        );
+        assert!(
+            original
+                .single_gguf_refusal()
+                .unwrap()
+                .contains("original-source route")
+        );
+        let gguf = build(vec![role("model.gguf", FileRole::Weights)]);
+        assert_eq!((gguf.gguf, gguf.configs, gguf.tokenizers), (1, 1, 1));
+        assert!(gguf.single_gguf_refusal().is_none());
+        let split = build(vec![
+            role("a.gguf", FileRole::Weights),
+            role("b.gguf", FileRole::Weights),
+        ]);
+        assert!(split.single_gguf_refusal().is_some());
+        // Same spelling rules as the original artifact parser.
+        assert!(
+            build(vec![role("model.GGUF", FileRole::Weights)])
+                .single_gguf_refusal()
+                .is_some()
+        );
+    }
+
     #[test]
     fn canonical_order_roundtrip_and_unicode_remain_explicit() {
         let a = Manifest::new(
