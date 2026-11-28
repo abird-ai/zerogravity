@@ -25,6 +25,52 @@ Contracts: [P00–P23 roadmap](../IMPLEMENTATION_ROADMAP.md),
   NVIDIA37MiB/0%, no compute owners. User launch command/log are outside
   connector read scope; reproduction is independent. Use ordinary nix
   run or nix develop, not the unwrapped Cargo binary. No host changes.
+- [x] X2 ordinary native ROCm launch qualification (28 Nov user
+  direction: X2 primary ROCm execution host). Exact L5 dcfa8fde source
+  synchronized by incremental Git bundle, no source authored on X2.
+  Normal Nix realization built the same package output as L5
+  (48c00b22 source, target/native-package); no lock, trust, driver or
+  SDK overrides. Existing Qwen snapshots only. Physical gfx1151,
+  PCI 0000:c6:00.0, 96 GiB VRAM, isolated Web control host, ordinary
+  numerical policy, default headroom, no device-mib override, context
+  1024/active 1/output 3. Explicit ROCm 0.8B, Auto 2B and explicit
+  ROCm 27B each loaded, generated 11+3 tokens (raw "Continue: 1, 2, 3,"
+  → " 4,", length), and unloaded. All 24/24/64 layers on the AMD
+  GPU; observed loaded VRAM 2508787712/4547153920/56435105792 bytes.
+  Cold load actions 19.009/23.859/153.301s (canaries, not performance
+  comparators). Each host retired; final 274452480 bytes/busy0/no KFD
+  owners, exact initial idle. 0.8B success was part of the rejected
+  sequential reload test below; 2B/27B fresh-process runs exited 0.
+  Logs on X2: target/x2-native-launch-build.log,
+  x2-native-launch-physical-retry.log, x2-native-launch-2b.log,
+  x2-native-launch-27b.log; per-case results and physical receipts in
+  matching run directories. No backend optimization or PS-F1 promotion.
+- [ ] Fix ordinary same-process HIP load/unload/reload on X2 before
+  claiming reusable native model lifecycle. After the actual 0.8B
+  inference/unload, Auto 2B reached HIP but failed 500
+  inference_error: conflicting physical device budget attestation.
+  Source diagnosis: hip_budget derives an operation envelope from
+  current free memory; begin_single_source attempts fresh physical
+  preadmission and register_matching against the initial process cap.
+  The live NativeContextBudget intentionally survives model retirement;
+  configure_single_stream and NATIVE_CONTEXT_CONSTRUCTED are further
+  one-time bootstrap boundaries. Do not relax equality, reset global
+  state, release retained context credit or bypass fencing merely to
+  pass reload. Separate stable physical capacity/context ownership from
+  current model admission, reuse the existing actor and allocate a new
+  source/model lease with current actual capacity and exact retirement.
+  Qualify 0.8B→2B→0.8B in the same process, physical reuse, stale owner
+  refusal and final exact idle. Coordinate with the ordered service/
+  physical-owner migration; existing fixed-budget tests stay valid.
+  Fresh 2B succeeds, so this is not a device capacity refusal.
+- [ ] Populate missing optional original-HIP loaded-model snapshot
+  provenance in the owner diagnostics: actual Web capabilities.snapshot
+  is null for these three exact cached loads; original action correlation,
+  source resolver and all physical layer/device observations passed.
+  Do not synthesize the snapshot from UI selection; project the existing
+  retained source identity. Initial test harness rejected this optional
+  observation; corrected harness independently verified each requested
+  digest in its own load event and actual provider/placement.
 - [ ] Investigate same-process CUDA retirement/reload capacity: successful
   Auto load and unload left the next explicit CUDA cold observation with
   5335148135 bytes after headroom, just below the qualified 5 GiB device
