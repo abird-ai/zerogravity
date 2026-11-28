@@ -1,10 +1,10 @@
 # zerogravity
 
-**The blazingly fast live programmable inference stack.**
+**The blazingly fast inference stack you can program live.**
 
 Run models from the terminal or with a few lines of Rust. Compose pipelines,
-inspect execution, and change how inference runs—live, from model definitions
-to the kernels beneath them.
+inspect execution, and make the stack yours—from model definitions to the kernels
+beneath them.
 
 One native runtime, from your local model to distributed servers and autonomous fleets.
 
@@ -190,7 +190,7 @@ Open either image for a full-size view.
 
 ## Architecture
 
-![ZeroGravity live programmable inference stack](docs/architecture-overview.svg)
+![ZeroGravity inference stack architecture](docs/architecture-overview.svg)
 
 This section describes the target architecture; [current support](#implementation-status-and-roadmap)
 is tracked separately.
@@ -263,6 +263,26 @@ the same contracts.
 - [Build, releases, NixOS, and prior implementation details](.agents/research/README_PRE_PRODUCT_REWRITE_SNAPSHOT_2026-10-15.md)
 
 ## FAQ
+
+**What does “you can program live” mean?** You, your software through the Rust SDK,
+or your agent through MCP can inspect, compose and adapt the running inference
+stack—from model definitions and pipelines to kernels, device placement, memory,
+caches and scheduling.
+
+Build a candidate, measure it against representative requests, learn from the
+results, and activate validated improvements while the service keeps running.
+Your software or agent can repeat that loop as requests, hardware, models and
+resource budgets change, building and refining an inference stack for the work
+it actually serves.
+
+The aim is to maximize throughput for your workload while meeting your latency,
+quality and resource requirements. Live changes use supported extension points
+and activation boundaries; already admitted requests and sessions retain their
+original revision.
+
+See [Live programming](#live-programming) for the workflow and
+[implementation status](#implementation-status-and-roadmap) for current support
+and previews.
 
 **How are models defined?** Each model family supplies verified source semantics,
 tensor encodings, task definitions and state requirements. Shared operators and
