@@ -6,6 +6,8 @@ pub(crate) mod kernels;
 pub(crate) const MAX_GROUPS: usize = 64;
 #[cfg(all(feature = "hip-source", feature = "hip"))]
 pub(crate) mod prepared;
+#[cfg(all(feature = "hip-source", feature = "hip"))]
+pub(crate) mod region;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Gamma {
@@ -57,7 +59,7 @@ pub(crate) fn scratch_words(width: usize, groups: usize) -> Result<[usize; 8]> {
     Ok([count, groups, groups, groups, groups, groups, count, count])
 }
 #[derive(Clone, Copy)]
-enum RmsInput<'a> {
+pub(crate) enum RmsInput<'a> {
     Direct(&'a Handle),
     Residual {
         input: &'a Handle,
@@ -199,27 +201,24 @@ pub(crate) fn launch_residual_fused_tail(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn launch_input(
-    client: &Client,
+fn validate_bindings(
     scratch: &[Handle],
+    extents: &[usize],
     input: RmsInput<'_>,
     gamma: Option<&Handle>,
     output: &Handle,
     status: &Handle,
     zero: &Handle,
     width: usize,
-    groups: usize,
+    count: usize,
     mode: Gamma,
-    fused_tail: bool,
-) -> Result<usize> {
-    let extents = scratch_words(width, groups)?;
-    let count = extents[0];
-    if scratch.len() != 8 || (mode == Gamma::Unit) != gamma.is_none() {
+) -> Result<()> {
+    if scratch.len() != extents.len() || (mode == Gamma::Unit) != gamma.is_none() {
         return Err(Error::Unsupported(
             "RMS explicit source geometry/gamma".into(),
         ));
     }
-    for (h, n) in scratch.iter().zip(extents) {
+    for (h, n) in scratch.iter().zip(extents.iter().copied()) {
         check(h, n)?;
     }
     match input {
@@ -278,6 +277,30 @@ fn launch_input(
     if let Some(gamma) = gamma {
         require_distinct(gamma)?;
     }
+
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn launch_input(
+    client: &Client,
+    scratch: &[Handle],
+    input: RmsInput<'_>,
+    gamma: Option<&Handle>,
+    output: &Handle,
+    status: &Handle,
+    zero: &Handle,
+    width: usize,
+    groups: usize,
+    mode: Gamma,
+    fused_tail: bool,
+) -> Result<usize> {
+    let extents = scratch_words(width, groups)?;
+    let count = extents[0];
+    validate_bindings(
+        scratch, &extents, input, gamma, output, status, zero, width, count, mode,
+    )?;
+    let normalized = input.normalized();
 
     let dim = CubeDim::new_1d(32);
     let grid = |n: usize| CubeCount::Static((n as u32).div_ceil(32), 1, 1);

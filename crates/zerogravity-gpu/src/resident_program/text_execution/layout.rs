@@ -76,6 +76,10 @@ fn insert<T: PartialEq + Clone>(
 }
 
 impl Layout {
+    pub(super) fn native_row_regions(&self) -> bool {
+        self.plan.numerical_profile() == NumericalProfile::HipRocBlasBf16MixedV2
+    }
+
     pub(super) fn derive(plan: Arc<ForwardPlan>) -> Result<Self> {
         if plan.text_invocation().is_some()
             || plan.frontier_delta() != 0

@@ -98,6 +98,13 @@ pub(super) fn kernels(
             }
         }
     }
+    let rms_kernels = |width, groups, mode, residual| {
+        if l.native_row_regions() {
+            crate::source_rms::prepared::region_kernels(client, width, mode, residual)
+        } else {
+            crate::source_rms::prepared::kernels(client, width, groups, mode, residual)
+        }
+    };
     for node in l.plan.nodes() {
         let PlanOperation::SourceOperatorTemplate { descriptor: d, .. } = &node.operation else {
             unreachable!()
@@ -142,8 +149,7 @@ pub(super) fn kernels(
                 }
             }
             SourceOperatorKind::Rms(g) => {
-                out.extend(crate::source_rms::prepared::kernels(
-                    client,
+                out.extend(rms_kernels(
                     g.width,
                     1,
                     crate::source_rms::Gamma::OnePlusRaw,
@@ -151,8 +157,7 @@ pub(super) fn kernels(
                 )?);
             }
             SourceOperatorKind::ResidualRms(g) => {
-                out.extend(crate::source_rms::prepared::kernels(
-                    client,
+                out.extend(rms_kernels(
                     g.width,
                     1,
                     crate::source_rms::Gamma::OnePlusRaw,
@@ -327,23 +332,34 @@ pub(super) fn kernels(
                     l.plan.numerical_profile().uses_hip_native_dense(),
                     g.contract == zerogravity_core::accelerator::program::GdnContract::HipRocBlasF32SolveV2,
                 )?);
-                out.extend(crate::source_rms::prepared::kernels(
-                    client,
+                out.extend(rms_kernels(
                     128,
                     vh,
                     crate::source_rms::Gamma::DirectF32AfterBf16,
                     false,
                 )?);
-                add!(
-                    crate::source_activation::gated::Gated,
-                    32,
-                    b(),
-                    b(),
-                    b(),
-                    b(),
-                    values,
-                    bf16
-                );
+                if l.native_row_regions() {
+                    add!(
+                        crate::source_activation::gated_rows::GatedRows,
+                        32,
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        bf16
+                    );
+                } else {
+                    add!(
+                        crate::source_activation::gated::Gated,
+                        32,
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        values,
+                        bf16
+                    );
+                }
             }
             SourceOperatorKind::QkRmsRotaryGated(g) => {
                 let qh = g.attention.query_heads;
@@ -378,8 +394,7 @@ pub(super) fn kernels(
                 );
                 for heads in [qh, kh] {
                     let n = heads * 256;
-                    out.extend(crate::source_rms::prepared::kernels(
-                        client,
+                    out.extend(rms_kernels(
                         256,
                         heads,
                         crate::source_rms::Gamma::OnePlusRaw,

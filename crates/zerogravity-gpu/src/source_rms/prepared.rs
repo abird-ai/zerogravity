@@ -57,3 +57,66 @@ pub(crate) fn kernels(
     }
     Ok(out)
 }
+
+pub(crate) fn region_kernels(
+    client: &Client,
+    width: usize,
+    mode: Gamma,
+    residual: bool,
+) -> Result<Vec<Box<dyn CubeKernel>>> {
+    super::scratch_words(width, 1)?;
+    let settings = || {
+        KernelSettings::new(
+            CubeDim::new_1d(32).into(),
+            ExecutionMode::Unchecked,
+            AddressType::U32,
+        )
+    };
+    let b = || BufferCompilationArg { inplace: None };
+    let p = client.properties_shared();
+    let t = client.target_properties_shared();
+    let inverse: Box<dyn CubeKernel> = if residual {
+        Box::new(
+            super::kernels::region_residual_inverse::RegionResidualInverse::new(
+                settings(),
+                p.clone(),
+                t.clone(),
+                b(),
+                b(),
+                b(),
+                b(),
+                b(),
+                b(),
+                width,
+            ),
+        )
+    } else {
+        Box::new(super::kernels::region_inverse::RegionInverse::new(
+            settings(),
+            p.clone(),
+            t.clone(),
+            b(),
+            b(),
+            b(),
+            b(),
+            width,
+        ))
+    };
+    Ok(vec![
+        inverse,
+        Box::new(
+            super::kernels::normalize_weight_store::NormalizeWeightStore::new(
+                settings(),
+                p,
+                t,
+                b(),
+                b(),
+                b(),
+                b(),
+                b(),
+                width,
+                mode.mode(),
+            ),
+        ),
+    ])
+}

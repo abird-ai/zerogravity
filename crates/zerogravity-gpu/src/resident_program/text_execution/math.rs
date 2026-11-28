@@ -102,6 +102,29 @@ impl Cold {
         groups: usize,
         mode: crate::source_rms::Gamma,
     ) -> Result<usize> {
+        if self.layout.native_row_regions() {
+            use crate::source_rms::{RmsInput, region};
+            let input = match residual {
+                Some((prior, residual)) => RmsInput::Residual {
+                    input,
+                    prior,
+                    residual,
+                },
+                None => RmsInput::Direct(input),
+            };
+            return region::launch(
+                self.service.client(),
+                &self.s(layout::RMS.start, groups)?,
+                input,
+                Some(gamma),
+                output,
+                &self.status_view()?,
+                &self.zero_view()?,
+                width,
+                groups,
+                mode,
+            );
+        }
         let (bytes, tiles) = rms_tiles(width, groups)?;
         // Validate the complete borrowed vectors before submitting any tile.
         subview(input, 0, bytes)?;
@@ -435,6 +458,24 @@ impl Cold {
             rows * vh,
             crate::source_rms::Gamma::DirectF32AfterBf16,
         )?;
+        if self.layout.native_row_regions() {
+            // Independent head/token rows share one exact gate launch.
+            subview(gate, 0, n * 4)?;
+            subview(output, 0, n * 4)?;
+            unsafe {
+                crate::source_activation::gated_rows::launch_unchecked(
+                    client,
+                    grid(n),
+                    dim(),
+                    arg(&normalized, n),
+                    arg(gate, n),
+                    arg(output, n),
+                    arg(&status, 1),
+                    bf16_gamma,
+                );
+            }
+            return Ok(count + 1);
+        }
         for row in 0..rows {
             let normalized_row = subview(&normalized, row * width * 4, width * 4)?;
             let gate_row = subview(gate, row * width * 4, width * 4)?;

@@ -47,7 +47,6 @@ pub(crate) fn sum(input: &[f32], zero: &[f32], output: &mut [f32], #[comptime] w
     let z = zero[0];
     let mut subtotal = z;
     let mut carry = z;
-    let mut values = Shared::<[f32]>::new_slice(32usize);
     for iteration in 0..width / 32usize {
         subtotal = add(subtotal, input[row * width + iteration * 32usize + lane]);
         if (iteration + 1usize).is_multiple_of(16usize) {
@@ -55,21 +54,52 @@ pub(crate) fn sum(input: &[f32], zero: &[f32], output: &mut [f32], #[comptime] w
             subtotal = z;
         }
     }
-    values[lane] = add(add(add(subtotal, carry), z), z);
-    sync_cube();
+    let total = fold_lanes(subtotal, carry, z, false);
     if lane == 0usize {
-        let mut total = z;
+        output[row] = total;
+    }
+}
+
+/// Preserve the original CPU cascade's lane and group order. The guarded
+/// arithmetic uses native FP32 only for normal operands/results.
+#[cube]
+fn sum_add(a: f32, b: f32, #[comptime] guarded: bool) -> f32 {
+    if comptime!(guarded) {
+        add_normal(a, b)
+    } else {
+        add(a, b)
+    }
+}
+
+#[cube]
+fn fold_lanes(subtotal: f32, carry: f32, zero: f32, #[comptime] guarded: bool) -> f32 {
+    let lane = usize::cast_from(UNIT_POS);
+    let mut values = Shared::<[f32]>::new_slice(32usize);
+    values[lane] = sum_add(
+        sum_add(sum_add(subtotal, carry, guarded), zero, guarded),
+        zero,
+        guarded,
+    );
+    sync_cube();
+    let mut total = zero;
+    if lane == 0usize {
         for i in 0..8usize {
-            total = add(
+            total = sum_add(
                 total,
-                add(
-                    add(add(values[i], values[8usize + i]), values[16usize + i]),
+                sum_add(
+                    sum_add(
+                        sum_add(values[i], values[8usize + i], guarded),
+                        values[16usize + i],
+                        guarded,
+                    ),
                     values[24usize + i],
+                    guarded,
                 ),
+                guarded,
             );
         }
-        output[row] = add(z, total);
     }
+    sum_add(zero, total, guarded)
 }
 #[cube]
 fn scalar_value(x: f32, #[comptime] stage: u32, #[comptime] width: usize) -> f32 {
@@ -120,24 +150,106 @@ pub(crate) fn scalar_cascade(
 ) {
     let i = ABSOLUTE_POS;
     if i < output.len() {
-        let mut y = input[i];
-        y = scalar_value(y, 0u32, width);
-        if !finite(y) {
-            status[0].fetch_or(NONFINITE_VALUE);
+        output[i] = inverse_value(input[i], status, width);
+    }
+}
+
+#[cube]
+fn inverse_value(total: f32, status: &[Atomic<u32>], #[comptime] width: usize) -> f32 {
+    let mut y = scalar_value(total, 0u32, width);
+    if !finite(y) {
+        status[0].fetch_or(NONFINITE_VALUE);
+    }
+    y = scalar_value(y, 1u32, width);
+    if !finite(y) {
+        status[0].fetch_or(NONFINITE_VALUE);
+    }
+    y = scalar_value(y, 2u32, width);
+    if !finite(y) {
+        status[0].fetch_or(NONFINITE_VALUE);
+    }
+    y = scalar_value(y, 3u32, width);
+    if !finite(y) {
+        status[0].fetch_or(NONFINITE_VALUE);
+    }
+    y
+}
+
+/// One independent wave per norm row. Keep the exact cascade while
+/// eliminating the vector squares and four scalar intermediate stores.
+#[cfg(all(feature = "hip-source", feature = "hip"))]
+#[cube(launch_unchecked)]
+pub(crate) fn region_inverse(
+    input: &[f32],
+    zero: &[f32],
+    inverse: &mut [f32],
+    status: &[Atomic<u32>],
+    #[comptime] width: usize,
+) {
+    let lane = usize::cast_from(UNIT_POS);
+    let row = usize::cast_from(CUBE_POS_X);
+    let z = zero[0];
+    let mut subtotal = z;
+    let mut carry = z;
+    let mut invalid = false;
+    for iteration in 0..width / 32usize {
+        let x = input[row * width + iteration * 32usize + lane];
+        let square = mul_bf16(x, x);
+        invalid |= !source_bf16(x) || !finite(square);
+        subtotal = add_normal(subtotal, square);
+        if (iteration + 1usize).is_multiple_of(16usize) {
+            carry = add_normal(carry, subtotal);
+            subtotal = z;
         }
-        y = scalar_value(y, 1u32, width);
-        if !finite(y) {
-            status[0].fetch_or(NONFINITE_VALUE);
+    }
+    if invalid {
+        status[0].fetch_or(NONFINITE_VALUE);
+    }
+    let total = fold_lanes(subtotal, carry, z, true);
+    if lane == 0usize {
+        inverse[row] = inverse_value(total, status, width);
+    }
+}
+
+/// Same region with the source's separately rounded BF16 residual published
+/// as the original logical output. No private residual/square transport.
+#[cfg(all(feature = "hip-source", feature = "hip"))]
+#[cube(launch_unchecked)]
+pub(crate) fn region_residual_inverse(
+    input: &[f32],
+    prior: &[f32],
+    residual: &mut [f32],
+    zero: &[f32],
+    inverse: &mut [f32],
+    status: &[Atomic<u32>],
+    #[comptime] width: usize,
+) {
+    let lane = usize::cast_from(UNIT_POS);
+    let row = usize::cast_from(CUBE_POS_X);
+    let z = zero[0];
+    let mut subtotal = z;
+    let mut carry = z;
+    let mut invalid = false;
+    for iteration in 0..width / 32usize {
+        let i = row * width + iteration * 32usize + lane;
+        let x = input[i];
+        let y = prior[i];
+        let r = bf16(add_normal(x, y));
+        residual[i] = r;
+        let square = mul_bf16(r, r);
+        invalid |= !source_bf16(x) || !source_bf16(y) || !source_bf16(r) || !finite(square);
+        subtotal = add_normal(subtotal, square);
+        if (iteration + 1usize).is_multiple_of(16usize) {
+            carry = add_normal(carry, subtotal);
+            subtotal = z;
         }
-        y = scalar_value(y, 2u32, width);
-        if !finite(y) {
-            status[0].fetch_or(NONFINITE_VALUE);
-        }
-        y = scalar_value(y, 3u32, width);
-        output[i] = y;
-        if !finite(y) {
-            status[0].fetch_or(NONFINITE_VALUE);
-        }
+    }
+    if invalid {
+        status[0].fetch_or(NONFINITE_VALUE);
+    }
+    let total = fold_lanes(subtotal, carry, z, true);
+    if lane == 0usize {
+        inverse[row] = inverse_value(total, status, width);
     }
 }
 #[cube]

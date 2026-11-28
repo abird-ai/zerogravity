@@ -54,17 +54,44 @@ pub(crate) fn gated(
 ) {
     let i = ABSOLUTE_POS;
     if i < elements {
-        let mut n = normalized[i];
-        if comptime!(bf16_gamma) {
-            n = bf16(n);
-        }
-        let g = crate::source_sleef::silu(gate[i]);
-        let y = bf16(mul(n, g));
-        output[i] = y;
-        if !source_bf16(gate[i]) || !finite(y) {
-            status[0].fetch_or(NONFINITE_VALUE);
-        }
+        output[i] = gated_value(normalized[i], gate[i], status, bf16_gamma);
     }
+}
+
+/// Same source epilogue, with the actual borrowed output extent rather than
+/// a fixed token row. One dispatch covers independent token/head groups.
+#[cfg(all(feature = "hip-source", feature = "hip"))]
+#[cube(launch_unchecked)]
+pub(crate) fn gated_rows(
+    normalized: &[f32],
+    gate: &[f32],
+    output: &mut [f32],
+    status: &[Atomic<u32>],
+    #[comptime] bf16_gamma: bool,
+) {
+    let i = ABSOLUTE_POS;
+    if i < output.len() {
+        output[i] = gated_value(normalized[i], gate[i], status, bf16_gamma);
+    }
+}
+
+#[cube]
+fn gated_value(
+    normalized: f32,
+    gate: f32,
+    status: &[Atomic<u32>],
+    #[comptime] bf16_gamma: bool,
+) -> f32 {
+    let mut n = normalized;
+    if comptime!(bf16_gamma) {
+        n = bf16(n);
+    }
+    let g = crate::source_sleef::silu(gate);
+    let y = bf16(mul(n, g));
+    if !source_bf16(gate) || !finite(y) {
+        status[0].fetch_or(NONFINITE_VALUE);
+    }
+    y
 }
 
 #[cube(launch_unchecked)]
