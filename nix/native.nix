@@ -27,7 +27,12 @@
     };
 
   # Crane caches dependency artifacts across source-only changes.
-  cargoArtifacts = craneLib.buildDepsOnly commonArgs;
+  cargoArtifacts =
+    import ./dependencies.nix {
+      lib = pkgs.lib;
+      inherit craneLib sourceRoot;
+    }
+    commonArgs;
   package = craneLib.buildPackage (commonArgs
     // {
       inherit cargoArtifacts;

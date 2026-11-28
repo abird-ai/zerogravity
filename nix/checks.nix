@@ -29,9 +29,9 @@
     pkgs.runCommand "zerogravity-workspace-source-integrity" {
       nativeBuildInputs = [pkgs.python3];
     } ''
-      python3 - "${sourceRoot}" "${native.src}" "$out" <<'PY'
+      python3 - "${sourceRoot}" "${native.src}" "${native.cargoArtifacts.src}" "$out" <<'PY'
       import hashlib, json, pathlib, sys, tomllib
-      original, filtered, output = map(pathlib.Path, sys.argv[1:])
+      original, filtered, dependency_source, output = map(pathlib.Path, sys.argv[1:])
       vendor = pathlib.Path("crates/zerogravity-gpu/vendor")
       manifest = tomllib.loads((filtered / "Cargo.toml").read_text())
       assert "package" not in manifest and manifest["workspace"]["package"]["version"]
@@ -47,6 +47,15 @@
       for relative in vendors:
           assert str(relative) in excluded, (relative, "vendor workspace member")
           assert (filtered / relative / "Cargo.toml").is_file(), relative
+          # Crane's dependency source may stub our own crates, never a
+          # patched dependency whose APIs other crates actually compile against.
+          expected = filtered / relative
+          actual = dependency_source / relative
+          expected_files = sorted(p.relative_to(expected) for p in expected.rglob("*") if p.is_file())
+          actual_files = sorted(p.relative_to(actual) for p in actual.rglob("*") if p.is_file())
+          assert actual_files == expected_files, (relative, "dependency source files")
+          for file in expected_files:
+              assert (actual / file).read_bytes() == (expected / file).read_bytes(), (relative, file, "stubbed dependency")
           cargo = tomllib.loads((original / relative / "Cargo.toml").read_text())
           for key in ["readme", "license-file"]:
               name = cargo["package"].get(key)

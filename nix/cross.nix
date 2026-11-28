@@ -30,7 +30,12 @@
       }
       // nixpkgs.lib.optionalAttrs (rustFlags != null) {CARGO_BUILD_RUSTFLAGS = rustFlags;}
       // extraArgs;
-    cargoArtifacts = craneLib.buildDepsOnly commonArgs;
+    cargoArtifacts =
+      import ./dependencies.nix {
+        lib = nixpkgs.lib;
+        inherit craneLib sourceRoot;
+      }
+      commonArgs;
     package = craneLib.buildPackage (commonArgs
       // {
         inherit cargoArtifacts nativeBuildInputs;
