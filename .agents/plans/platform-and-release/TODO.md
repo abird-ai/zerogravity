@@ -9,92 +9,6 @@ Contracts: [P00–P23 roadmap](../IMPLEMENTATION_ROADMAP.md),
 
 ## Uncommitted
 
-- [x] L5 native launch environment follow-up: default x86-64 Linux Nix
-  development shell shares the ordinary package GPU runtime closure;
-  explicit portable shell remains CPU-only and GPU benchmarking inputs
-  remain in the optional gpu shell. Actual shell realization and full
-  native Cargo build passed, with no lock changes. The raw launch with
-  SDK/loader variables stripped reproduced the three user errors on the
-  exact cached 0.8B. Actual signed 48c00b22 package is realized at
-  target/native-package (native release, unchanged dependencies).
-  Fresh Auto and explicit CUDA each generated 11+3 tokens, joined
-  retirement, 14.711s and 14.356s action durations (canaries, not perf).
-  Corrected default dev shell also generated 11+3 tokens and retired
-  (unoptimized 185.329s). Explicit ROCm reached physical admission and
-  refused 9885299712/8870966887 bytes, not missing libraries. Final idle
-  NVIDIA37MiB/0%, no compute owners. User launch command/log are outside
-  connector read scope; reproduction is independent. Use ordinary nix
-  run or nix develop, not the unwrapped Cargo binary. No host changes.
-- [x] X2 ordinary native ROCm launch qualification (28 Nov user
-  direction: X2 primary ROCm execution host). Exact L5 dcfa8fde source
-  synchronized by incremental Git bundle, no source authored on X2.
-  Normal Nix realization built the same package output as L5
-  (48c00b22 source, target/native-package); no lock, trust, driver or
-  SDK overrides. Existing Qwen snapshots only. Physical gfx1151,
-  PCI 0000:c6:00.0, 96 GiB VRAM, isolated Web control host, ordinary
-  numerical policy, default headroom, no device-mib override, context
-  1024/active 1/output 3. Explicit ROCm 0.8B, Auto 2B and explicit
-  ROCm 27B each loaded, generated 11+3 tokens (raw "Continue: 1, 2, 3,"
-  → " 4,", length), and unloaded. All 24/24/64 layers on the AMD
-  GPU; observed loaded VRAM 2508787712/4547153920/56435105792 bytes.
-  Cold load actions 19.009/23.859/153.301s (canaries, not performance
-  comparators). Each host retired; final 274452480 bytes/busy0/no KFD
-  owners, exact initial idle. 0.8B success was part of the rejected
-  sequential reload test below; 2B/27B fresh-process runs exited 0.
-  Logs on X2: target/x2-native-launch-build.log,
-  x2-native-launch-physical-retry.log, x2-native-launch-2b.log,
-  x2-native-launch-27b.log; per-case results and physical receipts in
-  matching run directories. No backend optimization or PS-F1 promotion.
-- [x] Ordinary same-process HIP load/unload/reload: stable physical
-  registration separate from per-model admission; one source-neutral
-  context/compiler/queue owner, fresh scoped native set and original
-  arbiter lease per model. Drain deferred allocator frees before closing
-  the model namespace. Retain the original context charge; fence and
-  retain on uncertain cleanup. Existing strict attestation unchanged.
-  The 11ae77f7 ordinary X2 package passed 0.8B→2B→0.8B and
-  0.8B→27B→0.8B with default headroom, all 24/24/64 layers on the same
-  physical GPU, 11+3 tokens and the same raw continuation each time.
-  Extended case rejected stale invoke/unload IDs without affecting
-  the new registration. Typical small-model post-unload VRAM ~449 MiB;
-  the 27B release has delayed observed driver reclamation (~14.65 GiB
-  at immediate unload observation), but next model admitted and retired.
-  Exact final 274452480 bytes/busy0/no KFD owners for both sequences.
-  Logs X2 target/x2-hip-reuse-{physical,large}.log. No simultaneous
-  multi-model execution, extra-device bootstrap or new numerical claim.
-  Preserve fixed-budget SDK/qualification paths and source identity.
-- [ ] Finish assembled workspace gate for GPU lifetime reuse. On L5,
-  formatting/architecture, all GPU feature-boundary compilation and
-  original qualification/serving tests (26 passed, 0 failed, 2 ignored),
-  dependency isolation and CPU Clippy passed; focused HIP budget and
-  arbiter tests 31 passed, CUDA budget fit 1 passed. Full gate stopped
-  during CPU workspace test compilation at the turn checkpoint; remaining
-  CPU and subsequent stages outstanding. See target/gpu-reuse-full-gate.log.
-- [ ] Populate missing optional original-HIP loaded-model snapshot
-  provenance in the owner diagnostics: actual Web capabilities.snapshot
-  is null for these three exact cached loads; original action correlation,
-  source resolver and all physical layer/device observations passed.
-  Do not synthesize the snapshot from UI selection; project the existing
-  retained source identity. Initial test harness rejected this optional
-  observation; corrected harness independently verified each requested
-  digest in its own load event and actual provider/placement.
-- [x] Ordinary same-process CUDA reload: preserve stable 5 GiB physical
-  ceiling and 512 MiB compiler allowance; fit only the model envelope
-  against post-headroom availability, then the existing actor's live
-  observation and exact source planner. A discovery-side shrink does
-  not add a second headroom charge. Original compiler context retained,
-  not repriced or released. No fallback after selected-route error.
-  Native L5 package 3d0b1404 passed three 0.8B loads and
-  0.8B→2B→0.8B (Auto and explicit CUDA, all 24 layers), 11+3 tokens and
-  same continuation, stale invoke/unload rejection. On second mixed
-  load the actual model cap narrowed from 4831838208 to 4798277223 bytes;
-  post-unload VRAM 155 MiB; final 37 MiB/busy0/no compute owners exactly.
-  Logs L5 target/l5-cuda-reload-{physical,mixed}.log. Follow-up 9c08ff3b
-  reuses the equivalent existing live-fit helper and adds regression
-  coverage. Neither headroom nor qualified architecture bounds changed.
-  Auto discovery establishes possible capacity; exact model fit remains
-  the source planner's authority.
-
-
 - [ ] Owner23Oct: bring Vulkan execution to CUDA feature/correctness parity;
   use ROCm/HIP for AMD including pvl-x2 gfx1151. Vulkan source catalogue
   landed in `19ff059`; the real offline build PASSED on x2 25Oct (v-build,
@@ -143,6 +57,118 @@ Contracts: [P00–P23 roadmap](../IMPLEMENTATION_ROADMAP.md),
 - [ ] Preserve one GPU-library service/queue/quarantine owner and cold generic-plan admission through packaging changes; verify actual final downstream links, not only compiler/type checks.
 
 ## Committed
+
+### 8a9ba962 — GPU lifetime closeout and authenticated provenance
+
+- [x] Original Qwen loaded-model diagnostics report the authenticated
+  immutable snapshot digest, derived once from the same retained
+  descriptor manifest after source authentication. Applies to HIP and
+  CUDA; no extra source IO or selection-derived identity. The original
+  host-only source/tokenizer ownership test passed with the cached
+  0.8B (1/0/0, 79.19s).
+- [x] Final native package at 8a9ba962 built normally on both L5 and X2
+  with unchanged dependency resolution. Each isolated Web control host
+  passed 0.8B→2B→0.8B with the exact per-registration snapshot digest,
+  11+3 tokens/expected continuation, explicit/Auto placement, stale
+  invoke/unload refusal and joined retirement. Final idle VRAM exactly
+  37 MiB on L5 and 274452480 bytes on X2; no compute owners. Earlier
+  27B switching evidence remains applicable to the unchanged HIP
+  lifecycle. Both local target/native-package links now reference the
+  validated build; no installation/deployment or host configuration
+  change. Logs target/{l5,x2}-gpu-reuse-final-physical.log on their
+  respective hosts; native build logs target/gpu-reuse-final-nix.log.
+- [x] Complete assembled workspace gate: prior unchanged dependency
+  isolation and CPU Clippy passed; exact resumed suffix passed all 319
+  Rust suites (2608/0/110), portable CPU release, real PTY/Web fixtures,
+  installer and script checks. Revalidated formatting, architecture and
+  the complete GPU prefix on the final source (8 Rust suites 26/0/2,
+  all feature boundaries and strict default Clippy). Total 327 suites:
+  2634 passed, 0 failed, 112 explicit ignores. Separate actual source
+  owner test above is not counted in the gate. No unfinished stage
+  remains. Logs target/gpu-reuse-gate-resume.log,
+  target/gpu-reuse-final-prefix.log and target/gpu-reuse-source-owner-test.log.
+  Earlier canceled attempt remains historical evidence, not a pass.
+
+### 3d0b1404 / 9c08ff3b — CUDA reload admission
+
+- [x] Ordinary same-process CUDA reload: preserve stable 5 GiB physical
+  ceiling and 512 MiB compiler allowance; fit only the model envelope
+  against post-headroom availability, then the existing actor's live
+  observation and exact source planner. A discovery-side shrink does
+  not add a second headroom charge. Original compiler context retained,
+  not repriced or released. No fallback after selected-route error.
+  Native L5 package 3d0b1404 passed three 0.8B loads and
+  0.8B→2B→0.8B (Auto and explicit CUDA, all 24 layers), 11+3 tokens and
+  same continuation, stale invoke/unload rejection. On second mixed
+  load the actual model cap narrowed from 4831838208 to 4798277223 bytes;
+  post-unload VRAM 155 MiB; final 37 MiB/busy0/no compute owners exactly.
+  Logs L5 target/l5-cuda-reload-{physical,mixed}.log. Follow-up 9c08ff3b
+  reuses the equivalent existing live-fit helper and adds regression
+  coverage. Neither headroom nor qualified architecture bounds changed.
+  Auto discovery establishes possible capacity; exact model fit remains
+  the source planner's authority.
+
+### 11ae77f7 — HIP physical context reuse
+
+- [x] Ordinary same-process HIP load/unload/reload: stable physical
+  registration separate from per-model admission; one source-neutral
+  context/compiler/queue owner, fresh scoped native set and original
+  arbiter lease per model. Drain deferred allocator frees before closing
+  the model namespace. Retain the original context charge; fence and
+  retain on uncertain cleanup. Existing strict attestation unchanged.
+  The 11ae77f7 ordinary X2 package passed 0.8B→2B→0.8B and
+  0.8B→27B→0.8B with default headroom, all 24/24/64 layers on the same
+  physical GPU, 11+3 tokens and the same raw continuation each time.
+  Extended case rejected stale invoke/unload IDs without affecting
+  the new registration. Typical small-model post-unload VRAM ~449 MiB;
+  the 27B release has delayed observed driver reclamation (~14.65 GiB
+  at immediate unload observation), but next model admitted and retired.
+  Exact final 274452480 bytes/busy0/no KFD owners for both sequences.
+  Logs X2 target/x2-hip-reuse-{physical,large}.log. No simultaneous
+  multi-model execution, extra-device bootstrap or new numerical claim.
+  Preserve fixed-budget SDK/qualification paths and source identity.
+
+### 9a7f5e1e — X2 native launch
+
+- [x] X2 ordinary native ROCm launch qualification (28 Nov user
+  direction: X2 primary ROCm execution host). Exact L5 dcfa8fde source
+  synchronized by incremental Git bundle, no source authored on X2.
+  Normal Nix realization built the same package output as L5
+  (48c00b22 source, target/native-package); no lock, trust, driver or
+  SDK overrides. Existing Qwen snapshots only. Physical gfx1151,
+  PCI 0000:c6:00.0, 96 GiB VRAM, isolated Web control host, ordinary
+  numerical policy, default headroom, no device-mib override, context
+  1024/active 1/output 3. Explicit ROCm 0.8B, Auto 2B and explicit
+  ROCm 27B each loaded, generated 11+3 tokens (raw "Continue: 1, 2, 3,"
+  → " 4,", length), and unloaded. All 24/24/64 layers on the AMD
+  GPU; observed loaded VRAM 2508787712/4547153920/56435105792 bytes.
+  Cold load actions 19.009/23.859/153.301s (canaries, not performance
+  comparators). Each host retired; final 274452480 bytes/busy0/no KFD
+  owners, exact initial idle. 0.8B success was part of the rejected
+  sequential reload test below; 2B/27B fresh-process runs exited 0.
+  Logs on X2: target/x2-native-launch-build.log,
+  x2-native-launch-physical-retry.log, x2-native-launch-2b.log,
+  x2-native-launch-27b.log; per-case results and physical receipts in
+  matching run directories. No backend optimization or PS-F1 promotion.
+
+### 48c00b22 / dcfa8fde — native launch environment
+
+- [x] L5 native launch environment follow-up: default x86-64 Linux Nix
+  development shell shares the ordinary package GPU runtime closure;
+  explicit portable shell remains CPU-only and GPU benchmarking inputs
+  remain in the optional gpu shell. Actual shell realization and full
+  native Cargo build passed, with no lock changes. The raw launch with
+  SDK/loader variables stripped reproduced the three user errors on the
+  exact cached 0.8B. Actual signed 48c00b22 package is realized at
+  target/native-package (native release, unchanged dependencies).
+  Fresh Auto and explicit CUDA each generated 11+3 tokens, joined
+  retirement, 14.711s and 14.356s action durations (canaries, not perf).
+  Corrected default dev shell also generated 11+3 tokens and retired
+  (unoptimized 185.329s). Explicit ROCm reached physical admission and
+  refused 9885299712/8870966887 bytes, not missing libraries. Final idle
+  NVIDIA37MiB/0%, no compute owners. User launch command/log are outside
+  connector read scope; reproduction is independent. Use ordinary nix
+  run or nix develop, not the unwrapped Cargo binary. No host changes.
 
 ### 25Oct evidence records — `docs(plans)` (this commit)
 
