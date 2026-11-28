@@ -93,6 +93,7 @@ struct Source {
     plan: QwenForwardPlan,
     metadata: crate::qwen35_source::Metadata,
     _snapshot: Arc<crate::cache::SnapshotDescriptorLease>,
+    snapshot_digest: String,
     // Source/canonical metadata and plan allocation, not device/root storage.
     _control: GlobalResourceLease,
 }
@@ -165,7 +166,7 @@ impl PreparedModel for Model {
             artifact: Some(ArtifactDescription {
                 family: metadata.family.into(),
                 format: zerogravity_artifacts::artifact::ArtifactFormat::Safetensors,
-                cache_snapshot: None,
+                cache_snapshot: Some(self.source.snapshot_digest.clone()),
                 revision: Some(SourceRevision {
                     repository: metadata.repository.into(),
                     revision: metadata.revision.into(),

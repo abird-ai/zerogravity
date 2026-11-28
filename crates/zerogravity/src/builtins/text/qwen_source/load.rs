@@ -682,10 +682,15 @@ fn open_source(
         .max_token_bytes()
         .map_err(ServiceError::inference)?;
     let plan = seal.build_plan(context).map_err(ServiceError::inference)?;
+    let snapshot_digest = snapshot
+        .manifest()
+        .digest()
+        .map_err(ServiceError::inference)?;
     let source = Arc::new(Source {
         plan,
         metadata: opened.metadata,
         _snapshot: snapshot,
+        snapshot_digest,
         _control: control,
     });
     let metadata =
@@ -737,6 +742,11 @@ mod tests {
             NumericalContract::TorchCpuAvx2Bf16MixedV1,
         )
         .unwrap();
+        assert_eq!(parts.source.snapshot_digest, snapshot);
+        assert_eq!(
+            parts.source.snapshot_digest,
+            parts.source._snapshot.manifest().digest().unwrap()
+        );
         let plan = &parts.source.plan;
         let program = plan.model_program().unwrap();
         assert!(program.source().same_issuer(plan.source()));
