@@ -328,9 +328,14 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   models, C1/C8 and output3/16, actual counters and exact output IDs.
 - [x] Fresh paired 27B C8 at 54b2c910: 5.8652/13.51425 native/vLLM
   tok/s, 32 exact timed requests, 4 accepted provider retirements.
-- [ ] Fresh paired 27B C1 and full assembled gate completion
-  (P3C timeout at serving-only rebuild, 1785/0/97, 237 suites);
-  temporal/state/paged/prefix work belongs to measured Phase3.
+- [x] Fresh paired 27B C1 at retained 54b2c910: 2.25575/3.82090
+  native/vLLM tok/s, 32 exact timed requests, four accepted
+  provider retirements and original idle VRAM restored. C1/C8
+  coverage complete for 27B; throughput, not numeric/state parity.
+- [ ] Full assembled gate completion. UX-11D takeover 1792/0/97 (235 Rust suites);
+  GPU/CPU workspace passed, timeout in combined CPU product tests;
+  acquisition/serving/release suffix remains. Temporal/state/paged/
+  prefix work belongs to measured Phase3; see CURRENT_HANDOFF.
 
 ### Ordinary serving benchmark / bounded Phase 2 exit — 27 Nov
 

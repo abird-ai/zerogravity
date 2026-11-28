@@ -575,9 +575,17 @@ Design: [TUI polish follow-up](../cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md).
   normal wrapped launch. Actual derivation evaluation passed.
 - [ ] D remaining package qualification: realize pinned native
   package and exercise ordinary packaged startup/physical load.
-  Missing CUDA12.9/ROCm7.2.3 and build closure (3457 derivations in
-  offline plan); no lock changes or implicit acquisitions.
-  Complete assembled gate and return to measured P3D.
+  Takeover revalidated locked/offline native, portable and six
+  cross-target derivations; actual runtime/package outputs missing
+  on L5. X2 has pinned ROCm but no complete native closure; A1
+  lacks it. Prior GNU config.sub HTTP 502; substitution dry-run
+  526 builds/539 fetch paths. See platform-and-release TODO and
+  current handoff. No lock changes or implicit acquisitions.
+- [ ] Finish assembled private-network gate independently: takeover
+  1792/0/97 (235 Rust suites); GPU and CPU workspace gates passed.
+  Resume deadline in combined CPU product integration, remaining
+  acquisition/serving/release suffix open; see CURRENT_HANDOFF.
+  P3D paired baseline completed while package acquisition blocked.
 
 ### Other deferred work
 

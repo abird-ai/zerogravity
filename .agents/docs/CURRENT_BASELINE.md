@@ -66,7 +66,73 @@ not independent numerical/state equivalence or SLO goodput.
 X2 target/p3c-paired-27b-c8/comparison.json; idle VRAM274452480,
 GPU busy0, no KFD owner. This qualifies the new region on 27B,
 not a controlled 27B before/after optimization measurement.
-Fresh paired 27B C1 remains open.
+### Fresh post-region paired 27B C1 optimized baseline — takeover
+
+Same retained 54b2c910 executable (X2 checkout 72de2442),
+pinned vLLM and verified original BF16 checkpoint/tokenizer as C8.
+Configured 75GiB, context1024, active8/cohort auto, raw47+3, C1,
+fresh ABBA four owned providers, eight timed requests each.
+Native 2.3080/2.2035 and vLLM 3.8144/3.8274 output tok/s:
+median 2.25575/3.82090 (59.037%). Median wave p95 TTFT
+649.82/302.23ms; median client-delivery p95 ITL 354.70/246.06ms.
+32/32 timed requests, all response-bound IDs [248068,198,760],
+output text hash, usage and length finish match. All four accepted
+shutdowns, original VRAM274452480, busy0, no KFD owner. Initial
+paired 27B C1/C8 coverage complete; not independent numeric/state
+equivalence or SLO goodput. X2 target/p3c-paired-27b-c1/comparison.json,
+target/p3d-paired-27b-c1-retry.log. First invocation lacked python3
+in raw connector PATH and never loaded a model; retry used an
+existing store interpreter under the mandatory private netns.
+
+### P3D exploratory post-P3C device localization (not accepted A/B)
+
+X2 retained 54b2c910 original 0.8B, 24GiB, active8/cohort auto,
+context1024, raw47+1/16. Existing ROCm7.2.3 rocprofv3 with host
+ROCm7.2.4; two warmup waves and one timed trace per C1/C8/output cell.
+All 18 measured requests (153 output tokens) matched expected IDs,
+usage and completion. Initial two profiler launches failed before
+readiness because inherited LD_PRELOAD injected stderr into hipconfig;
+scoped glibc --preload preserved the genuine child environment, then
+all workloads completed. However, the instrumented provider failed
+60s graceful shutdown and the owned lifecycle rejected SIGKILL (-9).
+Group gone, endpoints closed, original VRAM274452480, busy0, no KFD
+owner. No accepted profiling lifecycle or throughput comparison.
+Do not turn this failure into a successful acceptance receipt.
+
+Captured X2 target/p3d-profile-08-scoped/{windows.json,trace/pvl-x2/
+16_kernel_trace.csv,receipts/} and target/p3d-profile-probe-scoped.log.
+243269 contiguous unique dispatch IDs, one device queue, no negative
+or overlapping durations in measured windows; CLOCK_MONOTONIC windows
+align with sequential request dispatches (raw clock does not).
+Actual physical dispatch counts exceed planner counts because they
+include native library internals and auxiliary GPU work. These are
+kernel-duration sums, not request latency. BF16 BBS and FP32 SB
+Tensile kernels grouped by trace name; not whole provider regions.
+
+| Wave | Kernel rows | Sum kernel ms | BF16 BBS ms | GDN key_reduce ms | convolution ms |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| C1 47+1 | 4684 | 44.722 | 17.933 | 0 | 5.082 |
+| C1 47+16 | 21154 | 385.891 | 263.555 | 24.944 | 9.282 |
+| C8 47+1 | 31250 | 232.495 | 35.201 | 0 | 40.847 |
+| C8 47+16 | 82265 | 978.231 | 311.707 | 192.843 | 42.110 |
+
+Subtract short from long and divide by 15 to estimate cached decode
+per step (C8 = eight independent outputs; instrumented single-cell
+estimate only): total C1/C8 22.745/49.716ms, BF16 BBS16.375/18.434ms,
+key_reduce1.663/12.856ms, coefficients0.612/3.056ms, Q/K plane32
+0.314/1.964ms, state_update0.217/1.687ms, decayed0.156/1.228ms,
+attention PV0.108/0.861ms. C8 key reductions alone ~25.9% of
+incremental device sum, vs ~7.3% C1. C8 first output also has
+40.847ms convolution, 31.391ms FP32 SB dense kernels and 16.599ms
+normalize, supporting prefill temporal-region follow-up. Do not infer
+causal throughput or change numerical policy from these observations.
+
+Next P3D experiment: closed recurrent decode region for each private
+head/value tile, avoiding state-sized temporary and repeated state
+traffic; measure exact physical differential and ordinary C1/C8
+A/B with successful retirement. Retain accepted scalar selection;
+do not simply repeat rejected direct-private cohort or isolated
+subtotals selector from gfx1150. See owning model-execution TODO.
 
 ## 28 Nov — native V2 compact feedback candidate f79dce28
 

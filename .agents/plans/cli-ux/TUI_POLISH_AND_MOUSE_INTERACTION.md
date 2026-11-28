@@ -179,6 +179,11 @@ wrapper contract. Full pinned package realization remains open: offline
 build planned 3457 derivations with missing pinned CUDA12.9/ROCm7.2.3
 outputs; own build cancelled rather than expand acquisition. Current
 host-local 13.5/7.2.4 runtime is not package realization evidence.
+Takeover revalidated the actual native/portable and six cross-target
+derivations (locked/offline); pinned package/runtime roots remain
+missing. Previous config.sub HTTP 502 and large substitution plan
+retained in current handoff. No acquisition or lock changes; keep
+physical packaged startup and admission as a distinct open gate.
 
 Recovered D qualification: actual L5 metadata-only/full Gemma refusal
 and compatible source-specific inventory choices; raw development
@@ -190,7 +195,9 @@ PTY groups and real Web host fixture passed. Focused combined CPU
 frontend 70/0/3, CLI integration 7/0/1, cache transactions 18/0,
 full-feature CLI 72/0/3 and strict feature-specific Clippy. No
 changed numerical contract or full assembled/package realization
-claim.
+claim. Takeover isolated gate 1792/0/97 (235 Rust suites);
+GPU feature boundaries and CPU workspace passed, resume timeout
+in combined CPU product tests. Remaining suffix stays open.
 
 
 ## 1. Intent

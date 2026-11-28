@@ -85,6 +85,23 @@ the source, physical owner, state/root, completion or cancellation contracts.
   semantics. Then amortize large dispatch regions using existing graph/actor
   ownership, including device-resident sampling. No scalar microtuning
   campaign or general speculative provider registry.
+  P3D post-P3C exploratory X2 trace localizes C8 decode: ~49.72ms
+  incremental device-kernel sum/8-output step, BF16 BBS18.43ms,
+  two GDN key reductions12.86ms, vs 1.66ms at C1. First-output C8
+  convolution40.85ms, normalization16.60ms. Instrumented shutdown
+  rejected; diagnostic only, see CURRENT_BASELINE. Next candidate:
+  closed source-exact private-state recurrent region, coalesced
+  head/value tiles retaining decayed elements locally through memory
+  reduction, delta, next-state update and query reduction. Preserve
+  each sequential 16-term subtotal and eight-subtotal carry order,
+  separately rounded decay/product/add, BF16 boundary and all status
+  predicates; no reassociation or FMA. Use original flight, private
+  prior/candidate handles and state commit, no new scheduler/state.
+  First prove exact bits/status and failure/initial/cached semantics,
+  then C1/C8 real native A/B with accepted retirement before selection.
+  A materially different whole-region design, not a repeat of the
+  rejected direct-private cohort or standalone subtotals selector.
+  Follow with prefill temporal/attention/projection measurements.
 - [ ] Phase 4 (CUDA): connect existing owned cuBLAS/cuBLASLt provider to ordinary
   resident projection/compatible dense products, not just reference diagnostics.
   Preserve existing native tensor-core/CUTLASS primitives; resolve fused lane
@@ -96,8 +113,10 @@ the source, physical owner, state/root, completion or cancellation contracts.
   portable cuBLAS-equivalent library; inspect actual BF16/FP32 capability,
   licensing, layouts and integration cost before selecting. Keep scalar and
   existing shader primitives. Do not silently cast or adopt a second engine.
-- [ ] Phase 3 (ROCm): restore a current matched vLLM comparison when its pinned local closure is
-  available. No new download or unrelated dependency repin just for evidence.
+- [x] Phase 3 (ROCm): restored pinned local optimized vLLM and
+  initial paired 0.8B/2B/27B C1/C8 baseline coverage. 27B C1/C8
+  post-region 54b2c910; small models pre-region. Current parity
+  acceptance remains open; no new acquisition or repin.
 
 ### Native operator composition boundary
 

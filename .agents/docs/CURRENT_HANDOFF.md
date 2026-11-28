@@ -97,7 +97,22 @@ PTY shell/settings/appearance/mouse/controls/editor/ergonomics pass;
 Web assets rebuilt/tested. Nix eval, format and diff checks pass.
 Logs target/ux11d-recovered-gate.log, ux11d-final-gate.log,
 ux11d-lint-retry.log, ux11d-frontend-process.log, package-contract2.json.
-Full assembled project gate remains open.
+Takeover assembled private-network gate: 1792/0/97 (235 Rust suites), no test failures.
+Formatting, architecture, GPU feature boundaries, default CLI and CPU
+strict Clippy, CPU workspace, minimal-feature/SDK, artifact-cache and
+reference/report checks, cache-only and combined CPU product Clippy
+passed. Initial gate canceled during third ordinary CUDA test build;
+process-local full-debug retry did not hit cache and was canceled.
+Preserved user debug profile; resumed exact original GPU script lines
+54 onward and workspace lines 21 onward with same private netns.
+Resume timed out at 660s in combined CPU product run_unified integration;
+no suite completion claim for its unfinished cases. Acquisition, serving
+and portable release/installer/script suffix remain unexecuted in this
+revalidation. Continue exact remaining gate from combined CPU product
+cargo test; do not redo completed stages unnecessarily. Logs:
+target/ux11d-takeover-assembled{,-cached,-resume}.log; run-local exact
+resume scripts target/ux11d-{gpu,workspace}-gate-resume.sh.
+Full assembled gate remains OPEN; prior accepted evidence retained.
 
 Actual L5 control-host reproduction: exact cached metadata Gemma
 4cd7a8f5 and full Gemma ba32b769 refused with unsupported_source_route
@@ -115,10 +130,64 @@ inventory and both host lifecycles passed (target/ux11d-l5-repro.log).
 Use bash target/ux11d-l5-launch.sh --offline for the retained local
 full-feature executable and existing toolkits. Not an installed package.
 
-Remaining: pinned package realization/ordinary packaged physical
-qualification, full assembled gate, then P3D measured temporal/GDN
-and attention regions. Do not repeat accepted local canaries just
-because the pinned package closure is missing.
+Takeover revalidation (28 Nov): actual signed D source ac35fb14 was
+still HEAD, origin/main 3156ce45, one main checkout, empty index.
+Preserve the two unstaged recovery handoff documents, Cargo.toml
+debug-profile edit, shared queue edit, programmable-service design
+and root README. No D patch replay. Previous local physical receipts
+and joined retirement remain accepted for their host-local scope.
+
+Locked/offline Nix evaluation and actual derivation inspection passed:
+native default Cargo features, CUDARC_CUDA_VERSION=12090, wrapper
+with pinned SDK paths; portable and all six cross-target derivations
+retain explicit CPU features and no CUDA build SDK setting. None of
+the evaluated native/portable outputs is realized on L5. All eleven
+referenced pinned runtime store roots are absent on L5; X2 has the
+pinned ROCm/device libs/compiler runtime but lacks the pinned CUDA
+and Vulkan paths; A1 lacks the runtime closure. Previous
+target/ux11d-nix-build.log records HTTP 502 fetching GNU Savannah
+config.sub at 948ae97ca5703224bd3eada06b7a69f40dd15a02; previous
+substitution dry-run planned 526 builds / 539 fetched paths
+(4.4 GiB compressed, 5.8 GiB unpacked). No new acquisition, repin,
+verification bypass, install or resource relaxation. Current local
+eval receipts: target/ux11d-takeover-package.json,
+target/ux11d-takeover-feature-drvs.json, and exact signed-commit
+flake evaluation target/ux11d-takeover-signed-package.json. Signed
+source and dirty working-tree build/wrapper contracts agree; neither
+exact signed native nor portable output is realized.
+
+Remaining: realize exact pinned native package via authorized
+acquisition, then check wrapped startup with no inherited dev SDK,
+actual device discovery, source generation and truthful refusal /
+joined retirement. Independently finish assembled gate and resume
+P3D measured temporal/GDN and attention regions. Do not repeat
+accepted host-local canaries to substitute for package realization.
+
+P3D independent work: missing 27B paired C1 completed on X2 with
+the retained exact P3C 54b2c910 executable (checkout 72de2442),
+verified original snapshot/tokenizer and restored pinned vLLM.
+Same 75GiB/1024/active8/47+3 as C8, fresh ABBA, 32 exact timed
+requests, all four accepted provider retirements. Native median
+2.25575 vs vLLM 3.82090 output tok/s (59.037%); TTFT p95 median
+649.82/302.23ms; physical idle VRAM274452480 exactly restored.
+See CURRENT_BASELINE for scope. Initial fresh C1/C8 comparison
+coverage complete for all three models at stated checkpoints;
+parity remains open. X2 target/p3c-paired-27b-c1/comparison.json.
+No code replay or sync needed for this retained exact baseline.
+
+P3D exploratory device trace on retained original 0.8B: scoped profiler
+launch ran all 18 measured requests, exact IDs/usage, C1/C8 47+1/16.
+Initial inherited profiler preload broke hipconfig; process-only
+preload recovered execution, but final instrumented shutdown needed
+SIGKILL after 60s and was rejected. Original GPU ownership/VRAM restored.
+Trace is diagnostic only, not qualified performance: C8 estimated extra
+decode step across eight rows ~49.72ms device kernels, BF16 GEMMs18.43ms,
+key reductions12.86ms (25.9%); C1 key reductions1.66ms. See CURRENT_BASELINE
+and X2 target/p3d-profile-08-scoped for actual windows and trace.
+Next test a complete source-exact private recurrent region, not another
+isolated reduction selection; preserve existing numerical/status/owner
+contracts. No production selector or kernel changed in takeover.
+
 
 ### Prior checkpoint — UX-11C operational logging and L5 reproduction (28 Nov)
 
