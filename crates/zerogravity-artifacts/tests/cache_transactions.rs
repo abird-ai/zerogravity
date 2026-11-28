@@ -46,7 +46,37 @@ fn local_multifile_snapshot_ref_replacement_and_retained_lease() {
         durable(transaction.commit(Some("fixture")).unwrap()),
         expected_digest
     );
-    let lease = store.resolve_ref("fixture").unwrap();
+    let mut progress = Vec::new();
+    let lease = store
+        .open_snapshot_observed(&expected_digest, &AtomicBool::new(false), |sample| {
+            progress.push(sample)
+        })
+        .unwrap();
+    assert_eq!(progress.first().unwrap().bytes_read, 0);
+    assert_eq!(progress.first().unwrap().files_verified, 0);
+    let complete = progress.last().unwrap();
+    assert_eq!(complete.bytes_read, complete.total_bytes);
+    assert_eq!(complete.files_verified, files.len());
+    assert_eq!(complete.total_files, files.len());
+    assert!(
+        progress
+            .windows(2)
+            .all(|pair| pair[0].bytes_read <= pair[1].bytes_read
+                && pair[0].files_verified <= pair[1].files_verified)
+    );
+    let cancel = AtomicBool::new(false);
+    let mut last = None;
+    assert!(
+        store
+            .open_snapshot_observed(&expected_digest, &cancel, |sample| {
+                if sample.bytes_read > 0 {
+                    cancel.store(true, Ordering::Release);
+                }
+                last = Some(sample);
+            })
+            .is_err()
+    );
+    assert_eq!(last.unwrap().files_verified, 0);
     for (path, bytes, _) in files {
         assert_eq!(file_bytes(lease.file(path).unwrap()), *bytes);
     }

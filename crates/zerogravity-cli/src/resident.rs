@@ -64,6 +64,8 @@ pub(crate) struct Plan {
     )]
     pub limits: SchedulerLimits,
     load: Load,
+    #[cfg(any(feature = "tui", feature = "web"))]
+    execution_label: String,
 }
 enum Load {
     #[cfg_attr(
@@ -86,6 +88,10 @@ enum Load {
     Native(zerogravity::models::ModelLoadRequest),
 }
 impl Plan {
+    #[cfg(any(feature = "tui", feature = "web"))]
+    pub(crate) fn execution_label(&self) -> &str {
+        &self.execution_label
+    }
     pub(crate) fn load(self, control: ControlPlane<'_>) -> Result<(), ServiceError> {
         match self.load {
             Load::Declared(models, config) => control.load_declared(
@@ -400,6 +406,12 @@ fn prepare_routes(
             return Ok(Some(Plan {
                 limits: limits(active, pending),
                 load: Load::Native(load),
+                #[cfg(any(feature = "tui", feature = "web"))]
+                execution_label: match selected {
+                    qwen_source::SelectedBackend::Cuda => "CUDA",
+                    qwen_source::SelectedBackend::Hip => "ROCm",
+                }
+                .into(),
             }));
         }
         #[cfg(not(any(feature = "cuda", feature = "hip")))]
@@ -473,5 +485,7 @@ fn prepare_routes(
     Ok(Some(Plan {
         limits: limits(workers * active, pending),
         load: Load::Declared(request.graph.models, config),
+        #[cfg(any(feature = "tui", feature = "web"))]
+        execution_label: "CPU · cpu:0".into(),
     }))
 }

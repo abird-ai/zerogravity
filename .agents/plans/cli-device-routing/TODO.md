@@ -539,6 +539,24 @@ performance comparison or new HIP/Vulkan placement qualification.
 
 ## Uncommitted
 
+### UX-11 — user-priority native presentation and diagnostics (28 Nov)
+
+Design: [TUI polish follow-up](../cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md).
+- [x] A: explicit search focus, bare numeric views, retained filters,
+  compact brand/profile rail, narrow Nav; mouse/actions and tiny
+  terminal preserved.
+- [x] B: exact-source task observations in selected Models pane,
+  original verification bytes/files, shared download counters,
+  requested/resolved backend, runtime registration/device, last
+  observed native result; distinguish missing weight role.
+  Safe Web action wire carries stage/counters, not native error text.
+- [ ] C next: proper typed causal error chains and local/public
+  diagnostic boundaries, timestamped correlated stage/progress/error
+  logs, actual L5 reproduction. Review bounded local retention.
+- [ ] D: source-aware runnable/refusal guidance and action consistency
+  using original planner; no verification prerequisite or fallback
+  inferred from inventory. Return to measured P3D after UX checkpoint.
+
 ### Other deferred work
 
 - [ ] Optional deeper exact per-request/phase and individual layer

@@ -142,15 +142,23 @@ retains direct YAML value editing. The relevant pane has one action menu
 when the selected row is not visible or a list is absent. The footer
 Menu (F10) holds Web, Appearance, Refresh and Quit.
 
-Type to focus inline search and filter the current local shelf or list
-immediately. Ctrl-F focuses search, Ctrl-U clears, Esc clears active
-search, Tab leaves the field. Arrow keys select/scroll results. In
-searchable views ordinary letters, digits and punctuation are input,
-not actions. Alt+1–9 switches views; Alt+letter invokes the indicated
-operation shortcut. F1/Alt+? shows help, Alt+: opens the destination
-palette, Ctrl-Q quits outside dialogs. Non-search views retain bare
-operation shortcuts. Models show aligned human-readable sizes
-(B/KiB/MiB/GiB and larger units). Details in the context menu (Alt-D)
+In searchable views, press s or Ctrl-F, or click the inline field to
+focus search. Only focused search consumes typing and paste. Ctrl-U
+clears; Esc, Enter or Tab returns to list focus while retaining the
+filter. Arrow keys select/scroll results. Bare 1–9 switches views
+outside search; Alt+1–9 also works from search. Alt+letter invokes
+the indicated operation shortcut (Models Load for Serve is Alt+s).
+F1/Alt+? shows help, Alt+: opens the destination palette, Ctrl-Q
+quits outside dialogs. The wide rail contains the product and active
+profile; narrow terminals retain their compact navigation control.
+Models show human-readable sizes (B/KiB/MiB/GiB and larger units),
+distinguish snapshots without weights, and show exact-source task
+stages, elapsed time, observed verification/download counters and
+the most recent matching action outcome. Related repository pulls
+are not exact snapshot operations. Verification reports bytes hashed
+and files authenticated separately; inventory/verification does not
+grant execution. Actual loaded backend/device comes from the runtime
+registration. No fabricated load percentage or persistent task history. Details in the context menu (Alt-D)
 opens exact metadata, full digest/revision, raw bytes and last action
 result without executing inspection or verification. Disabled actions
 cannot activate; changed observations require choosing again.

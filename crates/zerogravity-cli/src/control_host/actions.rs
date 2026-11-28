@@ -1,8 +1,11 @@
 //! One foreground action slot shared by both clients. No effect queue.
 //! The worker is joined before replacement or host retirement.
+#[cfg(feature = "tui")]
+use super::progress::FinishedTask;
 use super::{
     Selection,
     logs::Ring,
+    progress::{Progress, Task},
     work::{self, Completed, Request, Response},
 };
 use std::{
@@ -39,6 +42,8 @@ struct Active {
     settings: bool,
     cancel: Arc<AtomicBool>,
     response: Arc<Mutex<Response>>,
+    task: Task,
+    progress: Arc<Mutex<Progress>>,
     worker: JoinHandle<Result<Completed>>,
 }
 impl Active {
@@ -49,6 +54,16 @@ impl Active {
             title: self.title,
             cancel_requested: self.cancel.load(Ordering::Acquire),
         }
+    }
+    fn task(&self) -> Task {
+        let mut task = self.task.clone();
+        task.action = self.summary();
+        task.progress = self
+            .progress
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        task
     }
     fn sample(&self, revision: Option<u64>) -> Option<Response> {
         if !self.generates {
@@ -83,6 +98,8 @@ struct Slot {
     revision: u64,
     active: Option<Active>,
     logs: Ring,
+    #[cfg(feature = "tui")]
+    last_task: Option<FinishedTask>,
     #[cfg(feature = "web")]
     latest: Option<WebResult>,
 }
@@ -101,6 +118,8 @@ impl Slot {
         }
         let job = self.active.take().expect("finished Web worker");
         let summary = job.summary();
+        #[cfg(feature = "tui")]
+        let task = job.task();
         let response = job.sample(None);
         let settings = job.settings;
         let result = job.join();
@@ -108,6 +127,10 @@ impl Slot {
             .as_ref()
             .err()
             .map(zerogravity::runtime::text::FailureDetails::core);
+        #[cfg(feature = "tui")]
+        if task.subject.is_some() {
+            self.last_task = Some(FinishedTask::new(task, &result));
+        }
         let (state, message) = match result {
             Ok(Completed::Message(message)) => ("completed", message),
             #[cfg(all(feature = "cache", target_os = "linux"))]
@@ -199,13 +222,34 @@ impl Actions {
         let document = selection.snapshot();
         let cancel = Arc::new(AtomicBool::new(false));
         let response = Arc::new(Mutex::new(Response::default()));
+        let task = Task::new(
+            ActionSummary {
+                id,
+                origin,
+                title,
+                cancel_requested: false,
+            },
+            &request,
+            &document.execution_default,
+        );
+        let progress = Arc::new(Mutex::new(Progress::default()));
+        let observation = Arc::clone(&progress);
         let flag = Arc::clone(&cancel);
         let output = Arc::clone(&response);
         let worker = thread::Builder::new()
             .name("zg-control-action".into())
             .spawn(move || {
                 work::perform(
-                    &runtime, &selection, &document, request, &flag, &output, origin,
+                    &runtime,
+                    &selection,
+                    &document,
+                    request,
+                    &flag,
+                    origin,
+                    work::Observation {
+                        response: &output,
+                        progress: &observation,
+                    },
                 )
             })?;
         slot.next = id;
@@ -223,6 +267,8 @@ impl Actions {
             settings,
             cancel,
             response,
+            task,
+            progress,
             worker,
         });
         slot.changed();
@@ -235,6 +281,18 @@ impl Actions {
         #[cfg(feature = "web")]
         slot.reap_web();
         slot.active.as_ref().map(Active::summary)
+    }
+
+    /// Progress is sampled separately from the stable action identity.
+    #[cfg(feature = "tui")]
+    pub fn tasks(&self) -> (Option<Task>, Option<FinishedTask>) {
+        let slot = &mut *self.lock();
+        #[cfg(feature = "web")]
+        slot.reap_web();
+        (
+            slot.active.as_ref().map(Active::task),
+            slot.last_task.clone(),
+        )
     }
 
     /// Exact cancellation, including an observed Web action from the native
@@ -282,6 +340,7 @@ impl Actions {
         // check; take the exact final bounded output before joining.
         let response = job.sample(Some(revision));
         let title = job.title;
+        let task = job.task();
         let result = job.join();
         let success = result.is_ok();
         #[cfg(all(feature = "cache", target_os = "linux"))]
@@ -291,15 +350,18 @@ impl Actions {
             .err()
             .map(zerogravity::runtime::text::FailureDetails::core);
         slot.logs.finish(id, title, success, details);
+        if task.subject.is_some() {
+            slot.last_task = Some(FinishedTask::new(task, &result));
+        }
         slot.changed();
         (response, Some(result))
     }
 
     #[cfg(feature = "web")]
-    pub fn observe(&self) -> (u64, Option<ActionSummary>, Option<u64>) {
+    pub fn observe(&self) -> (u64, Option<Task>, Option<u64>) {
         let mut slot = self.lock();
         slot.reap_web();
-        let active = slot.active.as_ref().map(Active::summary);
+        let active = slot.active.as_ref().map(Active::task);
         let web = slot
             .active
             .as_ref()
@@ -395,6 +457,17 @@ mod tests {
                 settings: false,
                 cancel: cancel.clone(),
                 response: Arc::new(Mutex::new(Response::default())),
+                task: Task::new(
+                    ActionSummary {
+                        id: 1,
+                        origin: Origin::Native,
+                        title: "Run",
+                        cancel_requested: false,
+                    },
+                    &Request::Stop(1),
+                    "Auto",
+                ),
+                progress: Arc::new(Mutex::new(Progress::default())),
                 worker: thread::spawn(move || {
                     wait.recv().unwrap();
                     Ok(Completed::Message("native private result".into()))

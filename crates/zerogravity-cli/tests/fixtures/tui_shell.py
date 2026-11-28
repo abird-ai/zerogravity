@@ -152,7 +152,7 @@ def shell(root):
 
     exercise([], [(alt(b"8"), b"defaults"), (alt(b":") + b"q", b"matching"),
                   (b"\x7flog\r", b"received."),
-                  (60, b"ZeroGravity"), (b"\t", b"Navigation")])
+                  (60, b"ZeroGravity"), (b"\t", b"Home")])
     exercise([], [], terminate=True)
     exercise(["--offline"], [(alt(b"4"), b"Cached"), (alt(b"m"), b"qwen3.5-plus"),
                               (alt(b"d"), b"prohibits"), (alt(b"5"), b"Download")])
@@ -202,6 +202,7 @@ def menu_action(terminal,index,count,expected,seconds=10,opener=b"\x1bOS"):
 
 def filter_text(terminal,value,expected,seconds=10):
     terminal.send(b"\x06\x15" + value,expected,seconds)
+    os.write(terminal.master,b"\t")
 
 
 def mouse_interaction(root):
@@ -209,12 +210,12 @@ def mouse_interaction(root):
         terminal.check_started()
         assert b"\x1b[?1006h" in terminal.transcript
         terminal.send(click(4,5), b"Cached")
-        terminal.send(click(35,3), b"qwen3.5-plus")
+        terminal.send(click(35,2), b"qwen3.5-plus")
         # The first visible row after a 3-line wheel movement is the fourth
         # catalog entry. Wheel doesn't alter selection; click must use the
         # actual scrolled row, not its index in the unscrolled catalog.
         terminal.send(wheel(30,10), b"gemma4")
-        terminal.send(click(30,5), b"Qwen/Qwen3.8-27B")
+        terminal.send(click(30,4), b"Qwen/Qwen3.8-27B")
         # Drag the rail from its default 22 cells to 29; clicking the newly
         # exposed rail area (previously workspace) must navigate.
         terminal.send(drag(22,18,29,18), b"Models")
@@ -223,14 +224,14 @@ def mouse_interaction(root):
         # Resize the actual inner divider, then select through the newly
         # enlarged list region (which was formerly the detail pane).
         terminal.send(drag(95,15,105,15), b"Selected")
-        terminal.send(click(101,6), b"> qwen3.8-flash-next")
-        menu_action(terminal,1,2,b"pinned-indexed-safetensors",opener=click(102,6))
+        terminal.send(click(101,5), b"> qwen3.8-flash-next")
+        menu_action(terminal,1,2,b"pinned-indexed-safetensors",opener=click(102,5))
         os.write(terminal.master,b"\x1b")
         time.sleep(0.2)
         # Maximize the list; select a row in the former details area, then
         # restore its old split and observe the selected exact source.
-        terminal.send(click(102,4) + click(140,5), b"> qwen3.8-27b")
-        terminal.send(click(147,4), b"Qwen/Qwen3.8-27B")
+        terminal.send(click(102,3) + click(140,4), b"> qwen3.8-27b")
+        terminal.send(click(147,3), b"Qwen/Qwen3.8-27B")
         # Focus details and return with keyboard equivalence. Opening a
         # modal masks every hit target behind it.
         terminal.send(b"\x1b[17~\x1bOP", b"Help")
@@ -250,7 +251,7 @@ def mouse_interaction(root):
     # an additional visible row and click the newly exposed row.
     with Terminal(root, ["--offline"], width=60, height=25) as terminal:
         terminal.check_started()
-        terminal.send(click(2,0),b"Navigation")
+        terminal.send(click(2,0),b"Home")
         terminal.send(click(4,5),b"Cached")
         terminal.send(click(12,3),b"qwen3.5-plus")
         terminal.send(drag(25,13,25,14) + click(4,13),b"> gemma4-26b-a4b-it")
@@ -258,7 +259,7 @@ def mouse_interaction(root):
         terminal.resize(30)
         os.kill(terminal.proc.pid,signal.SIGWINCH)
         terminal.until(b"ZeroGravity")
-        terminal.send(click(2,0),b"Navigation")
+        terminal.send(click(2,0),b"Home")
         terminal.send(click(4,2),b"Local runtime")
         os.write(terminal.master,b"\x11")
         terminal.finish()
@@ -314,18 +315,18 @@ def mouse_controls(root):
         terminal.check_started()
         terminal.send(click(4,8), b"Profiles")
         terminal.until(b"> default")
-        menu_action(terminal,1,3,b"lowercase",opener=right_click(30,5))
+        menu_action(terminal,1,3,b"lowercase",opener=right_click(30,4))
         terminal.send(b"desk" + click(105,24), b"Created", 10)
         assert desk.is_file()
         terminal.until(b"ui.theme", 10)
-        terminal.send(click(33,1) + b"ui.theme", b"ui.theme = auto")
-        menu_action(terminal,0,9,b"Enter apply",opener=right_click(35,6))
+        terminal.send(click(33,0) + b"ui.theme", b"ui.theme = auto")
+        menu_action(terminal,0,9,b"Enter apply",opener=right_click(35,5))
         original = desk.read_bytes()
         terminal.send(click(55,19), b"> Light")
         assert desk.read_bytes() == original
         os.write(terminal.master, click(81,23))
         time.sleep(0.2)
-        menu_action(terminal,0,9,b"Enter apply",opener=right_click(35,6))
+        menu_action(terminal,0,9,b"Enter apply",opener=right_click(35,5))
         terminal.send(click(55,18), b"> Dark")
         terminal.send(click(95,23), b"Saved", 10)
         assert "theme: dark" in desk.read_text()
@@ -335,8 +336,9 @@ def mouse_controls(root):
         assert desk.is_file()
         # Create a second profile, then exercise the explicit remove
         # confirmation (cancel first, confirm only on second invocation).
-        terminal.send(click(4,8), b"desk")
-        menu_action(terminal,1,3,b"lowercase",opener=right_click(30,5))
+        terminal.send(click(4,8), b"Profiles")
+        terminal.until(b"Built-in")
+        menu_action(terminal,1,3,b"lowercase")
         terminal.send(b"other" + click(105,24), b"Created", 10)
         assert other.is_file()
         terminal.until(b"ui.theme",10)
@@ -406,26 +408,26 @@ def editor_and_choices(root):
         terminal.repaint_on_wait = True
         terminal.check_started()
         terminal.send(alt(b"8"), b"ui.theme")
-        terminal.send(click(33,1)+b"run.backend",b"run.backend = cpu")
-        menu_action(terminal,0,9,b"> cpu",opener=right_click(35,6))
+        terminal.send(click(33,0)+b"run.backend",b"run.backend = cpu")
+        menu_action(terminal,0,9,b"> cpu",opener=right_click(35,5))
         terminal.send(click(51,19),b"> rocm")
         assert document.read_text()==original
         os.write(terminal.master,click(86,22))
         time.sleep(0.2)
-        menu_action(terminal,0,9,b"> cpu",opener=right_click(35,6))
+        menu_action(terminal,0,9,b"> cpu",opener=right_click(35,5))
         terminal.send(click(51,19),b"> rocm")
         terminal.send(click(99,22),b"Saved",10)
         assert "backend: rocm" in document.read_text()
         terminal.until(b"run.backend = rocm")
         filter_text(terminal,b"run.task.raw",b"run.task.raw = false")
-        menu_action(terminal,0,9,b"> false",opener=right_click(35,6))
+        menu_action(terminal,0,9,b"> false",opener=right_click(35,5))
         terminal.send(click(51,17),b"> true")
         terminal.send(click(99,21),b"Saved",10)
         assert "raw: true" in document.read_text()
         terminal.until(b"run.task.raw = true")
         # A finite choice uses the same exact document bytes as a YAML
         # value. An external update cannot be overwritten by its Apply.
-        menu_action(terminal,0,9,b"> true",opener=right_click(35,6))
+        menu_action(terminal,0,9,b"> true",opener=right_click(35,5))
         terminal.send(click(51,16),b"> false")
         concurrent = "# concurrent edit\n" + document.read_text()
         document.write_text(concurrent)
@@ -447,15 +449,20 @@ def editor_and_choices(root):
         # Search the existing catalog locally and replace the visible
         # query via a drag selection, not a remote provider query.
         terminal.send(alt(b"4"),b"Cached")
-        terminal.send(click(35,3),b"qwen3.5-plus")
-        # Ordinary input immediately filters, including former shortcuts.
-        terminal.send(b"gemma4",b"> gemma4-e2b-it")
+        terminal.send(click(35,2),b"qwen3.5-plus")
+        # Ordinary digits navigate until search is explicitly focused.
+        terminal.send(b"9",b"Operational logs")
+        terminal.send(b"4",b"Catalog")
+        terminal.send(b"sgemma4",b"> gemma4-e2b-it")
         terminal.send(b"q8:/?",b"No matches")
-        # Escape clears the active filter. No operation was submitted.
-        terminal.send(b"\x1b",b"qwen3.5-plus")
-        terminal.send(b"gemma4",b"> gemma4-e2b-it")
+        # Escape leaves search and preserves its filter across navigation.
+        os.write(terminal.master,b"\x1b")
+        time.sleep(0.2)
+        terminal.send(b"9",b"Operational logs")
+        terminal.send(b"4",b"gemma4q8:/?")
+        terminal.send(b"s\x15gemma4",b"> gemma4-e2b-it")
         x=31
-        terminal.send(drag(x,1,x+6,1)+b"qwen3.5",b"> qwen3.5-plus")
+        terminal.send(drag(x,0,x+6,0)+b"qwen3.5",b"> qwen3.5-plus")
         terminal.send(alt(b"m"),b"Partial")
         terminal.send(alt(b"m"),b"Cached")
         terminal.send(alt(b"m"),b"Catalog")
@@ -735,11 +742,11 @@ def lifecycle(root, expected):
         terminal.send(click(105,24), b"accepted", 60)
         terminal.send(alt(b"4"), b"fixture/serve")
         # Exact snapshot identity is disclosed only on request.
-        menu_action(terminal,2,10,b"sha256:",opener=right_click(30,5))
+        menu_action(terminal,2,10,b"sha256:",opener=right_click(30,4))
         os.write(terminal.master,b"\x1b")
         time.sleep(0.2)
         def model_action(index,expected,seconds=10):
-            menu_action(terminal,index,10,expected,seconds,opener=right_click(30,5))
+            menu_action(terminal,index,10,expected,seconds,opener=right_click(30,4))
         model_action(3,b"checked;")
         model_action(4,b"Payloads",60)
         model_action(5,b"replacement.")
@@ -774,7 +781,7 @@ def lifecycle(root, expected):
         terminal.send(alt(b"p"), b"Prompt")
         terminal.send(b"\x1b[200~" + prompt.encode() + b"\x1b[201~\r", b"length", 30)
         terminal.send(alt(b"3"), b"OpenAI-compatible")
-        menu_action(terminal,0,1,b"IP:PORT",opener=click(terminal.width-4,1))
+        menu_action(terminal,0,1,b"IP:PORT",opener=click(terminal.width-4, int(terminal.width < 70)))
         terminal.send(address.encode() + click(105,24), b"Listening:", 30)
         models = http("/models")
         assert len(models["data"]) == 1, models
@@ -904,7 +911,7 @@ def lifecycle(root, expected):
         os.write(terminal.master, b"n")
         assert http("/models") == models
         terminal.send(alt(b"3"), b"OpenAI-compatible")
-        menu_action(terminal,0,1,b"confirm",opener=click(terminal.width-4,1))
+        menu_action(terminal,0,1,b"confirm",opener=click(terminal.width-4, int(terminal.width < 70)))
         if client:
             with client.events() as events:
                 terminal.send(click(112,25), b"Listener stopped", 30)
@@ -1123,12 +1130,12 @@ elif sys.argv[2] == "--download-fixture":
             with Terminal(root, ["--ignored", "--exact", "pull::monitor::tests::monitor_child", "--nocapture"], width=150, height=40) as terminal:
                 terminal.check_started()
                 terminal.send(alt(b"5"), b"Paused", 15)
-                menu_action(terminal,0,2,b"Running",15,opener=click(terminal.width-4,1))
+                menu_action(terminal,0,2,b"Running",15,opener=click(terminal.width-4, int(terminal.width < 70)))
                 # The existing fixture body accepts 128 bytes per 40 ms.
                 # Allow a prefix before asking for the safe range checkpoint;
                 # the child asserts that an actual second request was made.
                 time.sleep(0.35)
-                menu_action(terminal,0,2,b"Pause",15,opener=click(terminal.width-4,1))
+                menu_action(terminal,0,2,b"Pause",15,opener=click(terminal.width-4, int(terminal.width < 70)))
                 # Ratatui may emit only the final changed cell of "Paused".
                 # Change views after the safe body boundary to read a newly
                 # painted status, not the raw differential transition bytes.
@@ -1136,9 +1143,9 @@ elif sys.argv[2] == "--download-fixture":
                 terminal.send(alt(b"1"), b"Quick", 15)
                 terminal.send(alt(b"5"), b"Paused", 15)
                 if mode == "tui":
-                    menu_action(terminal,0,2,b"Snapshot",20,opener=click(terminal.width-4,1))
+                    menu_action(terminal,0,2,b"Snapshot",20,opener=click(terminal.width-4, int(terminal.width < 70)))
                 else:
-                    menu_action(terminal,1,2,b"Cancel",20,opener=click(terminal.width-4,1))
+                    menu_action(terminal,1,2,b"Cancel",20,opener=click(terminal.width-4, int(terminal.width < 70)))
                     time.sleep(0.5)
                     terminal.send(alt(b"1"), b"Quick", 15)
                     terminal.send(alt(b"5"), b"Cancelled", 15)

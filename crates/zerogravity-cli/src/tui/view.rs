@@ -1,5 +1,5 @@
 //! Cell-native navigation and rendering. No execution or filesystem effects.
-#[cfg(any(test, all(feature = "acquisition", target_os = "linux")))]
+#[cfg(test)]
 use super::format;
 use super::{
     App,
@@ -405,7 +405,8 @@ impl Navigation {
                 editor.point(value, start..end, column, extend);
             }
             SearchEdit::DragEdge(delta, column) => editor.drag_edge(value, delta, column),
-            SearchEdit::Clear | SearchEdit::Escape => editor.clear(value),
+            SearchEdit::Clear => editor.clear(value),
+            SearchEdit::Escape => {}
         }
         if escape {
             self.search = None;
@@ -1135,6 +1136,7 @@ impl Navigation {
             let editing = self.search.is_some();
             let edit = match key.code {
                 Char('f') if ctrl && !alt => Some(SearchEdit::Focus),
+                Char('s') if !editing && !ctrl && !alt => Some(SearchEdit::Focus),
                 Char('u') if ctrl && editing => Some(SearchEdit::Clear),
                 Char('a' | 'e') if ctrl && editing => {
                     Some(SearchEdit::Edge(key.code == Char('e'), shift))
@@ -1144,10 +1146,10 @@ impl Navigation {
                     Some(SearchEdit::Move(key.code == Right, shift))
                 }
                 Home | End if editing && !alt => Some(SearchEdit::Edge(key.code == End, shift)),
-                Backspace | Delete if !alt && !ctrl => {
+                Backspace | Delete if editing && !alt && !ctrl => {
                     Some(SearchEdit::Delete(key.code == Backspace))
                 }
-                Char(c) if !ctrl && !alt && !c.is_control() => {
+                Char(c) if editing && !ctrl && !alt && !c.is_control() => {
                     Some(SearchEdit::Insert(c.to_string()))
                 }
                 _ => None,
@@ -1155,7 +1157,7 @@ impl Navigation {
             if let Some(edit) = edit {
                 return Action::Search(edit);
             }
-            if editing && key.code == Tab {
+            if editing && matches!(key.code, Tab | Enter) {
                 self.search = None;
                 return Action::Redraw;
             }
@@ -1328,7 +1330,7 @@ impl Navigation {
             Char('l') if !self.rail() && matches!(self.view, View::Models | View::Devices) => {
                 Action::Library(LibraryAction::Load(false))
             }
-            Char('s') if !self.rail() && self.view == View::Models => {
+            Char('s') if alt && !self.rail() && self.view == View::Models => {
                 Action::Library(LibraryAction::Load(true))
             }
             Char('p') if !self.rail() && self.view == View::Models => {
@@ -1433,10 +1435,10 @@ fn clean(text: &str) -> String {
         .map(|c| if c.is_control() { ' ' } else { c })
         .collect()
 }
-fn text(text: impl AsRef<str>) -> Line<'static> {
+pub(super) fn text(text: impl AsRef<str>) -> Line<'static> {
     Line::raw(clean(text.as_ref()))
 }
-fn label(text: impl AsRef<str>, theme: Theme) -> Line<'static> {
+pub(super) fn label(text: impl AsRef<str>, theme: Theme) -> Line<'static> {
     self::text(text).style(theme.heading())
 }
 
@@ -1489,85 +1491,7 @@ fn downloads(app: &App) -> String {
 fn download_rows(rows: &mut Vec<Line<'static>>, app: &App) {
     #[cfg(all(feature = "acquisition", target_os = "linux"))]
     if let Some(download) = &app.snapshot.download {
-        use zerogravity::control::DownloadStatus;
-        if let Some(source) = &download.source {
-            rows.push(text(format!(
-                "{}:{}@{}",
-                source.provider(),
-                source.repository(),
-                source.revision()
-            )));
-        }
-        rows.push(text(format!(
-            "Files: {} / {}",
-            download.completed_files, download.selected_files
-        )));
-        let bytes = |current: u64, exact: Option<u64>, maximum: u64| {
-            exact.map_or_else(
-                || {
-                    format!(
-                        "{} · total unknown (max {})",
-                        format::bytes(current),
-                        format::bytes(maximum)
-                    )
-                },
-                |total| format!("{} / {}", format::bytes(current), format::bytes(total)),
-            )
-        };
-        rows.push(text(format!(
-            "Total: {}",
-            bytes(
-                download.total_bytes,
-                download.total_expected_bytes,
-                download.total_maximum_bytes
-            )
-        )));
-        if let Some(path) = &download.path {
-            rows.push(text(format!("File: {path}")));
-            rows.push(text(bytes(
-                download.file_bytes,
-                download.file_expected_bytes,
-                download.file_maximum_bytes,
-            )));
-        }
-        rows.push(text(format!(
-            "Cached: {} · resumed: {}",
-            format::bytes(download.cached_bytes),
-            format::bytes(download.resumed_bytes)
-        )));
-        rows.push(text(format!(
-            "Last observed checkpoint: {}",
-            format::bytes(download.checkpoint_bytes)
-        )));
-        if let Some(total) = download.total_expected_bytes.filter(|total| *total != 0) {
-            let percent = (download.total_bytes as u128 * 100 / total as u128).min(100);
-            rows.push(text(format!("Progress: {percent}%")));
-        }
-        if download.status == DownloadStatus::Running
-            && !download.cancel_requested
-            && let Some(rate) = download.logical_bytes_per_second.filter(|rate| *rate > 0)
-        {
-            rows.push(text(format!("Accepted: {}/s", format::bytes(rate))));
-            if let Some(total) = download.total_expected_bytes {
-                rows.push(text(format!(
-                    "Approximate transfer ETA: {}s (not publication)",
-                    total.saturating_sub(download.total_bytes).div_ceil(rate)
-                )));
-            }
-        }
-        if download.cancel_requested && !download.status.terminal() {
-            rows.push(text(
-                "Cancellation requested; awaiting original executor outcome.",
-            ));
-        }
-        if let Some(snapshot) = &download.snapshot {
-            rows.push(text(format!("Snapshot: {snapshot}")));
-        }
-        if download.status == DownloadStatus::DurabilityUnknown {
-            rows.push(text(
-                "Publication durability unknown; inspect before retrying.",
-            ));
-        }
+        super::model_tasks::append_download(rows, download, false);
     }
     #[cfg(not(all(feature = "acquisition", target_os = "linux")))]
     let _ = (rows, app);
@@ -2170,7 +2094,7 @@ fn render_search(frame: &mut Frame<'_>, area: Rect, app: &mut App, theme: Theme)
     );
     if value.is_empty() && !focused {
         frame.render_widget(
-            Paragraph::new("Type to filter…").style(theme.raised().patch(theme.muted())),
+            Paragraph::new("Press s to search…").style(theme.raised().patch(theme.muted())),
             field,
         );
     }
@@ -2197,8 +2121,9 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
         frame.render_widget(Paragraph::new("ZeroGravity · resize / Ctrl-Q quit"), area);
         return;
     }
+    let narrow = area.width < 70;
     let [header, body, footer] = Layout::vertical([
-        Constraint::Length(1),
+        Constraint::Length(u16::from(narrow && !app.navigation.rail())),
         Constraint::Min(1),
         Constraint::Length(2),
     ])
@@ -2207,7 +2132,7 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
     let nav_width = if area.width < 70 { 6 } else { 0 };
     let [nav_button, identity] =
         Layout::horizontal([Constraint::Length(nav_width), Constraint::Min(1)]).areas(header);
-    if nav_width > 0 {
+    if !header.is_empty() && nav_width > 0 {
         control(
             frame,
             &mut app.navigation,
@@ -2222,14 +2147,15 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
     } else {
         String::new()
     };
-    frame.render_widget(
-        Paragraph::new(Line::from(vec![
-            Span::styled(" ZeroGravity", theme.accent()),
-            Span::styled(profile, theme.muted()),
-        ]))
-        .style(theme.surface()),
-        identity,
-    );
+    if !identity.is_empty() {
+        frame.render_widget(
+            Paragraph::new(Line::from(vec![
+                Span::styled(" ZeroGravity", theme.accent()),
+                Span::styled(profile, theme.muted()),
+            ])),
+            identity,
+        );
+    }
     app.navigation.workspace.has_detail = matches!(
         app.navigation.view,
         View::Models | View::Devices | View::Profiles | View::Config | View::Running
@@ -2297,7 +2223,7 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
     frame.render_widget(
         Paragraph::new(vec![
             text(if app.navigation.view.searchable() {
-                "Type to search  ·  F4 actions  ·  Ctrl-Q quit"
+                "s search  ·  1–9 views  ·  F4 actions  ·  Ctrl-Q quit"
             } else {
                 "F4 actions  ·  Ctrl-Q quit"
             })
@@ -2333,7 +2259,13 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
         _ => true,
     };
     let busy = app.active.is_some() || app.job.is_some();
-    let body = if area.height < 12 { area } else { body };
+    // Keep dialogs inset at ordinary sizes, but preserve every usable row
+    // on very short terminals. Normal content uses the full shell.
+    let body = if area.height < 12 {
+        area
+    } else {
+        body.intersection(Rect::new(area.x, area.y + 1, area.width, area.height - 1))
+    };
     match &mut app.navigation.modal {
         Modal::None => {}
         #[cfg(feature = "web")]
@@ -2376,12 +2308,12 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
                 &mut app.navigation.hits,
                 content,
                 Paragraph::new(vec![
-                    label("Navigation", theme),
-                    text("Alt+1–9   Views · Alt+: go to view"),
+                    label("Keys", theme),
+                    text("1–9       Views · Alt+: go to view"),
                     text("Tab       Cycle pane focus"),
                     text("↑ ↓       Select / scroll"),
-                    text("Type      Live filter in list views"),
-                    text("Ctrl-F    Focus search · Esc clear"),
+                    text("s / Ctrl-F  Focus search"),
+                    text("Esc / Enter / Tab   List focus · Ctrl-U clear"),
                     text("Enter     Selected model / device actions"),
                     text("          Open profile or edit setting"),
                     text("F4 / …    Context actions · right-click row"),
@@ -2877,13 +2809,21 @@ fn render_rail(frame: &mut Frame<'_>, area: Rect, app: &mut App, theme: Theme) {
             }
         })
         .collect();
-    let inner = pane_body(
-        frame,
-        area,
-        &mut app.navigation,
-        theme,
-        Pane::Rail,
-        "Navigation",
+    app.navigation.hits.add(area, Target::Pane(Pane::Rail));
+    let [identity, profile, inner] = Layout::vertical([
+        Constraint::Length(1),
+        Constraint::Length(1),
+        Constraint::Min(0),
+    ])
+    .areas(area);
+    frame.render_widget(
+        Paragraph::new(text(" ZeroGravity")).style(theme.accent()),
+        identity,
+    );
+    frame.render_widget(
+        Paragraph::new(text(format!(" {}", app.document.snapshot().target.label())))
+            .style(theme.muted()),
+        profile,
     );
     let (body, offset) = scroll_rows(
         frame,
@@ -3190,7 +3130,11 @@ fn render_library(frame: &mut Frame<'_>, area: Rect, app: &mut App, kind: Kind, 
             ]));
         }
         details.extend(row.details.iter().map(text));
-        if let Some((key, result)) = &app.library.detail
+        if kind == Kind::Models {
+            super::model_tasks::append(&mut details, app, &row.key, theme);
+        }
+        if kind != Kind::Models
+            && let Some((key, result)) = &app.library.detail
             && key == &row.key
             && let Some(summary) = result.lines().next()
             && app.notice.as_deref() != Some(summary)
@@ -3780,7 +3724,7 @@ mod tests {
                 .collect::<String>();
             assert!(text.contains("ZeroGravity"));
             assert!(text.contains("No models loaded"));
-            assert_eq!(text.contains("Navigation"), width >= 70);
+            assert!(!text.contains("Navigation"));
             app.navigation.focus(Pane::Rail);
             terminal.draw(|frame| render(frame, &mut app)).unwrap();
             let text = terminal
@@ -3790,15 +3734,15 @@ mod tests {
                 .iter()
                 .map(|cell| cell.symbol())
                 .collect::<String>();
-            assert!(text.contains("Navigation"));
+            assert!(text.contains("ZeroGravity") && !text.contains("Navigation"));
             app.navigation.focus(Pane::Main);
         }
         app.color = true;
         app.appearance =
             super::super::theme::Environment::from_hints(Some("truecolor"), None, None);
         for (mode, expected) in [
-            (ThemeMode::Dark, (23, 26, 32)),
-            (ThemeMode::Light, (255, 255, 255)),
+            (ThemeMode::Dark, (17, 19, 24)),
+            (ThemeMode::Light, (245, 246, 248)),
         ] {
             let mut doc = app.document.snapshot();
             doc.ui.theme = Some(mode);
@@ -3846,8 +3790,8 @@ mod tests {
                 .map(|x| buffer[(x, y)].symbol())
                 .collect::<String>()
         };
-        let bar = row(1);
-        assert!(bar.contains("Search") && bar.contains("Type to filter"));
+        let bar = row(0);
+        assert!(bar.contains("Search") && bar.contains("Press s to search"));
         for redundant in [
             "Load",
             "Run",
@@ -3869,13 +3813,20 @@ mod tests {
         assert!(text.contains("30.71 MiB") && text.contains("4.26 GiB"));
         assert!(!text.contains("sha256:") && !text.contains("4571272453"));
         println!("Toolbar-free Models cells:\n{text}");
-        // Ordinary characters, even former operation/navigation/quit
-        // keys, go to local filtering. No hidden model can be acted on.
+        // Only explicitly focused search consumes ordinary characters.
+        // No hidden model can be acted on.
         let scope = std::rc::Rc::new(Scope::capture(&app));
         let old = Bound::new(
             super::super::controls::Command::Library(LibraryAction::Load(false)),
             &scope,
         );
+        assert_eq!(app.navigation.key(key(KeyCode::Char('9'))), Action::Open);
+        assert_eq!(app.navigation.view(), View::Logs);
+        assert_eq!(app.navigation.key(key(KeyCode::Char('4'))), Action::Open);
+        assert_eq!(app.navigation.view(), View::Models);
+        let action = app.navigation.key(key(KeyCode::Char('s')));
+        assert_eq!(action, Action::Search(SearchEdit::Focus));
+        app.handle(&runtime, runtime.control(), action);
         for c in "gemma".chars() {
             let action = app.navigation.key(key(KeyCode::Char(c)));
             assert!(matches!(action, Action::Search(_)));
@@ -3911,6 +3862,18 @@ mod tests {
             Action::RowActions(Kind::Models, Key::Snapshot("b".repeat(64)))
         ));
         assert!(app.navigation.idle());
+        let action = app.navigation.key(key(KeyCode::Esc));
+        app.handle(&runtime, runtime.control(), action);
+        assert_eq!(app.search_query(), "gemmaq8:/?");
+        assert!(!app.navigation.inline_search());
+        assert_eq!(app.navigation.key(key(KeyCode::Char('9'))), Action::Open);
+        assert_eq!(app.navigation.key(key(KeyCode::Char('4'))), Action::Open);
+        let action = app.navigation.key(key(KeyCode::Char('s')));
+        app.handle(&runtime, runtime.control(), action);
+        let action = app
+            .navigation
+            .key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL));
+        app.handle(&runtime, runtime.control(), action);
         let action = app.navigation.key(key(KeyCode::Esc));
         app.handle(&runtime, runtime.control(), action);
         assert!(app.search_query().is_empty());

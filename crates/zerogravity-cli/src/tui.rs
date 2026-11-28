@@ -8,6 +8,7 @@ mod input;
 mod layout;
 pub(crate) mod library;
 mod logs;
+mod model_tasks;
 mod performance;
 pub(crate) mod settings;
 mod terminal;
@@ -171,7 +172,7 @@ fn session(
                 sampled = Instant::now();
                 dirty = true;
             }
-            if app.navigation.view() == View::Logs {
+            if matches!(app.navigation.view(), View::Logs | View::Models) {
                 // A short Web action can begin and finish between native
                 // samples without a runtime event (e.g. cold validation).
                 // The shared operational ring is the redraw authority here.
@@ -211,7 +212,7 @@ fn session(
                 }
                 Event::Paste(value) => {
                     app.navigation.cancel_pointer();
-                    if app.navigation.idle() && app.navigation.view().searchable() {
+                    if app.navigation.inline_search() {
                         app.edit_search(view::SearchEdit::Insert(value));
                     } else if !app.navigation.paste(&value) {
                         app.notice = Some(

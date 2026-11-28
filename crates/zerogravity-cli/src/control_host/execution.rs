@@ -28,7 +28,6 @@ impl Execution {
         }
     }
 
-    #[cfg(feature = "tui")]
     pub fn summary(&self, profile: &str) -> String {
         let Some(backend) = &self.backend else {
             return self

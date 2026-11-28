@@ -122,10 +122,20 @@ pub(super) fn snapshot(
     let download: Option<Value> = None;
     let (_, action, last_web) = actions.observe();
     let action = action.map(|job| {
-        json!({
-            "id": job.id.to_string(), "origin": job.origin, "title": job.title,
-            "cancel_requested": job.cancel_requested,
-        })
+        let value = json!({
+            "id": job.action.id.to_string(), "origin": job.action.origin, "title": job.action.title,
+            "cancel_requested": job.action.cancel_requested,
+            "stage": job.progress.stage,
+            "elapsed_ms": job.started.elapsed().as_millis(),
+        });
+        #[cfg(all(feature = "cache", target_os = "linux"))]
+        {
+            let mut value = value;
+            value["verification"] = json!(job.progress.verification);
+            value
+        }
+        #[cfg(not(all(feature = "cache", target_os = "linux")))]
+        value
     });
     Ok(json!({
         "schema": "zerogravity.control.v1",
@@ -176,7 +186,7 @@ pub(super) fn models(runtime: &Runtime) -> Value {
                     "provider": model.provider,
                     "repository": inventory::public_repository(&model.provider, &model.repository),
                     "revision": inventory::public_revision(&model.provider, &model.revision),
-                    "files": model.files, "bytes": model.bytes, "payload_verified": model.payload_verified,
+                    "files": model.files, "bytes": model.bytes, "payload_verified": model.payload_verified, "has_weights": model.has_weights,
                 })).collect::<Vec<_>>());
                 match observation.partial {
                     Ok(partial) => result["partial"] = json!(partial),

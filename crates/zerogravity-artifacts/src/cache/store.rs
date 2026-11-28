@@ -347,7 +347,7 @@ fn verify_opened_file(
     expected: &str,
     bytes: u64,
     cancel: &AtomicBool,
-    mut after_chunk: impl FnMut(&File) -> Result<()>,
+    mut after_chunk: impl FnMut(&File, u64) -> Result<()>,
 ) -> Result<File> {
     check_cancel(cancel)?;
     let before = file.metadata()?;
@@ -369,7 +369,7 @@ fn verify_opened_file(
         }
         hasher.update(&buffer[..read]);
         remaining -= read as u64;
-        after_chunk(&file)?;
+        after_chunk(&file, bytes - remaining)?;
         check_cancel(cancel)?;
     }
     check_cancel(cancel)?;
@@ -435,6 +435,16 @@ fn read_control_cancellable(
         ));
     }
     Ok(bytes)
+}
+
+/// Bytes read for hashing are not yet authenticated; a file advances
+/// files_verified only after its digest and descriptor checks succeed.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize)]
+pub struct VerificationProgress {
+    pub bytes_read: u64,
+    pub total_bytes: u64,
+    pub files_verified: usize,
+    pub total_files: usize,
 }
 
 impl CacheStore {
@@ -718,7 +728,7 @@ impl CacheStore {
             .inner
             .root
             .open_file(path, OFlags::RDONLY, Mode::empty())?;
-        verify_opened_file(file, expected, bytes, cancel, |_| Ok(()))
+        verify_opened_file(file, expected, bytes, cancel, |_, _| Ok(()))
     }
 
     fn verify_file_bound(
@@ -740,7 +750,7 @@ impl CacheStore {
             ));
         }
         Ok((
-            verify_opened_file(file, expected, bytes, cancel, |_| Ok(()))?,
+            verify_opened_file(file, expected, bytes, cancel, |_, _| Ok(()))?,
             bytes,
         ))
     }
@@ -1130,8 +1140,18 @@ impl CacheStore {
         digest: &str,
         cancel: &AtomicBool,
     ) -> Result<SnapshotLease> {
+        self.open_snapshot_observed(digest, cancel, |_| {})
+    }
+
+    /// Same authenticated reader and activity lease, with observational progress.
+    pub fn open_snapshot_observed(
+        &self,
+        digest: &str,
+        cancel: &AtomicBool,
+        observe: impl FnMut(VerificationProgress),
+    ) -> Result<SnapshotLease> {
         let _activity = self.activity(cancel)?;
-        self.open_snapshot_bound(digest, cancel)
+        self.open_snapshot_bound_observed(digest, cancel, observe)
     }
 
     fn snapshot_manifest(&self, digest: &str, cancel: &AtomicBool) -> Result<Manifest> {
@@ -1154,19 +1174,45 @@ impl CacheStore {
     // Caller owns activity, including a committing transaction that already
     // owns publication. Avoid acquiring another activity description there.
     fn open_snapshot_bound(&self, digest: &str, cancel: &AtomicBool) -> Result<SnapshotLease> {
+        self.open_snapshot_bound_observed(digest, cancel, |_| {})
+    }
+
+    fn open_snapshot_bound_observed(
+        &self,
+        digest: &str,
+        cancel: &AtomicBool,
+        mut observe: impl FnMut(VerificationProgress),
+    ) -> Result<SnapshotLease> {
         let manifest = self.snapshot_manifest(digest, cancel)?;
+        let mut progress = VerificationProgress {
+            total_bytes: manifest.total_bytes(),
+            total_files: manifest.entries().len(),
+            ..Default::default()
+        };
+        observe(progress);
         let mut files = BTreeMap::new();
         for entry in manifest.entries() {
-            files.insert(
-                entry.path().to_string(),
-                self.verify_file_cancellable(
-                    &format!("snapshots/{digest}/files/{}", entry.path()),
-                    entry.digest(),
-                    entry.bytes(),
-                    cancel,
-                )?,
-            );
+            check_cancel(cancel)?;
+            let file = self.inner.root.open_file(
+                &format!("snapshots/{digest}/files/{}", entry.path()),
+                OFlags::RDONLY,
+                Mode::empty(),
+            )?;
+            let before = progress.bytes_read;
+            let file =
+                verify_opened_file(file, entry.digest(), entry.bytes(), cancel, |_, read| {
+                    observe(VerificationProgress {
+                        bytes_read: before + read,
+                        ..progress
+                    });
+                    Ok(())
+                })?;
+            files.insert(entry.path().to_string(), file);
+            progress.bytes_read += entry.bytes();
+            progress.files_verified += 1;
+            observe(progress);
         }
+        check_cancel(cancel)?;
         Ok(SnapshotLease { manifest, files })
     }
 
@@ -2018,7 +2064,7 @@ mod tests {
             &digest(&fixture.bytes),
             fixture.bytes.len() as u64,
             &AtomicBool::new(false),
-            |_| {
+            |_, _| {
                 if !linked {
                     // Cross a kernel coarse-clock tick so the historical ctime
                     // guard demonstrably rejects this unchanged-payload operation.
@@ -2055,7 +2101,7 @@ mod tests {
             &digest(&fixture.bytes),
             fixture.bytes.len() as u64,
             &AtomicBool::new(false),
-            |_| {
+            |_, _| {
                 if !changed {
                     let mut writer = std::fs::OpenOptions::new()
                         .write(true)
@@ -2087,7 +2133,7 @@ mod tests {
                 &digest(&fixture.bytes),
                 fixture.bytes.len() as u64,
                 &AtomicBool::new(false),
-                |_| {
+                |_, _| {
                     if !changed {
                         let mut writer = std::fs::OpenOptions::new()
                             .write(true)
@@ -2119,7 +2165,7 @@ mod tests {
                 &digest(&fixture.bytes),
                 fixture.bytes.len() as u64,
                 &cancel,
-                |_| {
+                |_, _| {
                     chunks += 1;
                     if chunks == stop_after {
                         cancel.store(true, Ordering::Release);

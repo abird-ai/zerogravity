@@ -15,6 +15,24 @@ pub(crate) enum Intent {
 }
 
 impl Intent {
+    pub(crate) fn subject(&self) -> crate::control_host::progress::Subject {
+        use crate::control_host::progress::Subject;
+        match self {
+            #[cfg(feature = "model-qwen35")]
+            Self::Recipe(target) => Subject::Catalog(target.clone()),
+            Self::Files(request) => Subject::Repository {
+                provider: request.provider.label().into(),
+                repository: request.repository.clone(),
+                revision: request.revision.clone(),
+            },
+            Self::Quant(request) => Subject::Repository {
+                provider: request.source().provider().label().into(),
+                repository: request.source().repository().into(),
+                revision: request.source().revision().into(),
+            },
+        }
+    }
+
     /// An interactive pull is explicit and immutable. No branch/tag guesses, raw
     /// URLs, shell flags, credentials, or auto-selected quantization.
     pub(crate) fn parse(source: &str, selection: &str) -> Result<Self> {

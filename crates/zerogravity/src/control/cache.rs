@@ -20,6 +20,8 @@ pub struct CachedModelSummary {
     pub files: usize,
     /// Listing never authenticates source payloads.
     pub payload_verified: bool,
+    /// Manifest declares at least one weight payload; not a runnable guarantee.
+    pub has_weights: bool,
 }
 
 impl From<SnapshotMetadata> for CachedModelSummary {
@@ -33,6 +35,11 @@ impl From<SnapshotMetadata> for CachedModelSummary {
             bytes: value.manifest.total_bytes(),
             files: value.manifest.entries().len(),
             payload_verified: false,
+            has_weights: value
+                .manifest
+                .entries()
+                .iter()
+                .any(|entry| entry.role() == crate::cache::FileRole::Weights),
         }
     }
 }
@@ -91,6 +98,17 @@ impl ControlPlane<'_> {
         pin: Option<&str>,
         cancel: &AtomicBool,
     ) -> Result<CachedModelDetail> {
+        self.verify_cached_observed(root, selector, pin, cancel, |_| {})
+    }
+
+    pub fn verify_cached_observed(
+        &self,
+        root: &Path,
+        selector: &SourceSelector,
+        pin: Option<&str>,
+        cancel: &AtomicBool,
+        observe: impl FnMut(crate::cache::VerificationProgress),
+    ) -> Result<CachedModelDetail> {
         let result = (|| {
             self.runtime.engine.require_open()?;
             let metadata = CacheMetadata::open(root)?;
@@ -99,7 +117,7 @@ impl ControlPlane<'_> {
                 Some(root.to_owned()),
                 metadata.disk_limit_bytes()?,
             ))?;
-            let lease = store.open_snapshot_cancellable(&selected.digest, cancel)?;
+            let lease = store.open_snapshot_observed(&selected.digest, cancel, observe)?;
             Ok(CachedModelDetail {
                 snapshot: selected.digest,
                 manifest: lease.manifest().clone(),

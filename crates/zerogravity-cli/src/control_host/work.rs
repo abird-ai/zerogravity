@@ -1,7 +1,10 @@
 //! Shared action execution. Original resident planner, ControlPlane and
 //! OutputStream remain the only execution owners.
-use super::settings;
 use super::{Document, execution::Execution};
+use super::{
+    progress::{self, Progress, Stage},
+    settings,
+};
 use crate::resident;
 use std::{
     num::NonZeroUsize,
@@ -203,14 +206,23 @@ fn resolve_request(
     )
 }
 
+/// Borrow the two independent presentation channels for one owned worker.
+pub(super) struct Observation<'a> {
+    pub response: &'a Mutex<Response>,
+    pub progress: &'a Mutex<Progress>,
+}
+
 pub(super) fn perform(
     runtime: &Runtime,
     selection: &super::Selection,
     document: &Document,
     request: Request,
     cancel: &Arc<AtomicBool>,
-    output: &Mutex<Response>,
     origin: super::Origin,
+    Observation {
+        response: output,
+        progress,
+    }: Observation<'_>,
 ) -> Result<Completed> {
     if let Request::Settings(action) = request {
         if cancel.load(Ordering::Acquire) {
@@ -253,23 +265,41 @@ pub(super) fn perform(
         super::Origin::Native => false,
     };
     match request {
-        Request::Inspect(digest) => {
-            cache_action(control, CacheAction::Inspect, &digest, cancel, browser)
-        }
-        Request::Verify(digest) => {
-            cache_action(control, CacheAction::Verify, &digest, cancel, browser)
-        }
+        Request::Inspect(digest) => cache_action(
+            control,
+            CacheAction::Inspect,
+            &digest,
+            cancel,
+            browser,
+            progress,
+        ),
+        Request::Verify(digest) => cache_action(
+            control,
+            CacheAction::Verify,
+            &digest,
+            cancel,
+            browser,
+            progress,
+        ),
         Request::Reclaim { digest, apply } => cache_action(
             control,
             CacheAction::Reclaim(apply),
             &digest,
             cancel,
             browser,
+            progress,
         ),
-        Request::Alias { digest, name } => {
-            cache_action(control, CacheAction::Alias(name), &digest, cancel, browser)
+        Request::Alias { digest, name } => cache_action(
+            control,
+            CacheAction::Alias(name),
+            &digest,
+            cancel,
+            browser,
+            progress,
+        ),
+        other => {
+            execute(runtime, document, other, cancel, output, progress).map(Completed::Message)
         }
-        other => execute(runtime, document, other, cancel, output).map(Completed::Message),
     }
 }
 
@@ -279,6 +309,7 @@ fn execute(
     request: Request,
     cancel: &Arc<AtomicBool>,
     output: &Mutex<Response>,
+    progress: &Mutex<Progress>,
 ) -> Result<String> {
     if cancel.load(Ordering::Acquire) {
         return Ok("Cancelled before starting".into());
@@ -291,6 +322,7 @@ fn execute(
         | Request::Reclaim { .. }
         | Request::Alias { .. } => unreachable!("cache worker dispatch"),
         Request::CheckFit { source, device } => {
+            progress::stage(progress, Stage::Resolving);
             let (request, settings) =
                 resolve_request(document, &source, Execution::on_device(device.clone()))?;
             let plan = resident::prepare(
@@ -313,7 +345,10 @@ fn execute(
             }
         }
         #[cfg(all(feature = "acquisition", target_os = "linux"))]
-        Request::Pull(intent) => intent.execute(runtime, cancel, document.offline),
+        Request::Pull(intent) => {
+            progress::stage(progress, Stage::Downloading);
+            intent.execute(runtime, cancel, document.offline)
+        }
         #[cfg(all(feature = "web", feature = "acquisition", target_os = "linux"))]
         Request::PullPreview(intent) => intent.confirmation(),
         Request::Load {
@@ -326,6 +361,7 @@ fn execute(
                     "Retire the current route set before loading another".into(),
                 ));
             }
+            progress::stage(progress, Stage::Resolving);
             let (request, settings) = resolve_request(document, &source, execution)?;
             if prompt.is_some() && request.graph.models.len() != 1 {
                 return Err(Error::InvalidInput("Quick run requires one source; load the configured route set and select an owner".into()));
@@ -348,6 +384,10 @@ fn execute(
             if cancel.load(Ordering::Acquire) {
                 return Ok("Cancelled before model load".into());
             }
+            progress::update(progress, |p| {
+                p.stage = Stage::Loading;
+                p.resolved = Some(plan.execution_label().to_owned());
+            });
             plan.load(control).map_err(|e| e.into_core())?;
             if let Some(prompt) = prompt {
                 if cancel.load(Ordering::Acquire) {
@@ -363,6 +403,7 @@ fn execute(
                         model.lifecycle == ModelLifecycle::Ready && model.aliases.contains(&alias)
                     })
                     .ok_or_else(|| Error::State("Loaded registration is no longer ready".into()))?;
+                progress::stage(progress, Stage::Generating);
                 invoke(
                     runtime,
                     Owner {
@@ -382,8 +423,12 @@ fn execute(
                 .into())
             }
         }
-        Request::Invoke { owner, prompt } => invoke(runtime, owner, prompt, cancel, output),
+        Request::Invoke { owner, prompt } => {
+            progress::stage(progress, Stage::Generating);
+            invoke(runtime, owner, prompt, cancel, output)
+        }
         Request::Unload(owner) => {
+            progress::stage(progress, Stage::Retiring);
             control.unload(owner.reference())?;
             Ok(format!("Registration {} retired", owner.registration))
         }
@@ -453,6 +498,7 @@ fn cache_action(
     digest: &str,
     cancel: &AtomicBool,
     browser: bool,
+    progress: &Mutex<Progress>,
 ) -> Result<Completed> {
     #[cfg(all(feature = "cache", target_os = "linux"))]
     {
@@ -465,8 +511,22 @@ fn cache_action(
         match action {
             CacheAction::Inspect | CacheAction::Verify => {
                 let detail = if matches!(action, CacheAction::Verify) {
-                    control.verify_cached(&root, &selector, None, cancel)?
+                    progress::stage(progress, Stage::Verifying);
+                    let mut last = std::time::Instant::now();
+                    let mut files = 0;
+                    control.verify_cached_observed(&root, &selector, None, cancel, |sample| {
+                        // Avoid locking the presentation slot per hash chunk.
+                        if sample.bytes_read == 0
+                            || sample.files_verified != files
+                            || last.elapsed() >= Duration::from_millis(100)
+                        {
+                            progress::update(progress, |p| p.verification = Some(sample));
+                            last = std::time::Instant::now();
+                            files = sample.files_verified;
+                        }
+                    })?
                 } else {
+                    progress::stage(progress, Stage::Inspecting);
                     control.inspect_cached(&root, &selector, None)?
                 };
                 let manifest = detail.manifest;
@@ -564,7 +624,7 @@ fn cache_action(
             }
             _ => {}
         }
-        let _ = (control, digest, cancel, browser);
+        let _ = (control, digest, cancel, browser, progress);
         Err(Error::Unsupported(
             "Cache operations require Linux and cache feature".into(),
         ))

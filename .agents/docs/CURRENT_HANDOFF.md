@@ -59,7 +59,45 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — P3C native row regions (28 Nov)
+### Current checkpoint — UX-11A/B explicit search and model tasks (28 Nov)
+
+User interrupts P3C to improve native UX before further optimization.
+Only source-authoring L5. Existing unrelated Cargo.toml debug profile
+preserved. Root README unchanged. A/B changes in CLI control_host
+progress/action/worker, native view/library/model_tasks, original
+artifact cache verification and ControlPlane. Wide rail brand/profile,
+no separate title bar/Navigation text; narrow compact Nav retained.
+s/Ctrl-F/click focuses local search; Esc/Enter/Tab leaves filter intact,
+Ctrl-U clears, bare 1–9 switches views outside search, Alt+s Loads
+for Serve. Progress observation is separate from stable action scopes.
+Exact snapshot/known catalog/registration mapping, related pulls
+explicitly related; original download observation, actual hashed bytes
+vs authenticated files, monotonic bounded sampling. Actual loaded
+device from runtime, requested/selected backend as cold observation,
+no fabricated percentage. One most recent matching terminal result
+retained locally (not historical log); native error text bounded,
+never exposed by browser wire. No changed model eligibility. The 30.71
+MiB Gemma snapshot 4cd7a8f5 has no weights role; full Gemma snapshot
+ba32b769 is distinct. Old action log ring lacked actual errors and
+is process-local; earlier GPU failures not recovered. L5 observed
+SM86 RTX3060 laptop 6GiB, AMD DRM 4GiB; debug executable inspected
+before this build lacked GPU features, not proof of user's failing binary.
+
+Focused CLI binary and cache transaction tests 85 passed/0 failed/
+3 ignored; strict Clippy combined frontend/CPU/cache/acquisition/serve,
+TUI-only and Web-only passed; debug CLI built. Actual private-loopback
+PTY shell+settings, appearance, mouse, controls, editor and compact
+ergonomics pass (updated explicit focus and geometry assertions).
+Logs target/ux11ab-final-check.log, ux11ab-pty-{shell,appearance,mouse,ergonomics}.log,
+ux11ab-pty-editor-retry.log and ux11ab-pty-controls-final.log.
+No physical GPU loading qualification or full assembled gate rerun.
+Next **UX-11C** typed causal chain through original error owners and
+timestamped stage/progress/error logs, with native/private vs public
+projection; reproduce exact L5 failures, then D action/refusal
+guidance. See owning UX follow-up design and CLI-device TODO.
+P3C performance resume remains below.
+
+### Prior checkpoint — P3C native row regions (28 Nov)
 
 Signed source 54b2c910 on L5, exact incremental bundle to X2.
 Keep unrelated unstaged Cargo.toml on L5. Native V2 now lowers complete

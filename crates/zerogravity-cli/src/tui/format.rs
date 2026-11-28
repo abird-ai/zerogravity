@@ -26,6 +26,20 @@ pub(super) fn bytes(bytes: u64) -> String {
     };
     format!("{number} {}", UNITS[unit])
 }
+#[cfg(all(feature = "cache", target_os = "linux"))]
+pub(super) fn progress(current: u64, total: Option<u64>) -> String {
+    match total {
+        Some(total) if total != 0 => format!(
+            "{} / {} · {}%",
+            bytes(current),
+            bytes(total),
+            (u128::from(current) * 100 / u128::from(total)).min(100)
+        ),
+        Some(total) => format!("{} / {}", bytes(current), bytes(total)),
+        None => format!("{} · total unknown", bytes(current)),
+    }
+}
+
 pub(super) fn exact_bytes(value: u64) -> String {
     format!("{} ({value} bytes)", bytes(value))
 }

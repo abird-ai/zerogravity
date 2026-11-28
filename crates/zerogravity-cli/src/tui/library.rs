@@ -131,6 +131,8 @@ impl Rows {
 }
 #[derive(Default)]
 struct Models {
+    #[cfg(all(feature = "cache", target_os = "linux"))]
+    sources: Vec<zerogravity::control::CachedModelSummary>,
     execution_choices: Vec<Choice>,
     cached: Vec<Row>,
     partial: Vec<Row>,
@@ -195,6 +197,8 @@ pub(super) struct Library {
     execution_choices: Vec<Choice>,
     execution: Option<(String, Execution)>,
     cached: Rows,
+    #[cfg(all(feature = "cache", target_os = "linux"))]
+    sources: Vec<zerogravity::control::CachedModelSummary>,
     catalog: Rows,
     partial: Rows,
     devices: Rows,
@@ -244,6 +248,8 @@ impl Library {
             execution_choices: execution::choices(&[]),
             execution: None,
             cached: Rows::default(),
+            #[cfg(all(feature = "cache", target_os = "linux"))]
+            sources: Vec::new(),
             catalog,
             partial: Rows::default(),
             devices: Rows::default(),
@@ -263,6 +269,11 @@ impl Library {
     }
 }
 impl Library {
+    #[cfg(all(feature = "cache", target_os = "linux"))]
+    pub fn source(&self, digest: &str) -> Option<&zerogravity::control::CachedModelSummary> {
+        self.sources.iter().find(|source| source.snapshot == digest)
+    }
+
     pub fn execution_for(&self, digest: &str) -> Execution {
         self.execution
             .as_ref()
@@ -384,6 +395,10 @@ impl Library {
                 } else {
                     models.execution_choices
                 };
+                #[cfg(all(feature = "cache", target_os = "linux"))]
+                {
+                    self.sources = models.sources;
+                }
                 self.cached.replace(models.cached);
                 self.partial.replace(models.partial);
                 self.model_notice = models.warning;
@@ -437,11 +452,15 @@ fn models(control: ControlPlane<'_>) -> Models {
                 execution::choices(inventory.as_ref().map_or(&[], |row| row.devices.as_slice()));
             let cached = observation
                 .cached
-                .into_iter()
+                .iter()
                 .map(|model| Row {
                     key: Key::Snapshot(model.snapshot.clone()),
                     title: model.repository.clone(),
-                    annotation: Some(format::bytes(model.bytes)),
+                    annotation: Some(if model.has_weights {
+                        format::bytes(model.bytes)
+                    } else {
+                        format!("{} · metadata", format::bytes(model.bytes))
+                    }),
                     details: vec![
                         format!(
                             "Size: {} · {} files",
@@ -449,7 +468,11 @@ fn models(control: ControlPlane<'_>) -> Models {
                             model.files
                         ),
                         format!("Source: {}", model.provider),
-                        "Metadata only · payloads not verified".into(),
+                        if model.has_weights {
+                            "Cached payloads · not verified by inventory".into()
+                        } else {
+                            "Metadata-only snapshot · no weights".into()
+                        },
                     ],
                     technical: vec![
                         format!("Snapshot: sha256:{}", model.snapshot),
@@ -501,6 +524,7 @@ fn models(control: ControlPlane<'_>) -> Models {
                 ),
             };
             Ok(Models {
+                sources: observation.cached,
                 execution_choices,
                 cached,
                 partial,

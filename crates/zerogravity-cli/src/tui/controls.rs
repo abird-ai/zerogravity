@@ -255,7 +255,7 @@ impl Scope {
                     add(
                         C::Library(L::Load(true)),
                         "Load for Serve",
-                        "s",
+                        "Alt-s",
                         self.load(),
                     );
                     add(

@@ -3,6 +3,7 @@ mod actions;
 pub(crate) mod execution;
 pub(crate) mod inventory;
 pub(crate) mod logs;
+pub(crate) mod progress;
 pub(crate) mod settings;
 pub(crate) mod work;
 #[cfg(feature = "tui")]

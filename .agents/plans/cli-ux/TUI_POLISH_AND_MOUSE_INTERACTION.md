@@ -25,17 +25,56 @@ existing resolver validates all fit and compatibility; cold inventory is not
 an execution guarantee. Real CPU lifecycle and complete assembled gate passed;
 see the owner TODO and current handoff for evidence.
 
+## 28 Nov — UX-11 follow-up (user priority before ROCm continuation)
+
+**A/B design:** existing foreground action slot carries one observational
+stage, subject, requested/resolved backend and latest matching terminal
+outcome; no new task owner, scheduler, or persisted history. Progress
+is separate from stable action authorization scope. Cache reader
+reports actual bounded hash bytes and authenticated file counts on
+its original descriptor/cancel boundary, sampled at 100ms or file
+completion. Reuse original DownloadSummary in Models and Downloads.
+Exact snapshot/catalog/registration identity; related repository
+pulls labelled as related. Actual device is published only by the
+loaded runtime registration. Missing weight role is a metadata-only
+observation; no blanket "verify first" admission gate. Native retained
+error text is bounded and not serialized by browser projection.
+Unknown totals/stages remain unknown.
+
+**C (next):** audit typed failure propagation end to end (cold
+selection/configuration, admission, source/loader, original runtime
+and control/serve). Preserve original causal chain, typed codes,
+stage, requested/available resources and requested/resolved execution
+through boundaries; do not flatten and reconstruct from strings.
+Log actual timestamp, action/source correlation, elapsed stage,
+coalesced real progress, terminal reason. Trusted local details retain
+actionable cause; public HTTP/browser default remains safe bounded
+projection, explicit detailed error policy remains authoritative.
+Review bounded local log persistence/recovery rather than claiming
+process-local ring can recover past sessions. Reproduce L5 actual
+Auto/CUDA/ROCm failures using the appropriate full-feature build,
+exact selected sources/device, original owners; do not change runtime
+qualification to make an action look successful.
+
+**D:** exact source/route eligibility and actionable refusal/preflight
+from the existing planner, consistent menu/keyboard/Web enforcement.
+Metadata-only snapshots lack weight payloads; present actual missing
+role/refusal and supported acquisition/inspection actions. A complete
+unverified snapshot can be loadable because load authenticates its own
+reader; verification is not execution admission. Preserve real memory
+and backend eligibility, no silent downgrade or automatic acquisition.
+
 ## 1. Intent
 
 **26 Nov user-directed minimalism — toolbar-free, object-first.**
 Full accessibility is not exhaustive visibility. The left rail owns
-visible destinations; the header owns brand and active profile. No
-permanent action toolbar at any width. Searchable views have one inline
-search field at the top; ordinary printable characters (including
-former shortcuts and digits) focus and filter the current local list
-immediately. Ctrl-F focuses search, Ctrl-U clears, Esc clears active
-search, mouse caret/selection and bounded paste use the existing editor.
-Arrow keys select/scroll, Tab leaves search without discarding it.
+visible destinations. **28 Nov UX-11A supersedes the old header and
+type-to-filter contract:** wide rail owns brand and active profile,
+without a Navigation title or separate global title bar. Narrow
+workspace retains its compact Nav control. No permanent action toolbar.
+Searchable views have one inline field; s/Ctrl-F or mouse focuses it,
+typing/paste only edit when focused, Ctrl-U clears, Esc/Enter/Tab return
+to the list and preserve its filter. Arrow keys select/scroll.
 Filters stay with each view/shelf; no query triggers acquisition or
 execution. No second inventory, remote search or draft store.
 
@@ -55,10 +94,11 @@ unnecessary new cards or persistent header controls. Exact identity,
 full revisions, provenance, raw byte counts and diagnostic receipts
 remain available on demand through Details.
 
-Keyboard conflict resolved deliberately: in searchable views every
-ordinary printable character is search text, not a command. Alt+1–9
-switches views, Alt+letter explicitly invokes existing operation
-shortcuts, F4/F10 open context/session, Ctrl-Q quits outside modal;
+Keyboard conflict resolved deliberately: only focused search consumes
+ordinary printable characters. Bare 1–9 switches views outside search;
+Alt+1–9 remains available during search, Alt+letter invokes operation
+shortcuts (Models Load for Serve is Alt+s), F4/F10 open context/session,
+Ctrl-Q quits outside modal;
 F1/Alt+? help, Alt+: destination palette. Non-search views retain
 their ordinary shortcuts. Existing typed request/confirmation owners
 and press/release exact-scope revalidation remain authoritative.
