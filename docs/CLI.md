@@ -22,9 +22,14 @@ nix build .#default
 ```
 
 The `portable` Nix package and existing cross-platform release assets
-retain their portable CPU feature set. Native package realization may
-need additional pinned Nix dependencies; it does not acquire model
-weights. Explicit GPU runtime environment overrides remain supported.
+retain their portable CPU feature set. Normal Nix builds can fetch the
+declared dependency closure from configured trusted caches and verified
+source fetchers. Cargo compilation remains locked and offline within
+the build. A missing store path is a normal realization step, not a
+reason to install SDKs manually or change the lockfile. The `--offline`
+after `nix run .# --` controls ZeroGravity's model acquisition, not Nix's
+dependency fetching. Package realization does not acquire model weights.
+Explicit GPU runtime environment overrides remain supported.
 
 ## Start and run
 

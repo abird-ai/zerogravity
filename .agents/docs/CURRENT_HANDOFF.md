@@ -79,14 +79,11 @@ Nix x86-64 Linux default now selects full Cargo defaults; portable
 CPU and cross releases remain separate. Shared gpu-runtime module
 defines immutable CUDA/CCCL headers, HIP device libs, library and
 compiler paths, runtime wrapper and GPU dev shell. Cudarc build SDK
-version follows pinned CUDA (12090). Evaluated actual native/portable
-derivations and wrapper contract. Not a realized native package:
-pinned CUDA12.9/ROCm7.2.3 and build closure unavailable on L5, offline
-plan required 3457 derivations; own acquisition attempt cancelled.
-Do not change flake.lock, host drivers, installed app or services.
-Host-local validation uses existing CUDA13.5/ROCm7.2.4, separate from
-the pinned package. Run-local launcher target/ux11d-l5-launch.sh
-targets retained full build, not a packaged install.
+version follows the declared CUDA SDK (12090 for this build). The
+native package is now realized and physically qualified on L5
+(see latest package recovery below). Earlier host-local validation
+used CUDA13.5/ROCm7.2.4, not the packaged CUDA12.9/ROCm7.2.3.
+No changes to flake.lock, host drivers, installed app or services.
 
 Recovered focused validation: cache transactions 18/0; final combined
 CPU frontend 70/0/3, run_unified 7/0/1 (actual CPU equivalence and
@@ -97,22 +94,18 @@ PTY shell/settings/appearance/mouse/controls/editor/ergonomics pass;
 Web assets rebuilt/tested. Nix eval, format and diff checks pass.
 Logs target/ux11d-recovered-gate.log, ux11d-final-gate.log,
 ux11d-lint-retry.log, ux11d-frontend-process.log, package-contract2.json.
-Takeover assembled private-network gate: 1792/0/97 (235 Rust suites), no test failures.
-Formatting, architecture, GPU feature boundaries, default CLI and CPU
-strict Clippy, CPU workspace, minimal-feature/SDK, artifact-cache and
-reference/report checks, cache-only and combined CPU product Clippy
-passed. Initial gate canceled during third ordinary CUDA test build;
-process-local full-debug retry did not hit cache and was canceled.
-Preserved user debug profile; resumed exact original GPU script lines
-54 onward and workspace lines 21 onward with same private netns.
-Resume timed out at 660s in combined CPU product run_unified integration;
-no suite completion claim for its unfinished cases. Acquisition, serving
-and portable release/installer/script suffix remain unexecuted in this
-revalidation. Continue exact remaining gate from combined CPU product
-cargo test; do not redo completed stages unnecessarily. Logs:
-target/ux11d-takeover-assembled{,-cached,-resume}.log; run-local exact
-resume scripts target/ux11d-{gpu,workspace}-gate-resume.sh.
-Full assembled gate remains OPEN; prior accepted evidence retained.
+Full assembled private-network gate completed across unchanged-source
+resumes: 2620/0/112 (327 Rust suites; superseded partial combined CPU
+product run excluded from totals). All original GPU and CPU feature,
+strict lint, SDK/cache/acquisition/serving tests passed. Earlier
+interrupted attempts and their logs are retained; the final exact
+remaining suffix from combined CPU product tests exited 0 (399s).
+Portable CPU release build, native PTY, Web, installer, shell/Nix
+formatting and qualification scripts passed. Nix packaging fixes also
+passed signed source integrity and real native package qualification.
+Logs: target/ux11d-takeover-assembled.log,
+ux11d-takeover-assembled-resume.log, ux11d-final-gate-resume.log.
+No production Rust or gate changes between completed segments.
 
 Actual L5 control-host reproduction: exact cached metadata Gemma
 4cd7a8f5 and full Gemma ba32b769 refused with unsupported_source_route
@@ -137,31 +130,56 @@ debug-profile edit, shared queue edit, programmable-service design
 and root README. No D patch replay. Previous local physical receipts
 and joined retirement remain accepted for their host-local scope.
 
-Locked/offline Nix evaluation and actual derivation inspection passed:
-native default Cargo features, CUDARC_CUDA_VERSION=12090, wrapper
-with pinned SDK paths; portable and all six cross-target derivations
-retain explicit CPU features and no CUDA build SDK setting. None of
-the evaluated native/portable outputs is realized on L5. All eleven
-referenced pinned runtime store roots are absent on L5; X2 has the
-pinned ROCm/device libs/compiler runtime but lacks the pinned CUDA
-and Vulkan paths; A1 lacks the runtime closure. Previous
-target/ux11d-nix-build.log records HTTP 502 fetching GNU Savannah
-config.sub at 948ae97ca5703224bd3eada06b7a69f40dd15a02; previous
-substitution dry-run planned 526 builds / 539 fetched paths
-(4.4 GiB compressed, 5.8 GiB unpacked). No new acquisition, repin,
-verification bypass, install or resource relaxation. Current local
-eval receipts: target/ux11d-takeover-package.json,
-target/ux11d-takeover-feature-drvs.json, and exact signed-commit
-flake evaluation target/ux11d-takeover-signed-package.json. Signed
-source and dirty working-tree build/wrapper contracts agree; neither
-exact signed native nor portable output is realized.
+Latest package recovery — 28 Nov (source 3ec574ab):
+normal trusted Nix substitution and fixed-output fetching resolved
+all eleven runtime roots without changing the lockfile. The previous
+offline/no-substitution plan (3457 builds, GNU config.sub HTTP 502)
+was an unnecessarily restrictive acquisition approach. Normal plan
+526 builds/539 fetched paths, mostly Cargo source/vendoring and
+cached SDKs; completed acquisition recovered from stale local cache
+entries. No trust or integrity settings changed.
 
-Remaining: realize exact pinned native package via authorized
-acquisition, then check wrapped startup with no inherited dev SDK,
-actual device discovery, source generation and truthful refusal /
-joined retirement. Independently finish assembled gate and resume
-P3D measured temporal/GDN and attention regions. Do not repeat
-accepted host-local canaries to substitute for package realization.
+Two actual Nix build defects fixed: 28573dc0 preserves real patched
+dependency sources in shared Crane dependency builds (native,
+portable and cross); 3ec574ab preserves complete declared package
+source/test trees, including native GPU kernels and embedded assets.
+The second fix reused the same compiled dependency cache. Signed
+source integrity passed all 1733 workspace source files, 541 vendor
+files, 12 members. Native release build passed (2m37s compilation).
+Package: /nix/store/2p9bhqbiq6m8m73iz8gqs9gk6sv45z9l-zerogravity-0.1.0
+(rooted under target/ux11d-pinned-native); 94 closure paths.
+Portable and six cross-target derivation feature boundaries remain
+CPU-only; cross-target physical realization not inferred from eval.
+
+Recovered packaged validation job a6eb7e11-13af-4477-bc17-cf4e161253f3
+exited 0. Ordinary wrapper, sanitized environment without dev SDK
+paths, version, device inventory and source choices passed. Actual
+Gemma missing-weight and unsupported-original-source refusals (400),
+actual ROCm binding to device 0 and precise capacity refusal
+503 resource_exhausted 9885299712/8870966887 bytes, no registration.
+Auto selected CUDA RTX3060 SM86 on original Qwen 0.8B, 11 input/3
+output, length finish, load/run action 13.694s (canary, not a
+performance benchmark). Actual unload and joined Web host retirement;
+L5 NVIDIA37MiB/idle, no compute/KFD owner. Vulkan execution and
+successful HIP inference are not established by this package canary.
+Logs target/ux11d-nix-authorized-build.log,
+ux11d-nix-authorized-build-retry.log, ux11d-nix-complete-source-build.log,
+ux11d-final-source-check.log, ux11d-pinned-package-validation.log.
+
+User policy clarification: ordinary declared build dependency fetching
+is authorized, not an exception requiring another approval. Use the
+normal configured Nix realization workflow before isolated execution;
+Cargo remains locked/offline within builds and qualification. Use
+existing dependency resolution and avoid redundant pins or historical
+checkpoint/host restrictions; update dependencies when the actual
+engineering need warrants it. Keep integrity, licensing, source/model,
+numerical, resource and isolation boundaries. AGENTS.md now governs;
+older takeover acquisition restrictions are historical.
+
+UX-11D acceptance complete. Follow the live ordered implementation
+plan thereafter, including
+the separately scheduled programmable-stack foundation block before
+parallel backend/adapter lanes; no promotion of proposal work here.
 
 P3D independent work: missing 27B paired C1 completed on X2 with
 the retained exact P3C 54b2c910 executable (checkout 72de2442),

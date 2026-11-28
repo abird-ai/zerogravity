@@ -332,10 +332,10 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   native/vLLM tok/s, 32 exact timed requests, four accepted
   provider retirements and original idle VRAM restored. C1/C8
   coverage complete for 27B; throughput, not numeric/state parity.
-- [ ] Full assembled gate completion. UX-11D takeover 1792/0/97 (235 Rust suites);
-  GPU/CPU workspace passed, timeout in combined CPU product tests;
-  acquisition/serving/release suffix remains. Temporal/state/paged/
-  prefix work belongs to measured Phase3; see CURRENT_HANDOFF.
+- [x] Full assembled gate completed at UX-11D closeout:
+  2620/0/112 (327 Rust suites across exact unchanged-source resumes);
+  acquisition/serving/release passed. Temporal/state/paged/prefix
+  work remains measured Phase3 work; see CURRENT_HANDOFF.
 
 ### Ordinary serving benchmark / bounded Phase 2 exit — 27 Nov
 

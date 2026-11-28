@@ -557,7 +557,7 @@ Design: [TUI polish follow-up](../cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md).
   configured CUDA original 0.8B real generation and retirement passed.
   Focused process, Rust, strict feature-specific Clippy and Web gates
   passed; assembled process regression wired and passed.
-  Full assembled gate remains open. See current handoff for exact scope.
+  Full assembled gate passed at UX-11D closeout. See CURRENT_HANDOFF.
 - [x] D source-aware guidance: shared manifest layout and canonical
   route classification; TUI/Web compatible choices and structural
   action refusals; actual planner differentiates missing payload,
@@ -573,19 +573,17 @@ Design: [TUI polish follow-up](../cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md).
   defaults, portable CPU packages separate; shared pinned GPU SDK
   paths/header view/library closure, matching cudarc SDK version,
   normal wrapped launch. Actual derivation evaluation passed.
-- [ ] D remaining package qualification: realize pinned native
-  package and exercise ordinary packaged startup/physical load.
-  Takeover revalidated locked/offline native, portable and six
-  cross-target derivations; actual runtime/package outputs missing
-  on L5. X2 has pinned ROCm but no complete native closure; A1
-  lacks it. Prior GNU config.sub HTTP 502; substitution dry-run
-  526 builds/539 fetch paths. See platform-and-release TODO and
-  current handoff. No lock changes or implicit acquisitions.
-- [ ] Finish assembled private-network gate independently: takeover
-  1792/0/97 (235 Rust suites); GPU and CPU workspace gates passed.
-  Resume deadline in combined CPU product integration, remaining
-  acquisition/serving/release suffix open; see CURRENT_HANDOFF.
-  P3D paired baseline completed while package acquisition blocked.
+- [x] D native package realization/physical qualification on L5:
+  28573dc0/3ec574ab shared packaging fixes; normal trusted Nix
+  realization, unchanged locks, complete source integrity and native
+  release. Actual clean wrapper startup, physical discovery, Gemma
+  source refusals, HIP exact 503 capacity refusal, Auto CUDA Qwen0.8B
+  11+3 tokens and joined retirement pass. No manual SDK environment.
+  Portable/cross CPU feature boundaries preserved. See CURRENT_HANDOFF.
+- [x] Assembled private-network gate complete across exact unchanged-source
+  resumes: 2620/0/112 (327 Rust suites, no duplicate interrupted results).
+  Acquisition/serving, portable release, PTY/Web, installer and scripts
+  passed. UX-11D accepted; see CURRENT_HANDOFF.
 
 ### Other deferred work
 

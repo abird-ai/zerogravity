@@ -221,10 +221,52 @@ When applying externally prepared source bytes, ensure modification times are
 fresh enough that Cargo cannot reuse stale build products; unchanged bytes may
 need a narrow timestamp refresh before rerunning the same affected checks.
 
-The root README is user-authored: leave its bytes unchanged. Do not download
-models/SDKs or change device privileges or recovery without applicable user
-authorization. The local Renoir/gfx90c AMD launch hold remains. Use subagents
-for independent implementation/review/test work; the main agent coordinates,
-reconciles, decides and merges. Preserve unrelated user work.
+The root README is user-authored: leave its bytes unchanged. The local
+Renoir/gfx90c AMD launch hold remains. Use subagents for independent
+implementation/review/test work; the main agent coordinates, reconciles,
+decides and merges. Preserve unrelated user work.
+
+## Dependency acquisition and practical reproducibility
+
+User direction (28 Nov): do not turn reproducibility into an artificial
+restriction on implementation. Prefer the simplest standard package-manager
+workflow and the current supported dependency versions.
+
+- Routine acquisition of build dependencies needed for the requested work,
+  including declared Nix SDKs, toolchains, native libraries and Cargo sources,
+  is authorized. Use normal Nix realization with configured trusted binary
+  caches and hash-verified source fetchers; e.g. `nix build .#default`.
+  Do not default Nix to offline/no-substitution mode or require fresh approval
+  merely because a declared store path is missing. Use normal retries,
+  configured alternative caches or standard source builds as appropriate.
+  A cache miss or transient upstream failure is not proof of an unavailable
+  dependency. Inspect the actual failure before declaring a blocker.
+- Separate acquisition from execution. Fetch required declared inputs before
+  entering the isolated qualification environment (e.g. `cargo fetch --locked`
+  when the local Cargo cache is incomplete). Keep compilation in the Nix
+  sandbox or the existing locked/offline qualification workflow. Explicit
+  offline requests and inference/model-acquisition policies still apply.
+- Keep one authoritative dependency resolution (flake.lock, Cargo.lock and
+  the existing toolchain declaration). Use compatible dependency requirements
+  and the normal upstream package set; do not invent additional exact pins,
+  host-path restrictions, source-checkpoint gates or manual approval steps
+  without a concrete correctness, compatibility, security or measurement need.
+  Update dependencies/locks normally when the task warrants it; explain and
+  validate material updates. Do not repin merely to hide a transient fetch
+  failure or reproduce a historical environment for unrelated work.
+- Preserve exact identities where they are actual contracts (authenticated
+  model contents, numerical/ABI compatibility, state and resource ownership,
+  reproducible releases and controlled comparisons). A historical SHA, version,
+  fixture or host in a handoff is evidence, not a new restriction on routine
+  development. Reuse applicable accepted evidence; add checks/pins only for
+  meaningful failure modes.
+- Keep configured trust, signatures, integrity verification, licensing and
+  sandbox boundaries intact. New model weight downloads, exceptional manual
+  SDK installations outside the declared dependency workflow, changes to trust
+  or device privileges, recovery actions and unrelated acquisitions still need
+  applicable authorization. No silent deployment or system configuration change.
+
+These rules supersede older handoff wording that requires an extra approval
+for ordinary declared build dependency acquisition.
 
 <!-- END repo-specific -->

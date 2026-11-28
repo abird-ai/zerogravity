@@ -35,17 +35,19 @@ Contracts: [P00–P23 roadmap](../IMPLEMENTATION_ROADMAP.md),
 - [ ] Run extension drills for one stateful semantic op, device/provider, non-token TaskProgram, quant/storage/API adapter and optional ParameterVersion/TrainStep seam; future training is not thereby implemented.
 - [ ] Finish per-file source/model/license/NOTICE/SBOM policy, malformed-input fuzzing and ownership/security review, authenticated APIs/private caches and qualified driver/device safety.
 - [ ] Verify Nix/module/native/cross packages and installer/release behavior on actual Linux/Windows/macOS target access; packaging definitions alone do not prove platform support.
-  UX-11D ac35fb14: locked/offline native/portable and six cross-target
-  derivation feature/wrapper inspection revalidated. L5 lacks exact
-  CUDA12.9/ROCm7.2.3/Vulkan runtime and package outputs; X2 has pinned
-  ROCm components but not complete native closure; A1 lacks it.
-  Prior GNU Savannah config.sub HTTP 502 and substitution dry-run
-  526 builds/539 fetched paths (4.4 GiB compressed); acquisition
-  remains blocked pending authorization/availability. Realize the
-  unchanged pins; then launch the wrapper with no inherited SDK
-  environment, exercise device discovery, source execution, honest
-  admission/refusal and retirement. Keep portable/cross boundaries.
-  Host-local CUDA13.5/ROCm7.2.4 evidence does not qualify this package.
+  UX-11D native package realized and physically qualified on L5
+  at 3ec574ab (CUDA12.9/ROCm7.2.3). Normal trusted Nix realization
+  fetched the declared closure; no lock changes. 28573dc0 preserves
+  real registry path patches in shared Crane dependency builds;
+  3ec574ab preserves complete declared package source trees. Exact
+  source integrity, native release, clean wrapper startup, discovery,
+  Auto CUDA original 0.8B generation, precise HIP capacity and source
+  refusals, joined retirement passed. Portable and six cross-target
+  feature boundaries remain CPU-only. Wider platform realization
+  remains open. See CURRENT_HANDOFF. Ordinary declared build dependency
+  fetching is authorized under AGENTS.md; do not disable substitution
+  or require new approval for cache misses. Keep locked/offline
+  compilation, not unnecessarily offline Nix acquisition.
 - [ ] Maintain minimal/default/composed CPU-free feature isolation, one lock/version authority and truthful unsupported capability behavior.
 - [ ] Gate bounded compiler/autotune/AOT caches by source/device/driver/shape and retain negative candidates; no unbounded first-request search.
 - [ ] Complete reproducible/signing/release policy and fair model/task/quality/performance matrices with cold/warm, p50/p95/p99, memory/energy and uncertainty. Push/tag/release remain separately authorized actions.

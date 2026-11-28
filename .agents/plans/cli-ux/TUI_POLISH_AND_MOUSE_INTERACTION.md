@@ -151,7 +151,9 @@ without a qualified consumer. Distinguish compiled backend from usable
 runtime/device and actual memory admission. Close the Nix/default
 launch environment gap with existing pinned runtime dependencies and
 verified installed-package behavior, not hard-coded host paths in
-production. Any new acquisitions require approval. Auto policy must
+production. Ordinary declared build dependency acquisition follows
+AGENTS.md; new model weights and exceptional acquisitions retain
+their authorization rules. Auto policy must
 use actual eligibility; no relabeling of unsupported Gemma or HIP
 capacity refusal as a successful load. Recheck load/serve/menu action
 consistency; then resume measured P3D.
@@ -175,15 +177,17 @@ package/cross assets remain separate. Shared pinned GPU runtime module
 supplies immutable CUDA/CCCL include view, CUDA/HIP/ROCm paths, HIP
 device libraries and loader paths; same SDK version in cudarc build
 and development shell. Actual evaluated derivations prove feature and
-wrapper contract. Full pinned package realization remains open: offline
-build planned 3457 derivations with missing pinned CUDA12.9/ROCm7.2.3
-outputs; own build cancelled rather than expand acquisition. Current
-host-local 13.5/7.2.4 runtime is not package realization evidence.
-Takeover revalidated the actual native/portable and six cross-target
-derivations (locked/offline); pinned package/runtime roots remain
-missing. Previous config.sub HTTP 502 and large substitution plan
-retained in current handoff. No acquisition or lock changes; keep
-physical packaged startup and admission as a distinct open gate.
+wrapper contract. Actual native package realization on L5 completed
+after normal trusted Nix dependency acquisition. Previous offline
+realization failed at an upstream fetch; no longer a blocker.
+28573dc0 fixes dummy dependency source preservation for path patches;
+3ec574ab preserves complete declared package source trees. Signed
+source integrity and release build passed with unchanged locks.
+Actual packaged wrapper, device discovery, missing/unsupported
+source refusals, exact HIP capacity refusal and Auto CUDA original
+0.8B generation (11+3 tokens, load/run 13.694s) passed; joined
+retirement and original idle device state confirmed. No inherited
+development SDK environment, no host configuration changes.
 
 Recovered D qualification: actual L5 metadata-only/full Gemma refusal
 and compatible source-specific inventory choices; raw development
@@ -194,10 +198,10 @@ original unload/join and physical retirement passed. All six native
 PTY groups and real Web host fixture passed. Focused combined CPU
 frontend 70/0/3, CLI integration 7/0/1, cache transactions 18/0,
 full-feature CLI 72/0/3 and strict feature-specific Clippy. No
-changed numerical contract or full assembled/package realization
-claim. Takeover isolated gate 1792/0/97 (235 Rust suites);
-GPU feature boundaries and CPU workspace passed, resume timeout
-in combined CPU product tests. Remaining suffix stays open.
+changed numerical contract. The packaged validation above supersedes
+the earlier package limitation. Complete assembled isolated gate
+2620/0/112 (327 Rust suites, unchanged-source resumes), portable
+release, PTY/Web, installer and scripts passed. UX-11D accepted.
 
 
 ## 1. Intent
