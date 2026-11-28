@@ -594,7 +594,20 @@ Design: [TUI polish follow-up](../cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md).
   CPU shown with GGUF-required reason on original Qwen; other unavailable
   backend-wide choices explain structural/compile refusals. Disabled
   selections cannot apply. TUI and Web use the same route projection;
-  load-time physical admission remains unchanged.
+  load-time physical admission remains unchanged. Actual signed package
+  projected all seven choices for the original 0.8B, with disabled CPU/
+  Vulkan and no Auto duplicates. Real native PTY displayed them, refused
+  disabled CPU selection, applied CUDA and retired. Final combined
+  CPU/acquisition/TUI/Web strict Clippy and 68/0/2 tests passed;
+  minimal Web and TUI/cache strict Clippy and Web build/5 tests passed.
+- [ ] Assembled gate follow-up after 48c00b22: current run passed fmt,
+  architecture, HIP/Vulkan/CUDA compile and default CLI compilation.
+  Canceled during default strict Clippy after 545s of cold rebuilds to
+  finish relevant focused checks. Full unchanged-source prior
+  fda84c16 gate 2629/0/112 remains historical evidence, not a fresh
+  gate pass. Resume remaining original gate, without reopening physical
+  launch/PTY evidence unnecessarily. Logs target/l5-execution-picker-
+  assembled.log and l5-execution-picker-final-focused.log.
 - [ ] Ordinary original-source CPU execution remains a separate model/
   backend capability; do not label original Safetensors as GGUF or
   present an unsupported CPU fallback.

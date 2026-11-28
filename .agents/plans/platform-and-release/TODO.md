@@ -15,12 +15,16 @@ Contracts: [P00–P23 roadmap](../IMPLEMENTATION_ROADMAP.md),
   remain in the optional gpu shell. Actual shell realization and full
   native Cargo build passed, with no lock changes. The raw launch with
   SDK/loader variables stripped reproduced the three user errors on the
-  exact cached 0.8B. Latest pre-picker packaged source fda84c16 ran
-  Auto and explicit CUDA from fresh hosts, 11+3 tokens, joined retirement.
-  Explicit ROCm reached physical admission and refused 9885299712/
-  8870966887 bytes, not missing libraries. User launch command/log are
-  outside connector read scope; reproduction is independent. Use
-  ordinary nix run or nix develop, not the unwrapped Cargo binary.
+  exact cached 0.8B. Actual signed 48c00b22 package is realized at
+  target/native-package (native release, unchanged dependencies).
+  Fresh Auto and explicit CUDA each generated 11+3 tokens, joined
+  retirement, 14.711s and 14.356s action durations (canaries, not perf).
+  Corrected default dev shell also generated 11+3 tokens and retired
+  (unoptimized 185.329s). Explicit ROCm reached physical admission and
+  refused 9885299712/8870966887 bytes, not missing libraries. Final idle
+  NVIDIA37MiB/0%, no compute owners. User launch command/log are outside
+  connector read scope; reproduction is independent. Use ordinary nix
+  run or nix develop, not the unwrapped Cargo binary. No host changes.
 - [ ] Investigate same-process CUDA retirement/reload capacity: successful
   Auto load and unload left the next explicit CUDA cold observation with
   5335148135 bytes after headroom, just below the qualified 5 GiB device
