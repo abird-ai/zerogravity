@@ -1,10 +1,16 @@
 # zerogravity
 
-**The fully programmable, blazingly fast inference stack.**
+**The blazingly fast live programmable inference stack.**
 
 Run models from the terminal or with a few lines of Rust. Compose pipelines,
 inspect execution, and change how inference runs—live, from model definitions
 to the kernels beneath them.
+
+One native runtime, from your local model to distributed servers and autonomous fleets.
+
+[Quick start](#quick-start) · [Rust SDK](#sdk-at-a-glance) ·
+[Make it yours](#make-the-stack-yours) · [Live programming](#live-programming) ·
+[Architecture](#architecture) · [Roadmap](#implementation-status-and-roadmap)
 
 ## Quick start
 
@@ -53,7 +59,24 @@ Load local files or pull a model into the cache. Stream responses or serve the
 same model through an OpenAI-compatible endpoint. Applications also join shutdown
 on error paths.
 
-### Program the running stack
+## Make the stack yours
+
+Start with useful defaults, then shape inference around your models, hardware
+and workloads. Compose reusable parts at the level your application needs.
+
+| Layer | What you control |
+| --- | --- |
+| **Models and pipelines** | Model definitions, reusable operators, and text, image, audio, video and real-time task composition |
+| **Kernels and execution** | Native kernels, library calls, fusion and execution mappings |
+| **Placement and memory** | Devices, distributed workers, VRAM/UMA/RAM/SSD residency and prefetch |
+| **Scheduling and serving** | Concurrent models and requests, batching, speculation, fairness and latency budgets |
+| **State and caches** | Private sessions, paged growth, checkpoints, prefix reuse and configurable cache providers |
+| **Observation and improvement** | Live metrics, traces, experiments, comparisons and revision activation |
+
+These are the stack's design surfaces;
+[current support and planned work](#implementation-status-and-roadmap) are tracked below.
+
+## Live programming
 
 Inspect a running model, try another implementation, and measure it against a
 representative workload. Activate a passing revision for new requests while
@@ -85,6 +108,11 @@ The report must satisfy declared numerical/state checks and workload performance
 requirements before activation. The experiment keeps its recipe and results so
 you can reopen, rerun, and iterate. **The planned MCP adapter exposes the same
 native operations to agents.**
+
+**An inference stack that evolves with you.** Keep the revisions, workloads and
+measurements behind each improvement. Revisit a choice as your models, hardware
+or traffic change, or let an agent explore candidates within your budgets and
+promotion policy.
 
 ### Deep execution pipelines
 
@@ -181,6 +209,28 @@ GGUF feed source-bound model definitions. Native operators and optional compiled
 providers lower the semantic program into prepared execution. ONNX remains an
 optional import path.
 
+**Scale the same fabric.** Compute, immutable weights, private session state and
+shared caches have independent placement. CPU, ROCm/HIP, CUDA and Vulkan supply
+execution; VRAM, unified memory, RAM and SSD supply residency. Distributed
+execution extends these contracts across workers with explicit resource budgets.
+
+**Optimize the workload as a whole.** Batching, speculation, kernel selection,
+cache reuse, residency and placement are coordinated against actual throughput,
+latency and fairness goals. Concurrent models and pipelines share physical
+capacity while retaining their own session state.
+
+### ZeroGravity and AW
+
+| Layer | What it programs |
+| --- | --- |
+| **ZeroGravity** | Models, inference pipelines, kernels, scheduling and device resources |
+| **[AW](https://github.com/abird-ai/aw)** | Agent context, behavior, tools, action graphs, collaboration, state and environments |
+| **Your application** | Goals, domain behavior and the experience built above them |
+
+AW selects an inference target; ZeroGravity executes inference. Each has its own
+revisions and lifecycle. Use them together to build an autonomous stack that
+can evolve at both layers, or use either with other compatible providers.
+
 ## Implementation status and roadmap
 
 **Available today:** native Rust text inference, CLI/TUI/Web controls, and
@@ -189,12 +239,13 @@ is qualified for specific paths and devices; optimized backend parity remains
 in progress.
 
 The Service/Client SDK, live programming and MCP examples above are previews.
-Broader model/media support, distributed execution and optional compiled
-providers retain their own qualification scope.
+Broader model/media support, generalized composition, elastic paging and cache
+tiering, distributed execution and optional compiled providers remain in progress
+or planned.
 
-**Next:** finish UX-11D acceptance, complete the shared service/SDK foundations,
-then advance ROCm, CUDA, MCP and composition in parallel. Vulkan and optional
-compiled providers follow the same contracts.
+**Next:** complete the shared service/SDK foundations, then advance ROCm, CUDA,
+MCP and composition in parallel. Vulkan and optional compiled providers follow
+the same contracts.
 
 [Implementation phases](.agents/plans/programmable-service/IMPLEMENTATION_PHASES.md) ·
 [Full plan](.agents/plans/FULL_IMPLEMENTATION_PLAN.md) ·
@@ -233,14 +284,14 @@ Zerogravity would not exist without the open-source inference and systems
 community. We thank and acknowledge the following projects as inspiration and
 prior art; their ideas, research and engineering shaped this work:
 
-- **llama.cpp** — portable GGUF execution and the dead-simple local single-binary experience.
-- **vLLM** — high-throughput serving, continuous batching and paged state.
-- **SGLang** — structured program execution and prefix-aware cache reuse.
-- **Ollama** — one-command local model UX and resident model management.
-- **gufo** — model-family specialization, accelerator kernels and multimodal tasks.
-- **strata** and **maya** — extreme model specialization and VRAM→RAM→SSD expert tiering.
-- **CubeCL (vendored)** — the Rust GPU kernel IR, vendored with its upstream license.
-- **pi** and **dwarfstar4** — agentic engineering and extreme-model execution research.
+- **[llama.cpp](https://github.com/ggml-org/llama.cpp)** — portable GGUF execution and the dead-simple local single-binary experience.
+- **[vLLM](https://github.com/vllm-project/vllm)** — high-throughput serving, continuous batching and paged state.
+- **[SGLang](https://github.com/sgl-project/sglang)** — structured program execution and prefix-aware cache reuse.
+- **[Ollama](https://github.com/ollama/ollama)** — one-command local model UX and resident model management.
+- **[gufo](https://github.com/gufo-org/gufo)** — model-family specialization, accelerator kernels and multimodal tasks.
+- **[strata](https://github.com/Niko1221/Strata)** and **[maya](https://github.com/mw00/project-maya)** — extreme model specialization and VRAM→RAM→SSD expert tiering.
+- **[CubeCL](https://github.com/tracel-ai/cubecl) (vendored)** — the Rust GPU kernel IR, vendored with its upstream license.
+- **[pi](https://github.com/earendil-works/pi)** and **[dwarfstar4](https://github.com/antirez/ds4)** — agentic engineering and extreme-model execution research.
 
 These names are acknowledged as inspiration and interoperability references only.
 No source code from any prior-art project is copied or linked unless it is
