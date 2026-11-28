@@ -50,31 +50,50 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
 
 [Shared memory contract](../memory-and-streaming/ELASTIC_CONTEXT_AND_RESIDENCY.md)
 extends the existing [paged-state design](BATCHING_AND_PAGED_STATE.md).
-One memory integration owner; native ROCm and CUDA lanes proceed
-independently after the existing PS-F1/F2/F3 exit.
+Follow PS-F1 → F2 → F3, then one common accounting/pool/scheduler
+integration owner. HIP/X2 and CUDA/L5 consumers qualify independently;
+integrated elasticity needs the common core plus its ready backend,
+not all backends or MCP. Optional tiering follows the resident path.
 
 - [ ] Integrate qualified direct page-table append/attention and mixed
-  recurrent/conv domains through the existing forward/StateRoot path.
-  Bounded tile/append scratch; no full-context gather slab on the selected
-  direct path. Keep the accepted CUDA gather/contiguous baseline; qualify
-  HIP/X2 and CUDA/L5 independently, Vulkan later.
-- [ ] Memory-aware request and operation admission: exact incremental
-  page/COW/vector/table/workspace cost, fair prefill/decode/refill under
-  pressure, guaranteed/elastic isolation, progress margin and explicit
-  refusal when safe progress is impossible. Park/recompute/offload only
-  through qualified owners; never silently truncate or reset a context.
-- [ ] Auto policy and matched actual short/long/ragged/prefix/concurrent
-  performance, resident/peak/idle memory, TTFT/ITL, goodput, copy/dispatch
-  and pressure/recovery. Preserve source/numerical/state equivalence and
-  cancellation, stale-reader, unload/reload and final physical retirement.
-  No new model context/capability claim until real qualification.
-- [ ] Tier-aware scheduling and bounded IO: integrate shared cache provider
-  residency/restore/recompute costs, safe parking/resumption and prefetch
-  with existing fair cohorts. Protect guaranteed/live work; compare
-  resident, recompute and enabled tier policies under mixed concurrent
-  workloads. No hidden synchronous storage read in resident decode.
-  Follow the [tiered cache contract](../memory-and-streaming/ELASTIC_CONTEXT_AND_RESIDENCY.md#5-tiered-state-cache-and-configurable-storage-providers)
-  and existing continuation acceptance scope.
+  recurrent/conv domains through existing forward/StateRoot owners.
+  Bound tile/append scratch; no full-context gather on the selected direct
+  path. Retain the accepted CUDA gather/contiguous baseline; Vulkan later.
+- [ ] Separate bounded queued-request, retained session/state and active
+  operation admission. Reuse original parent-scoped quotas and credit/backing
+  conversion without double charging. Executor demand quotes exact incremental
+  page/COW/vector/table and transient peak needs for the actual phase/chunk/
+  cohort; original admission supplies the permit before enqueue.
+- [ ] Extend existing ready selection with bounded compatible cohorts,
+  fit-aware prefill chunks/width, decode service gaps and aging of prefill
+  and capacity deferrals. Preserve dependency/output backpressure; waiting
+  rows retain state but no unrelated scratch. Requested priority/QoS remains
+  within grants, hard capacity and guarantee isolation.
+- [ ] Enforce progress beyond a one-step margin: retain completion/retirement
+  capacity plus a selected bounded completion envelope or qualified reclaim/
+  park/recompute or explicit elastic-exhaustion path. Stop growth/admission
+  when none can progress; resolve the permitted victim observably and return
+  capacity only after actual retirement. Never consume another guarantee,
+  silently truncate/reset state or reclaim unknown work.
+- [ ] Coordinate batch page/slot checkout and idle trim with memory owner.
+  Cache eviction/idle return is not physical reclaim; expose pending/retired/
+  quarantined backing and original credit return. Shared source/state owners,
+  weights, captures and transfers compete under the same physical parent.
+- [ ] Expose per-request/effective policy, wait reasons and actual accounting
+  through common Service/SDK/MCP observations, with local native scheduling.
+  Qualify Auto and useful concurrency using existing short/long/ragged/prefix,
+  refill, slow-client and pressure scenarios: TTFT/ITL, goodput, actual peak/
+  idle memory, copy/dispatch, fairness and source/state/cancellation/retirement.
+  Validate the coherent batch; no per-helper acceptance cycle or new ledger.
+- [ ] Tier-aware asynchronous IO with bounded queued bytes/concurrency:
+  admit source/destination/staging overlap; restore before cohort entry.
+  Deduplicate compatible fetches and preserve independent cancellation.
+  Protect decode/guarantees and publish
+  verified destination state before releasing its source. Prefix miss can
+  recompute; safe live parking needs applicable complete continuation support.
+  Compare enabled tier policies under existing mixed concurrent scenarios.
+  Follow the [tiered cache contract](../memory-and-streaming/ELASTIC_CONTEXT_AND_RESIDENCY.md#5-tiered-state-cache-and-configurable-storage-providers);
+  no synchronous storage read in resident decode or unqualified context claim.
 
 ### OA-1 — async serving transport (26 Nov; after UX-P)
 

@@ -28,15 +28,63 @@ overriding later named acceptance in the live TODO.
 ## 28 Nov — elastic context follow-up
 
 The [elastic context and residency contract](../memory-and-streaming/ELASTIC_CONTEXT_AND_RESIDENCY.md)
-supersedes the older fixed-capacity allocation assumptions without
-superseding accepted numerical/ownership evidence. Current CUDA hybrid
-paging lazily acquires pages but still uses full-capacity contiguous
-staging for execution; current HIP original-source state is contiguous.
-The intended native paths consume block tables directly, separate logical
-maximum length from actual backing and optional guarantees, and admit
-incremental work against shared physical capacity. Pressure-aware
-scheduling, reclamation and direct kernels extend the existing owners.
-See the owning TODOs for delivery and acceptance.
+extends the existing owners and preserves accepted numerical/ownership
+evidence. Current CUDA hybrid paging still uses full-capacity contiguous
+staging; current HIP original-source state is contiguous. Direct native
+consumers must remove that staging on their selected paths.
+
+- Separate queued-request admission (bounded host/input/output credits),
+  retained session/state admission and active operation admission. Logical
+  context, resident sessions and native cohort width are independent limits.
+  Guaranteed work reserves its declared completion bounds; elastic admission
+  may later end with explicit resource exhaustion.
+- Extend the original accounting/pools and engine scheduler. The executor
+  describes exact incremental page/COW/vector/table needs and transient peak
+  workspace for a proposed phase/chunk/cohort, bound to its prepared owner
+  and frontier. This demand is a quote, not a permit or completion proof.
+  The original owner admits the whole bounded operation before enqueue;
+  already covered backing/credit is not charged again. Model/tenant/request
+  quotas constrain their physical parent, never create independent capacity.
+- Form bounded compatible cohorts from ready rows; adapt chunk/width to
+  actual admission. Rotate decode with bounded service gaps, age deferred
+  prefill and capacity-blocked work, and prevent smaller requests from
+  indefinitely overtaking an older feasible request. Preserve original
+  per-session dependencies and publication. Input/output/dependency/restore
+  waits retain required state, not unrelated operation scratch. Priority/QoS
+  changes ordering within grants and hard capacity; it cannot spend another
+  owner's guarantee. Logical token/scratch credits do not prove physical fit.
+- Preserve completion/retirement resources. One next-step margin is
+  insufficient when each append retains more state: further growth requires
+  a selected request's bounded completion envelope or a qualified
+  reclaim/park/recompute path or explicit elastic exhaustion that releases
+  enough capacity. If none can progress, stop admission/growth and resolve
+  the permitted elastic victim through its observable terminal/retirement
+  path. Never wait indefinitely on the same unfinishable set, sacrifice a
+  guarantee, or treat unknown work as reclaimable.
+- Cache eviction or idle return is not physical reclaim. Trim existing pools
+  through actual backing retirement and original credit return; distinguish
+  pending, retired and quarantined bytes. Batch page/slot checkout and bound
+  metadata. Share compatible original source/state owners once; weights,
+  captures, state and transfers compete under the same physical parent.
+- Optional tier work bounds queued bytes, IO concurrency and transfer staging
+  while running independent ready work. Restoring pages cannot join a cohort
+  before Ready.
+  Deduplicate compatible fetches without coupling request cancellation;
+  admit source/destination/transfer overlap and publish a verified destination
+  before releasing the last required source. Prefix miss may recompute;
+  live parking requires the applicable complete continuation capability.
+  Slow storage never blocks unrelated decode or frees unretired backing.
+- Follow PS-F1 → F2 → F3, then one owner integrates the common accounting,
+  pool and scheduler core. HIP/X2 and CUDA/L5 native consumers qualify
+  independently; an integrated elastic route needs that core plus its one
+  ready backend, not every backend or MCP. Project per-request policy,
+  effective limits/wait reasons and actual accounting through the shared
+  Service/SDK/MCP contracts; native scheduling needs no per-token RPC.
+  Optional tiering follows the qualified resident path.
+
+Use the existing mixed-length, refill, slow-client, pressure and retirement
+scenarios below for the coherent implementation batch; no new evidence ledger
+or component-by-component acceptance cycle. See the owning TODOs.
 
 ## Shared engine and numerical profiles
 
@@ -1034,15 +1082,22 @@ serving/full-gate work must require a private network namespace.
 
 ## Acceptance and implementation order
 
-These gates extend existing pending work, not the active main-thread order of
-small-model numerical parity, matched benchmarks, then original27B. Keep each
-allocator/kernel/cache/scheduler change independently reviewable and accepted
-through the same engine. Extend supported contexts/profiles only after their
-own admission, source/state and physical tests.
+Follow the current [full plan](../FULL_IMPLEMENTATION_PLAN.md) and
+[programmable foundations](../programmable-service/IMPLEMENTATION_PHASES.md):
+PS-F1 → F2 → F3, then the common accounting/pool/scheduler integration with
+one owner and independent native consumers. Integrated elasticity requires
+the common core and its selected qualified backend; other backend, MCP and
+optional tier completion do not gate it. Preserve existing accepted routes.
 
-- [ ] **Baseline/profile integration:** freeze the actual source/profile and
-  existing contiguous/B1/batched results. Preserve the accepted llama.cpp
-  regression lane; qualify new vLLM profiles against their own pinned source.
+The checks below describe existing behavioral scopes for the assembled
+end-to-end batch, not serial component acceptance phases. Reuse applicable
+unchanged evidence; run focused checks for concrete failures and the normal
+complete gate at batch acceptance. Extend context/profile claims only with
+their relevant actual source/state/admission/physical qualification.
+
+- [ ] **Source/profile integration:** use the actual source/profile and retain
+  applicable contiguous/B1/batched results. Preserve the accepted llama.cpp
+  regression lane; qualify new vLLM profiles against their actual source.
   Reject wrong profile/source/schema/page generations before device access.
 - [ ] **Allocator/COW:** test full/partial/tail pages, randomized physical block
   mapping, reference counts, simultaneous forks/readers, repeated reuse and
@@ -1068,9 +1123,9 @@ own admission, source/state and physical tests.
 - [ ] **Worker/HTTP:** real JSON/SSE, raw token IDs, text/usage/EOS/finish, aliases,
   staggered arrivals, slow/disconnected clients and refill. Check independent
   roots, fairness, bounded queue/output credits and actual owned retirement.
-- [ ] **Phase acceptance:** relevant source/state/cancel/physical tests, strict
-  checks, both approved original release parity routes and the complete isolated
-  gate from AGENTS.md. Compilation, mocks and documentation cannot close these.
+- [ ] **Assembled acceptance:** relevant source/state/cancel/physical and release
+  checks for the advertised routes, plus the complete isolated gate from
+  AGENTS.md. Compilation, mocks and documentation do not establish execution.
 
 ## Performance qualification
 
@@ -1101,8 +1156,9 @@ own admission, source/state and physical tests.
 - [Joint scheduling, prefix-frontier and lifetime contract](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZATION_AND_GOODPUT_CONTRACT_2026-10-15.md),
   especially sections4/5/7; [planned SERVOPT gates](../../research/VLLM_PARITY_AND_COMBINATORY_SPECIALIZATION_ACCEPTANCE_2026-10-15.md).
 - [Numerical contracts and same-engine integration](../numerics-and-context/CORRECTNESS_FIRST_VLLM_PLAN_2026-10-20.md).
-- [Worker](../../../crates/zerogravity-cli/src/serve/gpu_engine.rs),
-  [wave formation](../../../crates/zerogravity-cli/src/serve/gpu_batch.rs),
+- [Worker](../../../crates/zerogravity-engine/src/router/worker.rs),
+  [wave formation](../../../crates/zerogravity-engine/src/router/waves.rs),
+  [typed executor](../../../crates/zerogravity-engine/src/model_instance/execution.rs),
   [session/state allocation and publication](../../../crates/zerogravity-gpu/src/resident_inference.rs),
   [single-row lowering](../../../crates/zerogravity-gpu/src/resident_program.rs),
   [native batch lowering](../../../crates/zerogravity-gpu/src/resident_program/batch.rs).

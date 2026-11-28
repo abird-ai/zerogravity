@@ -15,7 +15,7 @@ Names below are target shapes. They describe useful operations and invariants, n
 | Delivery | Public contract available at that exit |
 | --- | --- |
 | F1 | Embedded Service/Client; source discovery/configuration, explicit pull, initial atomic load, run/stream/serve, inspect, complete results and joined shutdown. |
-| F2 | Owned adapter-facing commands/results, grants/capabilities/errors, supported task/model/mapping drafts and revisions, durable commands/results and bounded observations. Exercise existing models, a serial task and a supported closed region. |
+| F2 | Owned adapter-facing commands/results, grants/capabilities/errors, supported task/model/mapping drafts and revisions, resource inspection/policy contracts, durable commands/results and bounded observations. Exercise existing models, a serial task and a supported closed region; unsupported elasticity/tier actions refuse explicitly. |
 | F3 | Sequential registration, generation-checked activation, full admitted composition retention and resource-safe coexistence/retirement. Exact references are required wherever F1/F2 already use their corresponding objects. |
 | M1 / M2 | Optional SDK-hosted MCP / native attachment, respectively. Either can ship first over the foundation contracts. |
 | C / K / E / S / X | Broader task/model authoring; execution transforms; profiles/studies/policies; continuation; isolated extensions. Each adds supported payloads/implementations to existing operations. |
@@ -43,6 +43,7 @@ Prefer efficient native Rust with simple ownership. A clean high-performance des
 | Model mathematics and source bindings | Model-owned adapters; core ModelProgram/ForwardPlan and RegionExecutionProvider |
 | Physical preparation | Engine prepare/ExecutableBundle, original source issuer, selected provider, state/resource/retirement owners |
 | Task execution | Existing task/pipeline driver and scheduler; extend supported coordination there |
+| Resource policy and cache control | Original ResourceArbiter, resident/page pools, fair worker, state cache, checkpoint/storage and configuration owners; one resources() facade |
 | Waiting and results | Original charged event receiver/receipt and worker completion; blocking and async views of the same submission |
 | Native HTTP transport | Existing hyper/tokio/serde/bytes ecosystem; optional facade transport handlers |
 | MCP | Optional official rmcp dependency and a small typed projection over Client |
@@ -152,6 +153,8 @@ Reuse the same reducers, validation and lowering in library and adapter consumer
 | RegionRef / NodeRef / PortRef | Exact parent revision or draft/version plus scoped native ID. Bare indices have no cross-recording meaning. |
 | PreparedRef / ModelRef / ListenerRef / RunRef | Service identity, live epoch and exact preparation/registration/listener generation/original request identity. Service resolves these to original retained owners. |
 | OperationId / AttemptId | Logical accepted work / one execution attempt. Retries do not create attempts; explicit rerun does. |
+| ResourceScope / policy generation | Existing service/physical-domain/exact model/trusted workload scope and its desired/active policy; not another model revision or capacity permit. |
+| State/cache reference / storage instance | Exact immutable descriptor or original live continuation, and configured provider revision. Portable facts require compatibility validation and fresh live binding on restore. |
 
 These can be small newtypes over existing identities. The service owns live retention; a serialized PreparedRef merely names/preconditions that ownership. Neither copying a reference nor pinning a disk artifact allocates a device permit. Restart reauthenticates and prepares recipes with new live identities.
 
@@ -220,6 +223,130 @@ if report.accepts(candidate.reference())? {
 ```
 
 accepts checks the recorded numerical/state contract and selection objectives against the requested candidate, including any required meaningful gain; a caller boolean cannot authorize activation. Service independently checks grants, scope, exact owners and capacity. Desired durable binding and actual publication remain distinct; the receipt reports actual generation. Admitted requests/sessions keep their pinned composition. Rollback selects a retained/reprepared old recipe for new work; it does not rewind committed state. Failed coexistence admission leaves the active binding usable.
+
+### 4.5 Resource policy and cache control
+
+[Elastic context, residency and tiering](../memory-and-streaming/ELASTIC_CONTEXT_AND_RESIDENCY.md)
+owns the accounting, scheduling and state semantics. One `zg.resources()`
+facade projects those original owners. Keep a few typed operations; no public
+reserve-page/dispatch-wave API, separate resource registry or second scheduler.
+
+| Native surface | Input → result and boundary |
+| --- | --- |
+| `resources.inspect(scope)` | Authorized existing scope → limits, unique backing/credit, pool/cache/queue state, pressure/waits, timestamps and field availability. |
+| `resources.estimate(intent)` | Typed supported prepare/run/maintenance intent and optional candidate policy → demand, compatibility, available-capacity observation and limiting reason. Read-only: no physical allocation, compilation, eviction or reservation. Unknown demand is unavailable, not zero. |
+| `resources.policy(scope)` | Saved defaults/config revision, desired policy/generation, active policy/generation and transition/remaining obligations. |
+| `resources.update_policy(scope, policy)` | Expected policy generation + CommandKey → published policy update and actual application status; an asynchronous drain/transition returns the original OperationId. Awaiting publication does not imply drain completion. |
+| `resources.providers()` | Actual configured/built-in storage instances → accepted state/codec scope, read/range/write/publish/expiry/durability capabilities, availability, quotas and costs. |
+| `resources.maintain(action)` | Typed bounded trim, prefetch or provider-drain request → existing supervised operation and requested/selected/completed/physically reclaimed outcome. Advertise only implemented actions. |
+
+ResourceScope refers to existing service, physical-domain, exact registered
+model or trusted workload boundaries. A workload tag supplies attribution
+within granted limits; it cannot grant tenant identity, priority, prefix sharing
+or storage access. Policies compose by narrowing parent constraints, with
+specific overrides inside those bounds. Child quotas do not duplicate physical
+capacity; UMA aliases keep their original shared parent.
+
+Use one concrete ResourcePolicy composed of existing native options where
+possible. Add a field with its real consumer, not an empty policy framework:
+
+- Host/device ceilings and headroom; bounded queued requests and input bytes;
+  admitted-session, runnable-cohort and physical in-flight limits remain distinct.
+- Elastic or guaranteed admission for declared prompt/output/work bounds;
+  trusted service classes/weights and queue deadlines. Priority cannot bypass
+  capacity or starve admitted work.
+- Allowed qualified layouts/tiers, named provider references, cache retention,
+  byte/IO budgets and bounded prefetch/maintenance. Source/layout/numerical
+  changes retain their preparation and activation requirements.
+
+Per-request RunBudget can only narrow those grants: effective context/output,
+queue deadline, admission mode, resource/IO limits and allowed reuse/tiers.
+Absent options use Auto. A guarantee means admitted completion capacity for
+that bounded work; an elastic request can later exhaust capacity. Capabilities
+state whether the backend/layout supports each choice. Neither a successful
+estimate nor queue acceptance without admitted guarantee credit promises
+execution capacity; an already admitted guarantee remains valid while deferred.
+
+Estimates and observations retain exact preparation/registration/layout,
+policy generation, time and known/unavailable demand. Operation admission
+rechecks current capacity in the original native owner. Report queue,
+input/output, capacity, restore and dependency waits; distinguish unsupported
+policy, static limit, transient exhaustion, deadline and fenced domain.
+Physical backing, unused guaranteed/prepaid credit and external free-memory
+samples are separate. Reclaimable/pinned/shared are views, not additive totals.
+Return bounded summaries; paginate entry detail and use existing artifact reads
+for large traces instead of returning an unbounded service-wide cache dump.
+
+Saved defaults use the existing `settings().update` configuration transaction.
+Updating a live policy does not silently save defaults or change model/mapping
+revision. Guard live updates by one per-scope mutation generation (the example's
+`current.generation()`) and normal command identity. It advances on desired
+policy publication; report the applied generation separately. A stale async
+transition may retire its own work but cannot publish over a newer desired
+generation. A lowered cap below held obligations publishes a desired cap,
+blocks new admission/unreserved elastic growth and reports a drain deficit.
+Existing guaranteed/progress credit remains spendable under its admitted terms;
+prior obligations stay charged until retirement despite the lower target.
+Supported scheduling/elastic-growth changes take effect at a safe operation
+boundary; record the actual decision generation. Layout/semantic changes
+require admitted preparation and guarded activation. Rollback governs future
+decisions, never rewinds output or promises to recreate deleted cache data.
+
+Storage instances use the existing configuration transaction: concrete local
+host/directory variants first, with roots, limits, retention/durability and
+credential references inside granted scopes. Optional remote implementations
+extend a real cold IO boundary; no additional source/provider registry.
+Active policy resolves a named instance to its exact configuration generation;
+editing its root/endpoint does not retarget retained transfers or continuations.
+Resolve the new generation through policy application; old references survive
+until explicit drain/retirement, subject to current authorization.
+Draining stops new placement and reconciles retained references, without
+implicitly deleting authoritative continuations. Cache maintenance never
+substitutes for qualified checkpoint/session park/resume/fork.
+
+A maintenance command resolves its bounded selection and cutoff once on
+acceptance; same-key retries cannot evict newly created entries. Pin sources
+and destination/provider/session generations through actual IO. Revalidate
+before publication and perform original generation/reader checks before
+physical reclamation. Retain shared transfer ownership when one waiter cancels.
+Report logical removal, pinned/idle backing, pending retirement, actually freed
+bytes and unknown work separately. Current prefix invalidation
+purges retained entries only; revocation also fences future producers.
+Requested cancellation is not physical completion.
+
+Target SDK use remains small:
+
+```rust
+let resources = zg.resources();
+let scope = ResourceScope::Model(model.reference());
+let current = resources.policy(&scope).await?;
+let candidate = current.desired().clone()
+    .admission(AdmissionMode::Elastic)
+    .limits(workload_limits);
+
+let update = resources.update_policy(scope, candidate)
+    .if_generation(current.generation())
+    .command_key("assistant-resource-policy-2")
+    .await?; // inspect active/draining status; await its operation if needed
+
+let result = model.run(prompt)
+    .resource_budget(request_budget)
+    .await?;
+```
+
+An autonomous manager observes → estimates → updates within granted budgets,
+then observes the actual outcome or runs a bounded study. It can persist the
+selected default explicitly through settings and reconnect to operations.
+Native per-step decisions continue without the agent. No synchronous MCP
+consultation, durable log append or storage-provider lookup enters token
+execution. Resource policies are finite native choices; PS-E can later tune
+qualified variants, and PS-S qualifies full live continuation.
+
+F2 establishes the types and real current observations/controls; F3 establishes
+generation/lifetime integration on supported scope. Dynamic accounting,
+direct paging and tier actions arrive in their existing memory/serving/backend
+lanes. Explicit unsupported results keep foundations and MCP independent of
+those implementations.
 
 ## 5. Operations, errors and observation
 
@@ -328,11 +455,13 @@ The same Server accepts an attached Client in M2. Closing the adapter releases i
 | MCP projection | Native surface |
 | --- | --- |
 | `capabilities`, `inspect`, `sources_list/browse/repository` | Capability/inspection/discovery queries |
-| `sources_replace`, `models_pull/load/unload`, `serve_start/stop` | Existing typed configuration/model/listener commands |
+| `settings_get/update`, `sources_replace`, `models_pull/load/unload`, `serve_start/stop` | Existing typed configuration/model/listener queries and commands, including supported named storage configuration |
 | `run` | Explicitly bounded native inference; foreground or supported service-owned mode is declared |
 | `composition_create/edit/validate/freeze/prepare` | Same Task/Model/Mapping definitions, edits and revision/preparation lifecycle |
 | `execution_inspect`, `transform_propose`, `revision_activate` | Actual mappings, supported implementation candidates and guarded activation |
 | `workloads_profile`, `experiments_run/compare` | Bounded profile/study operations when E is available |
+| `resources_inspect/estimate`, `resource_policy_get/update` | Same authorized observations, advisory demand and generation-checked policy |
+| `storage_providers`, `cache_maintain` | Actual capabilities and bounded maintenance; provider configuration uses existing settings commands, continuation uses existing checkpoint/session commands |
 | `operations_get/list/cancel` | Same accepted operation/result/cancellation |
 | `checkpoint/resume/fork/rerun`, artifact access | Supported continuation and bounded import/read |
 | Authorized `zg://` resources | Operation/revision/artifact views bound to an identified service |
@@ -356,7 +485,7 @@ Implement optional protocol features only for an actual supported workflow. Samp
 
 The tables are API contracts, not a checklist demanding a separate test/fixture/receipt for every method, type, protocol field or helper.
 
-Extend the existing phase scenarios: F1 embedded acquire/load/run/stream/serve/shutdown; F2 supported authoring plus accepted-command continuity; F3 live registration/activation with pinned owners and failure preservation. Fold cancellation, permission, stale identity, slow observers and error propagation into those behaviors where they exercise a real failure risk.
+Extend the existing phase scenarios: F1 embedded acquire/load/run/stream/serve/shutdown; F2 supported authoring plus accepted-command continuity; F3 live registration/activation with pinned owners and failure preservation. Fold cancellation, permission, stale identity, slow observers and error propagation into those behaviors where they exercise a real failure risk. Resource pressure, policy/drain and cache-transfer behavior joins the existing memory/serving scenarios when its consumer lands; no per-field or per-provider matrix gates the foundations.
 
 M1 proves the same supported operations over MCP with a direct Client; M2 proves native attachment/bootstrap. Their combined scenario establishes adapter equivalence when both exist. Use library protocol tests where applicable, and add focused interoperability checks for our projections, supported version/features and lifetimes. No Cartesian matrix of every method × transport × backend × failure.
 

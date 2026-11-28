@@ -126,7 +126,7 @@ Configuration has separate scopes: service defaults, immutable revision settings
 
 Extract the existing single management-worker behavior faithfully first. Add concurrent control operations only where concrete workloads need them: bounded compile slots, transfer slots and per-owner lifecycle serialization. Reads/subscriptions remain responsive. Inference concurrency stays with the existing scheduler.
 
-Every resource-consuming compile, trace, trial and coexistence preparation is budgeted. Lowering a limit below currently held resources stops new admission/drains; it does not invent reclaimed memory.
+Every resource-consuming compile, trace, trial and coexistence preparation is budgeted. Lowering a limit below currently held resources stops new admission/unreserved elastic growth and drains; already admitted guaranteed/progress credit remains spendable. The [resource API](API_AND_PROTOCOLS.md#45-resource-policy-and-cache-control) distinguishes saved defaults, desired/applied policy and actual physical accounting. One resources() facade projects original owners; per-step admission/scheduling remains native.
 
 ## 5. Small common object model
 
@@ -214,6 +214,8 @@ A change can be:
 A mid-session migration pauses same-session admission, pins the old committed root at a supported frontier, and finishes or invalidates pending attempts while preserving their physical owners. It binds all state domains and task continuation, prepares the complete private candidate, performs the qualified conversion/recomputation, and waits for actual completion. Replacement publication through the original SessionAuthority advances the epoch, invalidating abandoned attempts. Conversion metadata is not proof of a working bridge.
 
 **Route activation and StateRoot publication are different transactions.** The control plane selects future execution. The original session authority alone publishes complete state.
+
+A verified cache replica changes placement metadata, not the neural frontier. Explicit restore/import/fork still uses original replacement/epoch rules. Portable descriptors authenticate source/semantics, numerical/layout/codec, complete frontier and sharing scope; they never preserve process-local permits. See [elastic residency and tiering](../memory-and-streaming/ELASTIC_CONTEXT_AND_RESIDENCY.md) for admitted transfer, actual reclamation and native scheduling.
 
 ### 7.4 Capture, cache and rollback
 
@@ -342,6 +344,8 @@ Durable recording is the default for named experiments and requested checkpoints
 Persist a small versioned manifest and operation state plus immutable artifacts. Reuse existing content/cache/checkpoint primitives; use a small transactional service index for searchable commands, attempts and desired activation only if needed by the concrete concurrency contract. Do not persist/replay every allocator transition or duplicate model weights into each experiment.
 
 A recorded run includes resolved sources/program/numerics/kernel code and compiler identity, actual device/runtime environment, input/reference and seed policy, workload, warm/cold state, profiling mode, result and checkpoint lineage. A full resumable task checkpoint also records input cursor, emitted/consumed frontier, committed output sequence, required task/pipeline continuation, sampler/RNG state and all semantic state domains. Existing neural checkpoint formats do not already cover that entire promise.
+
+Tiered prefix entries are dispensable; a parked live continuation retains its authoritative task/session record and sufficient verified state. Parking stops same-session admission at a committed boundary; resumption admits the full candidate and useful execution margin before original publication. A storage provider or neural checkpoint alone cannot make a task resumable. Provider drain/expiry and cache maintenance cannot silently delete its last required copy.
 
 Publish artifacts privately with integrity/size checks and the original atomic durable publication primitives before referencing them as durable. Acknowledgements distinguish durable from visibility-only/unknown durability. Store retention is bounded; live references, pinned revisions and requested checkpoints prevent unsafe deletion. Explicitly report expired/unavailable trace history.
 

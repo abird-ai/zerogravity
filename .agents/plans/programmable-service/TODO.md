@@ -53,7 +53,7 @@ Documentation batch; runtime implementation has not started.
   coverage. Record the extraction map and five bounded acceptance scopes in
   [PS-F1 implementation entry](IMPLEMENTATION_PHASES.md#ps-f1--reusable-service-and-simple-sdk).
 
-### API/protocol contracts and Rust implementation policy — this documentation commit
+### `be6f07cb` — API/protocol contracts and Rust implementation policy
 
 - [x] Specify native inputs/results and builder/run/stream ownership; distinguish
   acquired sources, immutable revisions, live references and durable commands.
@@ -64,6 +64,17 @@ Documentation batch; runtime implementation has not started.
 - [x] Reconcile landed provider discovery at fda84c16: native source configuration,
   browse/repository pages/cursors and existing qualification. Broader discovery
   adapters remain independent; acquisition/eligibility retain original owners.
+
+### Resource scheduling, paging and cache integration — this documentation commit
+
+- [x] Reconcile the new memory/serving design with native Service/SDK/MCP:
+  one resource facade, existing configuration/operation/continuation owners.
+- [x] Specify unique backing/credit accounting, real reclamation, bounded
+  operation demand and enforceable progress under constrained concurrency.
+- [x] Define portable cache descriptors, admitted asynchronous transfer/
+  publication/retirement and the full-continuation boundary for live parking.
+- [x] Keep F1/F2/F3 bounded; common memory work and independent backend
+  consumers follow that exit without MCP, optimizer or all-backend gates.
 
 ## Uncommitted
 
@@ -145,6 +156,10 @@ and [commands/results/observations](API_AND_PROTOCOLS.md#5-operations-errors-and
   define expiry, loss/gaps, clocks, units, correlation and field provenance.
 - [ ] Establish basic compact counters, optional observation budgets and separate
   raw-input/tensor/output capture choices.
+- [ ] Establish the [resource facade](API_AND_PROTOCOLS.md#45-resource-policy-and-cache-control)
+  using current native inspection/controls; distinguish saved defaults, desired/
+  applied policy, advisory demand and actual original admission. Unsupported
+  elasticity/tiering remains explicit; no allocator implementation in F2.
 - [ ] Establish checkpoint envelope/compatibility contracts using existing codecs;
   distinguish records/rerun from resumable task state.
 - [ ] Establish recognized primitive/artifact/provider extension boundaries;
@@ -168,6 +183,8 @@ Contract: [references and activation](API_AND_PROTOCOLS.md#4-programmable-author
   service, and expose explicit drain/reprepare when coexistence cannot fit.
 - [ ] Preserve capture/cache/buffer/queued-command lifetimes through actual
   completion/quarantine and original per-session StateRoot publication.
+- [ ] Apply generation/lifetime rules to supported resource-policy changes;
+  lower-cap drain preserves spendable admitted guarantees/progress credit.
 - [ ] Persist activation intent separately from observed generation; reconcile
   crashes/retries without duplicate publication or invented device completion.
 - [ ] Qualify supported existing checkpoint compatibility as a concrete consumer;
@@ -187,6 +204,12 @@ Contract: [references and activation](API_AND_PROTOCOLS.md#4-programmable-author
 - [ ] Coordinate shared source/build/device capacity; neither backend's result
   nor MCP completion is a prerequisite for the other backend's work.
 
+Memory/serving work follows the [shared dependency split](../memory-and-streaming/ELASTIC_CONTEXT_AND_RESIDENCY.md#7-delivery-and-acceptance):
+one common accounting/pool/scheduler owner, independent HIP/CUDA direct
+consumers, then integrated elasticity on each ready backend. Basic bounded
+scheduling does not depend on PS-E; live parking needs its PS-S continuation
+scope. Concrete implementation items stay in the owning memory/serving TODOs.
+
 These are scheduling/integration items, not duplicate backend acceptance lists.
 Vulkan and optional compiled providers keep the later priority in the full plan.
 
@@ -200,7 +223,9 @@ CLI-private SDK. M1/M2 remain independent over the native foundation.
 - [ ] M1: implement optional MCP host directly over Client, usable by embedded
   SDK applications without CLI/daemon dependency.
 - [ ] M1: expose supported capabilities, model/control/authoring/inspect operations,
-  operation get/cancel/results and bounded observations with native grants.
+  resource inspection/policy/settings/maintenance, operation get/cancel/results
+  and bounded observations with native grants. Missing memory/tier capabilities
+  do not block MCP on already supported operations.
 - [ ] M1: negotiate supported core/extension features; ordinary polling works
   without optional Tasks/Events support.
 - [ ] M2: implement authenticated versioned native endpoint/Client transport,

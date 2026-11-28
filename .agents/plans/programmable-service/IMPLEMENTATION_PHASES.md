@@ -49,6 +49,7 @@ The first block establishes every cross-layer contract needed by later lanes. Ea
 | Live lifecycle | Bounded registration addition, exact retirement, complete admitted composition pinning, generation-guarded activation | Adaptive variant selection and qualified state migration |
 | Durable operations | Stable command/attempt identities, explicit durability, immutable recipes and bounded results; interrupted/unknown reconciliation | Studies, recorded inputs/traces and broader continuation |
 | Observation | Typed identities/correlation, clocks, counters and provenance; bounded subscriptions with explicit gaps | Detailed execution traces, workload profiles and visual drill-down |
+| Resource policy | Existing limits/admission observations; one resources() inspection/policy/maintenance contract with supported controls and explicit unsupported capabilities | Dynamic credit/backing, demand-aware scheduling, direct paging and qualified tiered cache in existing memory/serving/backend owners |
 | SDK adapter boundary | Owned versioned request/result schemas and capabilities over native operations; authorization remains in Service | SDK-hosted MCP and authenticated native wire |
 | Continuation and extension | Checkpoint compatibility/envelope contracts tied to existing formats; recognized primitive/artifact interfaces and explicit unsupported boundaries | Full task restore, actual child-worker admission and additional backend ABIs |
 
@@ -146,6 +147,8 @@ Implement the minimal durable core now:
 
 Observation envelopes identify service/operation/revision/run and supported semantic/physical scopes, with clocks, units, field provenance, sequence/cursor and gap reporting. Routine counters remain compact; optional traces have budgets and declared overhead. Raw prompts/tokens/tensors require a separate capture choice.
 
+Establish [resource policy and cache control](API_AND_PROTOCOLS.md#45-resource-policy-and-cache-control) over current native limits and observations. Keep saved configuration, per-scope policy mutation/applied generations and model/mapping revisions distinct. Estimates never grant capacity. Exercise supported inspection/control and truthful unavailable demand; dynamic allocation, native paging, tier providers and full parking are not F2 implementations.
+
 Define the checkpoint envelope and exact compatibility fields around existing qualified codecs. Recipe recovery, neural restore and full task continuation retain distinct meanings. Establish the rule that a future experimental worker must use original parent-issued resource authority; implement worker IPC only with an actual child consumer in PS-X.
 
 **Working exit:**
@@ -168,7 +171,7 @@ Implement generation-guarded route/pipeline activation for a supported existing 
 
 Keep public alias retirement separate from physical owner retirement. New requests see the intended registration/revision; admitted tasks and sessions retain their exact owners. Old captures, readers, buffers and queued commands live through actual completion or quarantine.
 
-Account old/new coexistence before activation. A preparation/capacity failure leaves current service usable. Where coexistence is impossible, expose a declared drain/reprepare operation instead of pretending the change is immediate.
+Account old/new coexistence before activation. A preparation/capacity failure leaves current service usable. Where coexistence is impossible, expose a declared drain/reprepare operation instead of pretending the change is immediate. Apply the same generation/owner rules to supported resource-policy changes; lower-cap drain preserves spendable admitted guarantees/progress credit. Ordinary original capacity refusal suffices for this exit; elastic growth and offload do not gate it.
 
 Persist activation intent and distinguish it from observed publication. Reconcile duplicate commands and crashes around publication/receipt without inventing a global transaction covering disk, routes and GPU state. Future-admission rollback does not rewind emitted output or advanced sessions.
 
@@ -239,6 +242,7 @@ A lane can start when its concrete prerequisites exist. Every feature ships firs
 | --- | --- | --- |
 | ROCm parity — existing Phase 3 | Resume retained P3C scope on authorized AMD targets; real numerical/state/serving correctness and matched optimized baseline comparisons | Foundation exit; lane-specific source/environment/capacity. No CUDA/MCP dependency |
 | CUDA parity — existing Phase 4 | Independently close NVIDIA correctness/ownership gaps and matched optimized baseline comparisons | Foundation exit; lane-specific source/environment/capacity. No ROCm/MCP dependency |
+| Memory/serving — elastic residency and resource-aware scheduling | Extend original ledger, batch pool growth/trim, executor demand and fair scheduling; direct paging and optional tier consumers | Foundation exit. One common owner; HIP/CUDA direct kernels develop independently. Integrated elasticity needs that common core plus one qualified backend, not all backends or MCP |
 | PS-M — native attachment and MCP | SDK-hosted MCP; foreground headless service; authenticated native Client attachment and race-safe UI bootstrap | Foundation exit. No new composition or GPU parity dependency |
 | PS-C — task and model composition | Bounded useful task DAGs and independently validated authored models through normal catalog/load/run/serve | Foundation contracts. Task and model sublanes are independent |
 | PS-K — execution mapping and transforms | Bidirectional provenance, explicit chains, supported multi-operation fusion/capture/layout choices | Foundation region/provider contracts; existing models suffice |
@@ -247,6 +251,8 @@ A lane can start when its concrete prerequisites exist. Every feature ships firs
 | PS-X — isolated extension | Actual bounded compilation/native trials and parent-authoritative cross-process admission where used | Foundation resource/ABI boundaries; actual region interface when consumed |
 
 Vulkan and optional compiled providers remain lower-priority consumers of these same seams under the full plan. Neither is required to establish the foundation exit. A supported native fusion does not require MIGraphX/TensorRT integration.
+
+See the [memory dependency table](../memory-and-streaming/ELASTIC_CONTEXT_AND_RESIDENCY.md#7-delivery-and-acceptance) for the exact split. Basic bounded resource scheduling does not wait for PS-E; PS-E tunes already qualified choices. Local prefix spill needs the applicable page/domain codec and real bounded IO consumer. Live parking needs PS-S's full continuation scope, and multi-stage parking also needs its concrete PS-C edge contracts. Optional remote storage is independent. Existing qualified backend routes remain available while those features develop.
 
 ### PS-M — two independent integration milestones
 
@@ -325,6 +331,7 @@ There is one persistent L5 main checkout. Use the existing plan owners and decla
 | Surface | Writer |
 | --- | --- |
 | Shared SDK/Service/Client, canonical types, engine lifecycle, common schemas and root scheduling | Foundation/integration owner |
+| Common physical credit, pool growth/trim and scheduler demand/fairness | Memory/serving integration owner; SDK/schema changes coordinated with foundation owner |
 | HIP compilation/implementation/target policy and HIP-specific model adapters | ROCm lane |
 | CUDA compilation/implementation/target policy and CUDA-specific model adapters | CUDA lane |
 | MCP protocol/transport and native attachment modules | PS-M owner; coordinate separate native-wire and MCP subpaths |

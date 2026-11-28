@@ -488,8 +488,13 @@ a Python runtime is mandatory.
   scheduling. Preserve qualified contiguous/gather paths and numerical
   contracts. Use one memory owner with serving/backend consumers; extend
   the existing programmable Service/Client observations and policy
-  boundaries. Delivery remains after PS-F1/F2/F3 in the parallel
-  native/memory/serving lanes, not a new foundation exit prerequisite.
+  boundaries. Distinguish queue/session/step admission, unused credit from
+  physical backing, logical eviction from actual reclamation and saved defaults
+  from live policy. Preserve an enforceable completion/reclaim/exhaustion exit.
+  Optional tiers admit transfer peak and use full continuation for live parking.
+  Delivery remains after PS-F1/F2/F3: one common memory/scheduling owner and
+  independent backend consumers; integrated elasticity needs one ready backend.
+  MCP, PS-E optimization and remote tiers are not prerequisites.
 - [ ] Complete shared resident/paged/streamed tensor materialization and
   transfer-retirement boundaries. Preserve resident direct access with no
   mandatory host dispatch; actual SSD windows, page/weight cache, prefetch,

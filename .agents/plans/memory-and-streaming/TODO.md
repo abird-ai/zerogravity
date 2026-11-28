@@ -10,42 +10,44 @@ Contracts: [unified residency/SSD](../../docs/UNIFIED_VIRTUAL_TENSOR_RESIDENCY_A
 
 ### Elastic context and residency — 28 Nov
 
-User-approved [design](ELASTIC_CONTEXT_AND_RESIDENCY.md). Existing CUDA
-paged/COW and HIP/CUDA model-retirement evidence stays valid; elastic
-admission and direct paged attention are not yet accepted. Follow the
-PS-F1/F2/F3 foundation exit and parallel backend order.
+User-approved [design](ELASTIC_CONTEXT_AND_RESIDENCY.md), reconciled with the
+[SDK/MCP resource contract](../programmable-service/API_AND_PROTOCOLS.md#45-resource-policy-and-cache-control).
+Existing CUDA paged/COW and HIP/CUDA retirement evidence retains its scope;
+elastic admission, direct paged attention and tiered live parking remain open.
+F1/F2/F3 establish current supported contracts, then one common memory/scheduling
+owner and independent native backend consumers. Integrated elasticity needs
+the common core plus its backend, not every backend or MCP.
 
-- [ ] Common logical context, actual backing and optional guaranteed
-  credit contract. Reuse ResidentPool/ResidentPagePool and the original
-  physical arbiter, queue, StateRoot and completion owners; independently
-  account live, idle/reclaimable and transient resources. No second
-  allocator. Keep contiguous/reference policy and exact state identities.
-- [ ] Dynamic physical growth and bounded metadata, shared elastic
-  model/device capacity, credit conversion/reclamation, guaranteed work
-  isolation and explicit capacity refusal. Retire actual backing before
-  returning credit; retain uncertain owners. Preserve integrated RAM
-  constraints and context reuse. Prove short sessions under large logical
-  limits do not require dedicated max-context backing/guarantees.
-- [ ] Common per-domain native page bindings, typed fixed recurrent/conv
-  state, complete-domain prefix/COW, incremental append/table/scratch
-  reservations. Coordinate direct page-table kernels with serving owner;
-  remove full-context staging from qualified direct consumers. Existing
-  contiguous and gather paths stay separately admitted and observable.
-- [ ] Dynamic capacity and reclamation observations for the existing
-  Service/Client/CLI/TUI/Web and SDK/MCP lanes; Auto policy with bounded
-  explicit overrides, safe transitions and lower-cap drain. Qualify
-  mixed-context capacity/goodput, guarantee isolation, eviction,
-  cancellation, model reload and final physical delta on real sources.
-  Offload/tier migration/quantized state are optional separately qualified
-  extensions, not prerequisites for resident native paging.
-- [ ] Configurable tiered state cache: typed local RAM/SSD and optional
-  external provider capabilities, named instances and budgets, immutable
-  extent publication, admitted asynchronous promotion/demotion/prefetch,
-  cost-aware restore versus recompute, failure/expiry/security and real
-  reclamation. Distinguish dispensable prefix entries from authoritative
-  parked continuations; integrate existing checkpoint/continuation owners.
-  Qualify local spill first, then live parking and optional remote tiers.
-  See [tiered state cache](ELASTIC_CONTEXT_AND_RESIDENCY.md#5-tiered-state-cache-and-configurable-storage-providers).
+- [ ] Common logical context, unique physical backing and unused guaranteed/
+  progress/prepaid credit in the original arbiter/pools. Child quotas subdivide
+  parents; UMA and shared pages count once. Preserve StateRoot/completion and
+  qualified contiguous paths. No second allocator or resource registry.
+- [ ] Dynamic growth and batch checkout/rollback, bounded metadata, real idle
+  trim and parent-credit adjustment after retirement. Keep logical eviction,
+  charged idle, pinned and actually freed backing distinct. Preserve guaranteed/
+  progress credit through lower-cap drain; enforce a completion/reclaim/explicit
+  elastic-exhaustion exit rather than relying on a one-step margin. Demonstrate
+  short requests at large logical limits avoid max-context backing per session.
+- [ ] Common per-domain page bindings and operation demand, typed fixed
+  recurrent/conv state, complete-domain prefix/COW and direct native consumers.
+  Coordinate kernel work with serving; each backend qualifies independently.
+  Bound table/append CPU and metadata cost as well as payload/staging. Existing
+  contiguous/gather paths remain separately admitted and observable.
+- [ ] Resource inspection, advisory estimate, desired/applied policy generation
+  and bounded maintenance through existing Service/SDK/MCP/UI operations. Native
+  fair scheduling uses bounded queue/session/step admission and real demand;
+  no agent calls in dispatch. Qualify mixed-context goodput/capacity, age/fairness,
+  guarantees, cancellation/reload/quota changes and actual final retirement as
+  coherent serving batches, reusing unchanged evidence.
+- [ ] Configurable tiered state cache: local RAM/SSD first, optional remote
+  providers through real cold IO consumers. Portable descriptors bind fresh live
+  owners; immutable extents precede complete-manifest publication. Admit source/
+  destination/staging peak and queued bytes, retain shared transfer ownership,
+  recheck generations/revocation and physically trim backing after readers retire.
+  Current whole-checkpoint codecs do not establish bounded page/domain spill.
+  Prefix cache is dispensable; live parking needs PS-S full continuation and
+  sufficient retained/durable copies. Qualify local spill, then applicable live
+  parking/remote consumers without gating resident parity. See [tiering](ELASTIC_CONTEXT_AND_RESIDENCY.md#5-tiered-state-cache-and-configurable-storage-providers).
 
 ### Qwen long-context fit boundary — 27 Oct
 
