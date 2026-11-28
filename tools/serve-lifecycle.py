@@ -227,7 +227,7 @@ def owned_group_members(process):
     return {"live_pids":sorted(live), "zombie_pids":sorted(zombies)}
 
 
-def retire_child(process, record, natural_deadline=None):
+def retire_child(process, record, natural_deadline=None, *, term_grace=.3):
     """All nonzero group signals precede the one original-child reap attempt."""
     for key,value in {"signals":[],"leader_reaped":False,"leader_reap_attempts":0,"errors":[],"timed_out":False}.items():
         record.setdefault(key,value)
@@ -255,7 +255,7 @@ def retire_child(process, record, natural_deadline=None):
         record.setdefault("recovery_observations",[]).append({**stamp(),"terminal_outcome":terminal_outcome(code)})
     else:
         record["terminal_before_cleanup"] = terminal_outcome(code)
-    for sig,grace in [(signal.SIGTERM,.3),(signal.SIGKILL,1.)]:
+    for sig,grace in [(signal.SIGTERM,term_grace),(signal.SIGKILL,1.)]:
         if live == []:
             break
         attempt = {"signal":sig.name,**stamp(),"sent":False,"leader_unreaped":False}
@@ -694,8 +694,12 @@ class OwnedProvider:
                     shutdown["stop"]["cleanup_error_type"] = type(error).__name__
         if self.process is not None:
             foreground = shutdown["foreground"] = {}
-            # A successful stop may precede its foreground attach process exit.
-            retire_child(self.process,foreground,time.monotonic()+.25 if self.spec.get("stop_argv") else None)
+            # A foreground inference engine may need its configured shutdown
+            # interval to join workers and retire device resources. Auxiliary
+            # observation/stop commands retain their short cleanup grace.
+            retire_child(self.process,foreground,
+                time.monotonic()+.25 if self.spec.get("stop_argv") else None,
+                term_grace=self.plan.spec["shutdown_timeout_seconds"])
             shutdown["signals"] = [item["signal"] for item in foreground["signals"] if item["sent"] is not False]
             shutdown["returncode"] = foreground["returncode"]
             shutdown["owned_process_group_gone"] = foreground["owned_process_group_gone"]
@@ -768,7 +772,11 @@ def event(kind,**fields):
 event("start");print("x"*8192,flush=True)
 if mode=="exit":sys.exit(7)
 if mode=="ignore_term":signal.signal(signal.SIGTERM,signal.SIG_IGN)
-else:signal.signal(signal.SIGTERM,lambda *_:sys.exit(0))
+else:
+ def terminate(*_):
+  if mode=="slow_term":time.sleep(.6)
+  sys.exit(0)
+ signal.signal(signal.SIGTERM,terminate)
 class Provider(BaseHTTPRequestHandler):
  def do_GET(self):
   if mode=="hang":time.sleep(30)
@@ -830,10 +838,13 @@ finally:server.server_close();event("stop");lease.close()
             assert not group_alive(receipt["pgid"])
         assert not any(listening(endpoint(url)) for url in urls)
         prior = len(actual)
-        warmed = run(spec("warmed_process"))
+        warmed = run(spec("warmed_process","slow_term"))
         actual = [json.loads(line) for line in events.read_text().splitlines()][prior:]
         assert [event["kind"] for event in actual] == [kind for _ in range(4) for kind in ["start","request","request","stop"]]
         assert all(row["provider_lifecycle_receipt"]["warmup"]["completed"] for row in warmed["runs"])
+        assert all(row["provider_lifecycle_receipt"]["shutdown"]["graceful_terminal_outcome"]
+                   and "SIGKILL" not in row["provider_lifecycle_receipt"]["shutdown"]["signals"]
+                   for row in warmed["runs"])
         assert warmed["warmups_per_endpoint"] == 2
         for mode in ["exit","wrong","hang","warmup_error"]:
             bad = spec("warmed_process" if mode=="warmup_error" else "cold_process",mode)
