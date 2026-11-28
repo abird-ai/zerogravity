@@ -481,6 +481,15 @@ a Python runtime is mandatory.
   cancellation/recovery and cache compatibility use the same StateRoot.
   Only actual completion and the original authority publish; unknown work
   retains all affected owners and fences the unsafe service.
+- [ ] Implement the [elastic context and residency contract](memory-and-streaming/ELASTIC_CONTEXT_AND_RESIDENCY.md):
+  independent logical context limits, guaranteed or elastic admission,
+  typed paged/fixed state, actual shared physical credit and completion-
+  safe reclamation, direct native page-table attention and memory-aware
+  scheduling. Preserve qualified contiguous/gather paths and numerical
+  contracts. Use one memory owner with serving/backend consumers; extend
+  the existing programmable Service/Client observations and policy
+  boundaries. Delivery remains after PS-F1/F2/F3 in the parallel
+  native/memory/serving lanes, not a new foundation exit prerequisite.
 - [ ] Complete shared resident/paged/streamed tensor materialization and
   transfer-retirement boundaries. Preserve resident direct access with no
   mandatory host dispatch; actual SSD windows, page/weight cache, prefetch,

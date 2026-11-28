@@ -25,6 +25,19 @@ run. Accepted details remain in [FUSED_GPU_BATCHING.md](FUSED_GPU_BATCHING.md).
 Do not treat its historical limitations, or those in the plan README, as
 overriding later named acceptance in the live TODO.
 
+## 28 Nov — elastic context follow-up
+
+The [elastic context and residency contract](../memory-and-streaming/ELASTIC_CONTEXT_AND_RESIDENCY.md)
+supersedes the older fixed-capacity allocation assumptions without
+superseding accepted numerical/ownership evidence. Current CUDA hybrid
+paging lazily acquires pages but still uses full-capacity contiguous
+staging for execution; current HIP original-source state is contiguous.
+The intended native paths consume block tables directly, separate logical
+maximum length from actual backing and optional guarantees, and admit
+incremental work against shared physical capacity. Pressure-aware
+scheduling, reclamation and direct kernels extend the existing owners.
+See the owning TODOs for delivery and acceptance.
+
 ## Shared engine and numerical profiles
 
 - Keep one mathematical ForwardPlan, model/session lifecycle, ResourceArbiter,

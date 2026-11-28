@@ -4,6 +4,14 @@ Owner: @pvl
 
 # Source-preserving SSD residency
 
+## Elastic context and residency
+
+[Elastic context and residency](ELASTIC_CONTEXT_AND_RESIDENCY.md) is the
+28 Nov design for model-supported logical context limits, shared elastic
+physical capacity, optional guarantees, native page-table execution and
+pressure-aware scheduling. Reuse the existing physical and StateRoot
+owners; track implementation in [TODO.md](TODO.md).
+
 ## Implemented: immutable original SSD source-extent IO
 
 `zerogravity-artifacts::ssd_extent` under original `cache` feature.

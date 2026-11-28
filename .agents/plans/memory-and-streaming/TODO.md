@@ -8,6 +8,37 @@ Contracts: [unified residency/SSD](../../docs/UNIFIED_VIRTUAL_TENSOR_RESIDENCY_A
 
 ## Uncommitted
 
+### Elastic context and residency — 28 Nov
+
+User-approved [design](ELASTIC_CONTEXT_AND_RESIDENCY.md). Existing CUDA
+paged/COW and HIP/CUDA model-retirement evidence stays valid; elastic
+admission and direct paged attention are not yet accepted. Follow the
+PS-F1/F2/F3 foundation exit and parallel backend order.
+
+- [ ] Common logical context, actual backing and optional guaranteed
+  credit contract. Reuse ResidentPool/ResidentPagePool and the original
+  physical arbiter, queue, StateRoot and completion owners; independently
+  account live, idle/reclaimable and transient resources. No second
+  allocator. Keep contiguous/reference policy and exact state identities.
+- [ ] Dynamic physical growth and bounded metadata, shared elastic
+  model/device capacity, credit conversion/reclamation, guaranteed work
+  isolation and explicit capacity refusal. Retire actual backing before
+  returning credit; retain uncertain owners. Preserve integrated RAM
+  constraints and context reuse. Prove short sessions under large logical
+  limits do not require dedicated max-context backing/guarantees.
+- [ ] Common per-domain native page bindings, typed fixed recurrent/conv
+  state, complete-domain prefix/COW, incremental append/table/scratch
+  reservations. Coordinate direct page-table kernels with serving owner;
+  remove full-context staging from qualified direct consumers. Existing
+  contiguous and gather paths stay separately admitted and observable.
+- [ ] Dynamic capacity and reclamation observations for the existing
+  Service/Client/CLI/TUI/Web and SDK/MCP lanes; Auto policy with bounded
+  explicit overrides, safe transitions and lower-cap drain. Qualify
+  mixed-context capacity/goodput, guarantee isolation, eviction,
+  cancellation, model reload and final physical delta on real sources.
+  Offload/tier migration/quantized state are optional separately qualified
+  extensions, not prerequisites for resident native paging.
+
 ### Qwen long-context fit boundary — 27 Oct
 
 - [x] The current CUDA admission/storage choice is now re-derived from the **same

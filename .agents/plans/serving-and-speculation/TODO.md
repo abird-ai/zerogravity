@@ -46,6 +46,29 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
 
 ## Uncommitted
 
+### Elastic context / direct paged execution — 28 Nov
+
+[Shared memory contract](../memory-and-streaming/ELASTIC_CONTEXT_AND_RESIDENCY.md)
+extends the existing [paged-state design](BATCHING_AND_PAGED_STATE.md).
+One memory integration owner; native ROCm and CUDA lanes proceed
+independently after the existing PS-F1/F2/F3 exit.
+
+- [ ] Integrate qualified direct page-table append/attention and mixed
+  recurrent/conv domains through the existing forward/StateRoot path.
+  Bounded tile/append scratch; no full-context gather slab on the selected
+  direct path. Keep the accepted CUDA gather/contiguous baseline; qualify
+  HIP/X2 and CUDA/L5 independently, Vulkan later.
+- [ ] Memory-aware request and operation admission: exact incremental
+  page/COW/vector/table/workspace cost, fair prefill/decode/refill under
+  pressure, guaranteed/elastic isolation, progress margin and explicit
+  refusal when safe progress is impossible. Park/recompute/offload only
+  through qualified owners; never silently truncate or reset a context.
+- [ ] Auto policy and matched actual short/long/ragged/prefix/concurrent
+  performance, resident/peak/idle memory, TTFT/ITL, goodput, copy/dispatch
+  and pressure/recovery. Preserve source/numerical/state equivalence and
+  cancellation, stale-reader, unload/reload and final physical retirement.
+  No new model context/capability claim until real qualification.
+
 ### OA-1 — async serving transport (26 Nov; after UX-P)
 
 - [x] OA-1A: mature bounded text HTTP/1 substrate over original service,
