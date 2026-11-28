@@ -28,7 +28,7 @@ availability claims belong to measured status.
 | Phase | Objective | Exit |
 | --- | --- | --- |
 | 1. Foundations | Shared execution, provider, source, state, memory and control contracts | Accepted native consumers and optional compiled-region seam; preserve the bounded exit |
-| 2. CLI, TUI and Web | One usable product/control surface and public serving | Complete the separately owned UX-11D implementation and required qualification |
+| 2. CLI, TUI and Web | One usable product/control surface and public serving | UX-11D accepted: actual native package and complete assembled qualification |
 | 2.4. Programmable stack foundations | Reusable Service/SDK, typed programming contracts, durable operations and safe live ownership | PS-F1/F2/F3 common foundation exit; later lanes can extend the same contracts independently |
 | 3. ROCm — parallel lane | Match or beat optimized vLLM on AMD | Matched qualified native source-model serving workloads |
 | 4. CUDA — parallel lane | Match or beat optimized vLLM on NVIDIA | Matched qualified native source-model serving workloads |
@@ -912,8 +912,8 @@ from functional CPU benchmark evidence.
 
 ## 2.4 Programmable stack foundations and parallel lanes
 
-**Queued immediately after UX-11D acceptance — 28 Nov user decision.**
-Implementation has not started for this scope. See the
+**UX-11D prerequisite accepted — ready for the separately assigned programmable-stack agent.**
+Preparation/reconciliation complete; implementation has not started for this scope. See the
 [service/SDK design](programmable-service/README.md),
 [composition design](programmable-service/COMPOSITION_AND_ADAPTIVE_EXECUTION.md),
 [phase/dependency plan](programmable-service/IMPLEMENTATION_PHASES.md) and
@@ -951,7 +951,8 @@ backend- or protocol-local failure does not stop unrelated ready work.
 No performance result, new model capability, general checkpoint scope or GPU
 isolation claim follows from these plans. The user separately authorized the
 README/architecture update and publication of these plans. UX-11D source and
-qualification remain in the other agent's ownership.
+qualification are complete. Its owner stops at preparation; the separately
+assigned agent implements PS-F1/F2/F3.
 
 ## 3. ROCm — AMD parity
 
@@ -995,9 +996,9 @@ exact timed requests and all four provider retirements.
 requests, all four provider retirements, original idle VRAM.
 Initial C1/C8 paired campaign complete (small-model pairs at
 pre-row-region checkpoint); current matched acceptance still open.
-Complete assembled gate remains open: takeover 1792/0/97 (235 Rust suites);
-GPU and main CPU gates passed; resume deadline in combined CPU
-product integration, then acquisition/serving/release suffix. See handoff.
+Complete assembled gate passed at UX-11D closeout: 2620/0/112
+(327 Rust suites, unchanged-source resumes); acquisition, serving,
+portable release and process/script checks passed. See CURRENT_HANDOFF.
 P3C broad gate 1785/0/97 (237 suites), strict production/CPU
 Clippy passed; 1200s timeout in serving-only rebuild after
 cache and CPU preparation checks, no reported test failures.

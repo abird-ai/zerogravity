@@ -176,10 +176,13 @@ engineering need warrants it. Keep integrity, licensing, source/model,
 numerical, resource and isolation boundaries. AGENTS.md now governs;
 older takeover acquisition restrictions are historical.
 
-UX-11D acceptance complete. Follow the live ordered implementation
-plan thereafter, including
-the separately scheduled programmable-stack foundation block before
-parallel backend/adapter lanes; no promotion of proposal work here.
+UX-11D acceptance complete. The programmable-stack plans were
+published at d8b55472. Preparation/reconciliation only: the separately
+assigned agent owns PS-F1 implementation. See
+[programmable-service TODO](../plans/programmable-service/TODO.md) for
+the audited starting consumers and live checklist. Follow PS-F1/F2/F3
+before the parallel backend/adapter lanes. No service/SDK implementation
+or backend selector changes in this preparation pass.
 
 P3D independent work: missing 27B paired C1 completed on X2 with
 the retained exact P3C 54b2c910 executable (checkout 72de2442),

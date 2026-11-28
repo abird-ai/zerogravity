@@ -1,6 +1,6 @@
 # Plans
 
-**Current delivery order:** finish UX-11D acceptance → [programmable-stack foundations PS-F1/F2/F3](programmable-service/IMPLEMENTATION_PHASES.md) → parallel ROCm, CUDA, MCP/native attachment and capability lanes. Vulkan and optional compiled providers retain later priority. The [full implementation plan](FULL_IMPLEMENTATION_PLAN.md) supersedes older serial ordering; owning TODOs and source/quality/lifetime constraints remain authoritative.
+**Current delivery order:** UX-11D accepted → [programmable-stack foundations PS-F1/F2/F3](programmable-service/IMPLEMENTATION_PHASES.md) → parallel ROCm, CUDA, MCP/native attachment and capability lanes. Vulkan and optional compiled providers retain later priority. The [full implementation plan](FULL_IMPLEMENTATION_PLAN.md) supersedes older serial ordering; owning TODOs and source/quality/lifetime constraints remain authoritative.
 
 This folder is the agent planning entry point. Start here, then work from
 `TODO.md`. Git is the authoritative history (author, time, diff, provenance sha);
@@ -18,7 +18,7 @@ The latest [comprehensive takeover through OA-7D](../docs/FULL_COMPREHENSIVE_HAN
 work and the recovered OA-7E work. The
 [OA-7E takeover prompt](../docs/NEXT_AGENT_2026-11-27_OA7E.md) is historical;
 OA-7E landed at signed 1585b579, actual learned SDK and assembled gate passed.
-User-priority [UX-11 A/B/C/D presentation, diagnostics and source-aware launch](cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md#28-nov--ux-11-follow-up-user-priority-before-rocm-continuation) source implementation landed at the D checkpoint. Focused CLI/UI/runtime validation passed; pinned native Nix package realization and complete assembled gate remain open. Actual L5 GPU environment and eligibility diagnosis in CURRENT_HANDOFF. Retain measured ROCm work at P3C. After UX-11D acceptance, complete PS-F1/F2/F3, then resume ROCm and CUDA independently alongside MCP and capability lanes without reopening unchanged accepted operator evidence.
+User-priority [UX-11 A/B/C/D presentation, diagnostics and source-aware launch](cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md#28-nov--ux-11-follow-up-user-priority-before-rocm-continuation) accepted at 683ac065: actual native Nix package, physical L5 launch and joined retirement, complete assembled gate 2620/0/112 (327 Rust suites). The normal dependency acquisition policy is in AGENTS.md. Programmable-stack plans are published; PS-F1 is ready for its separately assigned agent, not started by the UX-11D owner. Preserve existing backend evidence and follow the ordered foundation exit before the parallel lanes.
 Prior unit: [Phase 3 ROCm readiness](FULL_IMPLEMENTATION_PLAN.md#3-rocm--amd-parity) on X2 after bounded Phase 2 acceptance and [OA-10 closeout](serving-and-speculation/NEXT_ITERATION_OPENAI_COMPATIBLE_SERVING.md#oa-10--compatibility-closeout).
 P3A ordinary cold cohort/exact device envelope and comparator usage
 completeness implemented at 50f6e276; X2 exact commit sync and locked
@@ -30,10 +30,12 @@ and physical retirement pass. P3B compact feedback and P3C exact RMS
 row regions/flattened GDN gate physically validated. Fresh paired
 0.8B/2B C1/C8 before region optimization; native A/B 47+3/16 gains
 up to 20%. Fresh 27B C8 pair at 54b2c910, 5.8652/13.51425 tok/s,
-32 exact timed requests and joined retirement. 27B C1 pair and
-assembled gate pending (P3C 1785/0/97 in 237 suites, 1200s
-timeout during serving-only rebuild); next measured
-temporal/recurrent and attention regions.
+32 exact timed requests and joined retirement. The fresh 27B C1
+pair also completed (2.25575/3.82090 tok/s); initial C1/C8 coverage
+complete, not full numerical/state or SLO parity. Assembled gate
+completed at UX-11D closeout. Next measured temporal/recurrent and
+attention regions remain in their existing backend lane after the
+shared programmable-stack foundation exit.
 OA-9A bounded native text Realtime accepted at 4735621b. OA-10 corrected
 cold endpoint markers/help, documented actual supported routes and
 capability limits, and focused-qualified safe error/refusal behavior.

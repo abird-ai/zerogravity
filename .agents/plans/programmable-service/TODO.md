@@ -1,7 +1,7 @@
 # Programmable service and execution stack
 
 Base: `6986470e46c1cc5d0ac4601dc9163cf041d73e7b`
-Status: Scheduled immediately after UX-11D acceptance; implementation not started.
+Status: UX-11D prerequisite accepted; preparation complete; PS-F1 implementation reserved for the separately assigned agent.
 Owner: @pvl; root coordinates shared contracts and the queue.
 
 See [service/SDK design](README.md),
@@ -45,9 +45,46 @@ Documentation batch; runtime implementation has not started.
 - [ ] Retain API-preview labels until the examples' actual public SDK and
   execution capabilities are qualified; remaining package/Web/About metadata
   proposals are separate from the applied README and diagram.
-- [ ] Reconcile the other agent's completed UX-11D source and required
-  qualification before extracting source/launch/logging responsibilities.
-  Preserve its current work and any explicit remaining acceptance boundary.
+- [x] Reconcile UX-11D source and acceptance: 683ac065 records actual
+  native package/physical L5 launch and full assembled gate 2620/0/112
+  (327 suites). Packaging fixes 28573dc0/3ec574ab and normal acquisition
+  policy are retained. No repeat of accepted gates needed for preparation.
+  Plan publication d8b55472 is documentation-only.
+
+**PS-F1 entry — prepared, not implemented (28 Nov):**
+
+- Start with current AGENTS.md, CURRENT_HANDOFF, this checklist, the
+  service design §§2–4, 12–14 and IMPLEMENTATION_PHASES §3. Read actual
+  callers rather than treating the design's target signatures as live APIs.
+- Move the shared cold policy, not only the UI host: CLI
+  `resident.rs`, `run_cli/source.rs`, `run_cli/qwen_source.rs`,
+  `config_cli.rs`, `serve/canonical.rs` and the explicit acquisition
+  paths in `pull.rs` / `pull_native.rs` are the starting consumers.
+  Preserve structural eligibility, exact original-source resolution,
+  explicit acquisition consent, backend preflight and final original
+  admission. Terminal prompts, formatting, signals and environment
+  credential selection remain at the appropriate adapter boundary.
+- `control_host.rs` and `control_host/{actions,work,progress,settings}.rs`
+  own the current shared lifecycle; terminal/log ring and Web projections
+  are presentation, not canonical SDK results. The present slot is reaped
+  by clients. Service must own operation completion and joined shutdown
+  independently of any frontend. Reuse Runtime/ControlPlane, registered
+  model identity and original listener generation; no second scheduler.
+- The engine already implements wakeable bounded receive in
+  `router/event_channel.rs::Receiver::poll_recv`. The registered
+  `OutputStream` interface is currently blocking/bounded-polling.
+  Extend that same receipt/transport for native async waits rather than
+  introduce another token channel or per-call executor. Preserve original
+  terminal output, usage, error, cancellation and backpressure semantics.
+- The existing cold atomic route-set transaction is the F1 consumer.
+  Sequential live registration/activation stays F3; no capability claim
+  from a new wrapper alone. Qualify actual embedded load/run/stream/serve
+  and joined shutdown plus migrated frontend behavior. Keep ordinary
+  dependency acquisition enabled under AGENTS.md; no new pins or redundant
+  historical acceptance cycles.
+
+The user asked this owner to stop at preparation. All PS-F1 implementation
+items below remain open; no service/SDK/backend source changed in this pass.
 
 ### PS-F1 — Reusable Service and simple SDK
 
