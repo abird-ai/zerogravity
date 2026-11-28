@@ -109,6 +109,23 @@ pub(super) fn run(command: Command) -> ExitCode {
                     crate::model_cli::read(operation, &args, format, yes),
                 ),
                 ModelCommand::Search(args) => ("model search", crate::model_cli::search(&args)),
+                ModelCommand::Discovery {
+                    operation,
+                    args,
+                    offline,
+                    format,
+                } => (
+                    "model discovery",
+                    crate::model_cli::discovery(
+                        &operation,
+                        &args,
+                        selection
+                            .as_ref()
+                            .map(|(flag, value)| (*flag, value.as_str())),
+                        offline,
+                        format,
+                    ),
+                ),
                 ModelCommand::Pull(args) => ("model pull", crate::model_cli::pull(&args)),
                 ModelCommand::Import(mut args) => {
                     args.insert(0, "import-hf".into());

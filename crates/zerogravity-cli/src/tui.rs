@@ -145,6 +145,11 @@ fn session(
                 }
                 app.navigation.cancel_pointer();
                 app.library.invalidate_config();
+                if let Ok(doc) = app.document.snapshot().read() {
+                    app.library.sync_sources(&zerogravity::discovery::sources(
+                        &doc.map(|(_, doc)| doc).unwrap_or_default(),
+                    ));
+                }
                 if matches!(app.navigation.view(), View::Config | View::Profiles) {
                     app.refresh_cold(runtime, control);
                 }
@@ -482,7 +487,28 @@ impl App {
         };
         let mut job = self.job.take().expect("finished native ticket");
         let message = match result {
-            Ok(Completed::Message(message)) => message,
+            Ok(Completed::Message(message)) => {
+                if job.title == "Update sources" {
+                    match self.document.snapshot().read() {
+                        Ok(doc) => self.library.show_sources(&zerogravity::discovery::sources(
+                            &doc.map(|(_, doc)| doc).unwrap_or_default(),
+                        )),
+                        Err(error) => self.notice = Some(error.to_string()),
+                    }
+                }
+                message
+            }
+            #[cfg(all(feature = "acquisition", target_os = "linux"))]
+            Ok(Completed::ConfirmPull { intent, message }) => {
+                self.navigation
+                    .confirm(message, view::Confirmation::Request(Request::Pull(*intent)));
+                "Acquisition preview ready".into()
+            }
+            Ok(Completed::Discovery(result)) => {
+                self.library.show_discovery(*result);
+                self.navigation.shelf_changed(self.library.shelf);
+                "Source observations ready".into()
+            }
             #[cfg(all(feature = "cache", target_os = "linux"))]
             Ok(Completed::Refused {
                 message,
@@ -731,8 +757,20 @@ impl App {
                 FormKind::ConfigValue { file, key } => self.start(runtime, Request::Settings(settings::Action::Set { file, key, value })),
                 FormKind::RawYaml { file } => self.start(runtime, Request::Settings(settings::Action::Replace { file, yaml: value })),
 
-                FormKind::PullSource => self.pull_source(value),
-                FormKind::PullSelection { source } => self.confirm_pull(&source, &value),
+                FormKind::PullSource => self.pull_source(runtime, value),
+                FormKind::DiscoverySearch { source } => {
+                    let online = !self.document.snapshot().offline
+                        && cfg!(all(feature = "acquisition", target_os = "linux"));
+                    let request = self.library.browse(source, value, online, 0);
+                    self.start(runtime, request);
+                }
+                FormKind::SourceEdit { expected } => {
+                    match serde_yaml::from_str::<Vec<zerogravity::discovery::Source>>(&value) {
+                        Ok(entries) => self.start(runtime, Request::SaveSources { expected, entries }),
+                        Err(_) => self.notice = Some("Invalid source list; edit the YAML and retry".into()),
+                    }
+                }
+                FormKind::PullSelection { source } => self.confirm_pull(runtime, &source, &value),
                 FormKind::Alias { digest } => self.start(runtime, Request::Alias { digest, name: value }),
                 FormKind::DeviceSource { device, load } => {
                     if load {
@@ -793,6 +831,72 @@ impl App {
                 Some("An action is already in progress; wait or request cancellation".into());
             return;
         }
+        if action == LibraryAction::OpenSource || action == LibraryAction::SearchSource {
+            let key = self.library.rows(kind).selected.clone();
+            if action == LibraryAction::SearchSource {
+                if let Some(source) = match &key {
+                    Some(Key::Source(source)) => Some(source.clone()),
+                    _ => self.library.current_discovery_source(),
+                } {
+                    self.navigation.form(FormKind::DiscoverySearch { source });
+                } else {
+                    self.notice = Some("Select a discovery source first".into());
+                }
+                return;
+            }
+            match key {
+                Some(Key::Source(source)) => {
+                    let request = self.library.browse(source, String::new(), false, 0);
+                    self.start(runtime, request);
+                }
+                Some(Key::DiscoverMore) => {
+                    if let Some(request) = self.library.next_discovery() {
+                        self.start(runtime, request);
+                    }
+                }
+                Some(Key::DiscoverBack) => {
+                    if let Some(request) = self.library.back_discovery() {
+                        self.start(runtime, request);
+                    } else {
+                        match self.document.snapshot().read() {
+                            Ok(doc) => self.library.show_sources(&zerogravity::discovery::sources(
+                                &doc.map(|(_, doc)| doc).unwrap_or_default(),
+                            )),
+                            Err(error) => self.notice = Some(error.to_string()),
+                        }
+                    }
+                }
+                Some(Key::Repository(locator)) => {
+                    self.start(runtime, Request::Repository { locator })
+                }
+                Some(Key::Target(target)) => {
+                    if let Some(repository) =
+                        zerogravity::targets::find(&target).and_then(|t| t.repository)
+                    {
+                        self.start(
+                            runtime,
+                            Request::Repository {
+                                locator: format!("hf:{repository}"),
+                            },
+                        );
+                    }
+                }
+                Some(Key::SourceManager) => match self.document.snapshot().read() {
+                    Ok(doc) => {
+                        let expected = zerogravity::discovery::sources(
+                            &doc.map(|(_, doc)| doc).unwrap_or_default(),
+                        );
+                        let value =
+                            serde_yaml::to_string(&expected).expect("source list serialization");
+                        self.navigation
+                            .form_value(FormKind::SourceEdit { expected }, value);
+                    }
+                    Err(error) => self.notice = Some(error.to_string()),
+                },
+                _ => self.notice = Some("Select a discovery source or repository".into()),
+            }
+            return;
+        }
         if action == LibraryAction::Pull {
             if self.document.snapshot().offline {
                 self.notice = Some("Offline mode prohibits acquisition".into());
@@ -804,7 +908,29 @@ impl App {
                     && let Some(Key::Target(target)) = self.library.rows(kind).selected.clone()
                     && let Ok(intent) = crate::pull::native::Intent::parse(&target, "")
                 {
-                    self.confirm_intent(intent);
+                    self.confirm_intent(runtime, intent);
+                    return;
+                }
+                if let Some(Key::RemoteFile {
+                    locator,
+                    path,
+                    held: false,
+                }) = self.library.rows(kind).selected.clone()
+                {
+                    self.navigation
+                        .form_value(FormKind::PullSelection { source: locator }, path);
+                    return;
+                }
+                if let Some(Key::Target(target)) = self.library.rows(kind).selected.clone()
+                    && let Some(repository) =
+                        zerogravity::targets::find(&target).and_then(|t| t.repository)
+                {
+                    self.start(
+                        runtime,
+                        Request::Repository {
+                            locator: format!("hf:{repository}"),
+                        },
+                    );
                     return;
                 }
                 self.navigation.form(FormKind::PullSource);
@@ -862,6 +988,10 @@ impl App {
                     self.start(runtime, Request::Load { source: format!("sha256:{digest}"), prompt: None, execution: self.library.execution_for(&digest) });
                 }
             }
+            (Key::Local(source), LibraryAction::Run) => {
+                self.navigation.form(FormKind::Prompt { target: RunTarget::Source { source, execution: Default::default() }, chat: self.document.snapshot().chat });
+            }
+            (Key::Local(source), LibraryAction::Load(_)) => self.start(runtime, Request::Load { source, prompt: None, execution: Default::default() }),
             (Key::Device(device), LibraryAction::Fit) => self.navigation.form(FormKind::DeviceSource { device, load: false }),
             (Key::Device(device), LibraryAction::Load(false)) => {
                 if self.snapshot.runtime.status.phase != RuntimePhase::Empty {
@@ -877,46 +1007,53 @@ impl App {
         }
     }
 
-    fn pull_source(&mut self, source: String) {
+    fn pull_source(&mut self, runtime: &Runtime, source: String) {
         #[cfg(all(feature = "acquisition", target_os = "linux"))]
         {
             if self.document.snapshot().offline {
                 self.notice = Some("Offline mode prohibits acquisition".into());
-            } else if source.trim().starts_with("hf:") || source.trim().starts_with("gh:") {
-                self.navigation.form(FormKind::PullSelection { source });
+            } else if let source = zerogravity::discovery::normalize_locator(source.trim())
+                && (source.starts_with("hf:") || source.starts_with("gh:"))
+            {
+                // A fully pinned locator still allows explicit offline-style
+                // selection; floating repository locators browse metadata.
+                if source.rsplit_once('@').is_some_and(|(_, revision)| {
+                    revision.len() == 40 && revision.bytes().all(|b| b.is_ascii_hexdigit())
+                }) {
+                    self.navigation.form(FormKind::PullSelection { source });
+                } else {
+                    self.library.shelf = library::Shelf::Catalog;
+                    self.navigation.open(View::Models);
+                    self.start(runtime, Request::Repository { locator: source });
+                }
             } else {
-                self.confirm_pull(&source, "");
+                self.confirm_pull(runtime, &source, "");
             }
         }
         #[cfg(not(all(feature = "acquisition", target_os = "linux")))]
         {
-            let _ = source;
+            let _ = (runtime, source);
             self.notice =
                 Some("Acquisition requires the optional Linux acquisition feature".into());
         }
     }
-    fn confirm_pull(&mut self, source: &str, selection: &str) {
+    fn confirm_pull(&mut self, runtime: &Runtime, source: &str, selection: &str) {
         #[cfg(all(feature = "acquisition", target_os = "linux"))]
         {
             match crate::pull::native::Intent::parse(source, selection) {
-                Ok(intent) => self.confirm_intent(intent),
+                Ok(intent) => self.confirm_intent(runtime, intent),
                 Err(error) => self.notice = Some(error.to_string()),
             }
         }
         #[cfg(not(all(feature = "acquisition", target_os = "linux")))]
         {
-            let _ = (source, selection);
+            let _ = (runtime, source, selection);
             self.notice = Some("Acquisition unavailable".into());
         }
     }
     #[cfg(all(feature = "acquisition", target_os = "linux"))]
-    fn confirm_intent(&mut self, intent: crate::pull::native::Intent) {
-        match intent.confirmation() {
-            Ok(question) => self
-                .navigation
-                .confirm(question, view::Confirmation::Request(Request::Pull(intent))),
-            Err(error) => self.notice = Some(error.to_string()),
-        }
+    fn confirm_intent(&mut self, runtime: &Runtime, intent: crate::pull::native::Intent) {
+        self.start(runtime, Request::PullPreview(intent));
     }
 
     fn download_action(&mut self, control: ControlPlane<'_>, action: DownloadAction) {

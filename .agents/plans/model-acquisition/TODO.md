@@ -374,23 +374,27 @@ Git history; current source and this TODO supersede their archived checklists.
 
 ## Uncommitted
 
-- [ ] Provider-first source discovery follow-up (28 Nov design):
-  configurable named source instances, curated official repository
-  references grouped by actual provider, capability-bound paginated
-  remote discovery and scoped local directory browsing. Reuse the
-  configuration authority, SourceSelector/ProviderLocator, resolver,
-  verified cache and transfer ownership. Distinguish discovery metadata,
-  resolved selection, immutable acquired identity and execution
-  qualification. Support direct URLs/paths, named source selection and
-  provider-specific search/list where available; no automatic payload
-  acquisition. Removal/disable of a discovery source must not retire or
-  delete acquired/active owners. Keep credentials private; offline and
-  unsupported discovery are explicit. Deliver typed native operations
-  shared by CLI/TUI/Web and later SDK/MCP, without another registry of
-  execution capabilities. See provider-first Models design in
-  ../cli-ux/NEXT_ITERATION_CLI_UX_AND_MODEL_LIFECYCLE.md. Coordinate the
-  implementation with the existing Service/Client migration; no new
-  foundation prerequisite or scheduling promotion implied.
+- [x] Provider-first native discovery: named HF/GitHub/local instances in
+  the original active configuration, curated and scoped repository
+  observations, HF opaque continuation cursor and GitHub numbered pages,
+  local directory pagination, direct repository URLs/locators, original
+  candidate/closure resolver and metadata-only acquisition previews. Typed
+  observations and mutations share the current control owner with CLI/TUI/Web.
+  Live HF search (30 rows, second page), GitHub search (30 rows), direct
+  Qwen repository (13 files, immutable revision), original file-closure
+  preview and CLI source CRUD passed without payload acquisition. Scoped
+  local fixtures and stale Web source-edit refusal passed. No new store,
+  credential policy, model qualification, dependencies or service owner.
+  Disable/removal changes only source configuration; cache and loaded
+  model identities are unchanged. The native TUI config editor manages
+  local roots, Web source controls cannot grant new filesystem roots.
+- [ ] Extend provider discovery beyond HF, GitHub repository trees and
+  immediate local folders: release-asset browsing, recursive/component
+  sources and object/OCI/ModelScope adapters where their actual discovery
+  capabilities permit. Existing explicit acquisition routes remain.
+  Preserve the separation of discovery/selection/immutable acquisition
+  and execution. Fold the typed discovery operations into Service/Client
+  during the scheduled PS-F1 work; this slice does not implement PS-F1.
 
 - [ ] Extend advanced forced interactive/JSONL and aggregate component
   control over independently published original receipts; keep exact

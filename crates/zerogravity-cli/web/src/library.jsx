@@ -85,7 +85,7 @@ function PullForm(props) {
   // An explicitly chosen catalog recipe fills only the draft.
   createEffect(() => {
     props.recipeRevision();
-    setSelection("");
+    setSelection(props.selectionDraft?.() ?? "");
     setPreview(null);
   });
   const ready = () => props.work.ready() && !props.value.configuration.offline;
@@ -94,8 +94,8 @@ function PullForm(props) {
   return <section class="panel">
     <div class="panel-title"><h2>Acquire a model</h2><span class="subtle">{props.value.configuration.offline ? "Offline" : "Explicit consent"}</span></div>
     <Show when={props.value.capabilities.acquisition} fallback={<p class="subtle">Acquisition is not compiled into this binary.</p>}>
-      <label class="field-label" for="pull-source">Pinned source or approved recipe</label>
-      <input id="pull-source" placeholder="hf:OWNER/REPO@FULL_COMMIT or catalog target" value={source()} onInput={event => { setSource(event.currentTarget.value); setPreview(null); }}/>
+      <label class="field-label" for="pull-source">Source or approved recipe</label>
+      <input id="pull-source" placeholder="Resolved repository or approved model" value={source()} onInput={event => { setSource(event.currentTarget.value); setPreview(null); }}/>
       <label class="field-label" for="pull-selection">Exact files or quantization</label>
       <textarea id="pull-selection" rows="4" placeholder={"model.gguf\nconfig.json\n—or quant:Q4_K_M"} value={selection()} onInput={event => { setSelection(event.currentTarget.value); setPreview(null); }}/>
       <p class="field-hint">For an approved recipe leave selection empty. For a provider, use one exact relative file per line or quant:NAME, with the full immutable commit. No implicit download, quota increase, eviction or load.</p>
@@ -125,12 +125,134 @@ function PullForm(props) {
     </Show>
   </section>;
 }
+// Discovery is explicit. Use the same owned management slot and typed
+// results as Pull. Neither selecting a row nor typing a query acquires data.
+function Discover(props) {
+  const [source,setSource] = createSignal("");
+  const [query,setQuery] = createSignal("");
+  const [direct,setDirect] = createSignal("");
+  const [page,setPage] = createSignal(null);
+  const [repo,setRepo] = createSignal(null);
+  const [files,setFiles] = createSignal([]);
+  const [pending,setPending] = createSignal("");
+  const [edit,setEdit] = createSignal(false);
+  const [name,setName] = createSignal("");
+  const [editingName,setEditingName] = createSignal("");
+  const [kind,setKind] = createSignal("hugging_face");
+  const [scope,setScope] = createSignal("");
+  const [notice,setNotice] = createSignal("");
+  const sources = () => props.inventory()?.sources ?? [];
+  const current = () => sources().find(row=>row.name===source() && row.enabled);
+  const ready = () => props.work.ready() && props.inventory()?.sources_available !== false;
+  const remote = () => props.value.capabilities.acquisition && !props.value.configuration.offline;
+  const local = () => current()?.kind==="local";
+  const curated = () => props.inventory()?.curated?.[source()] ?? [];
+  const rows = () => {
+    const needle = query().trim().toLowerCase();
+    return page()?.result.entries ?? curated().filter(row => !needle || (row.name + " " + (row.curated ?? "")).toLowerCase().includes(needle));
+  };
+  const selectSource = name => { setSource(name); setQuery(""); setPage(null); setRepo(null); setFiles([]); setPending(""); };
+  createEffect(() => {
+    if (source() && !current()) selectSource("");
+  });
+  async function submit(request) {
+    setPending("");
+    setNotice("");
+    const receipt = await props.work.dispatch(request);
+    if (receipt) setPending(receipt.id);
+  }
+  createEffect(() => {
+    const result=props.work.result();
+    if (!result || result.id!==pending() || result.state==="running") return;
+    if(result.state==="completed" && result.discovery?.kind==="page") {
+      if(result.discovery.source===source()) { setPage(result.discovery); setRepo(null); setFiles([]); }
+    } else if(result.state==="completed" && result.discovery?.kind==="repository") {
+      setRepo(result.discovery.result); setFiles([]);
+    } else if(result.state!=="completed") setNotice(result.message ?? "Operation refused");
+    else if(result.title==="Update sources") { setEdit(false); setEditingName(""); setName(""); setScope(""); setNotice("Sources updated."); }
+    setPending("");
+  });
+  const browse = (number=0) => {
+    return submit({kind:"browse",source:source(),query:number?page()?.query??query():query(),page:number,cursor:number?page()?.result.next_cursor??null:null,online:!local()});
+  };
+  const open = locator => submit({kind:"repository",locator});
+  const recipe = row => props.inventory()?.catalog?.find(c=>c.slug===row.curated)?.recipe;
+  const save = entries => submit({kind:"save_sources",expected:sources(),entries});
+  const total = () => {
+    const selected=repo()?.files.filter(f=>files().includes(f.path)) ?? [];
+    return selected.some(f=>f.bytes==null) ? null : selected.reduce((n,f)=>n+f.bytes,0);
+  };
+  return <section class="panel">
+    <div class="panel-title"><h2>Discover</h2><button disabled={!ready()} onClick={()=>setEdit(!edit())}>{edit()?"Done":"Manage sources"}</button></div>
+    <Show when={notice()}><p class="notice">{notice()}</p></Show>
+    <Show when={edit()}>
+      <div class="stack">
+        <For each={sources()}>{s=><div class="form-actions"><span class="mono wrap">{s.name} · {s.kind}{s.scope?" · "+s.scope:""}</span>
+          <button disabled={!ready()} onClick={()=>save(sources().map(row=>row.name===s.name?{...row,enabled:!row.enabled}:row))}>{s.enabled?"Disable":"Enable"}</button>
+          <Show when={s.kind!=="local"}><button disabled={!ready()} onClick={()=>{setEditingName(s.name);setName(s.name);setKind(s.kind);setScope(s.scope??"");}}>Edit</button></Show>
+          <button disabled={!ready()} onClick={()=>save(sources().filter(row=>row.name!==s.name))}>Remove</button></div>}</For>
+        <label class="field-label" for="discovery-name">Source name</label><input id="discovery-name" value={name()} onInput={e=>setName(e.currentTarget.value)} placeholder="my-model-hub"/>
+        <label class="field-label" for="discovery-kind">Provider</label><select id="discovery-kind" value={kind()} onChange={e=>setKind(e.currentTarget.value)}><option value="hugging_face">Hugging Face</option><option value="github">GitHub</option></select>
+        <label class="field-label" for="discovery-scope">Namespace or repository (optional)</label><input id="discovery-scope" value={scope()} onInput={e=>setScope(e.currentTarget.value)} placeholder="Qwen"/>
+        <div class="form-actions"><button disabled={!ready() || !name().trim() || sources().some(s=>s.name===name().trim()&&s.name!==editingName())} onClick={()=>{
+          const previous=sources().find(s=>s.name===editingName());
+          const next={name:name().trim(),kind:kind(),...(scope().trim()?{scope:scope().trim()}:{}),enabled:previous?.enabled??true};
+          save(previous?sources().map(s=>s.name===previous.name?next:s):[...sources(),next]);
+        }}>{editingName()?"Save source":"Add source"}</button><Show when={editingName()}><button onClick={()=>{setEditingName("");setName("");setScope("");}}>Cancel edit</button></Show></div>
+        <p class="field-hint">Local directory roots are configured from the native client or CLI. Removing a source does not delete models.</p>
+      </div>
+    </Show>
+    <div class="split">
+      <div class="entries">
+        <h3>Sources</h3>
+        <For each={sources().filter(s=>s.enabled)}>{s=><button classList={{row:true,selected:s.name===source()}} disabled={!ready()} onClick={()=>selectSource(s.name)}><span class="row-main">{s.name}</span><span class="subtle">{({hugging_face:"Hugging Face",github:"GitHub",local:"Local folder"})[s.kind]}</span></button>}</For>
+      </div>
+      <div>
+        <Show when={current()} fallback={<p class="subtle">Select a source to browse repositories or folders.</p>}>
+          <div class="form-actions"><input aria-label="Repository query" placeholder={local()?"Filter folder":"Search repositories"} value={query()} onInput={e=>setQuery(e.currentTarget.value)} onKeyDown={e=>{if(e.key==="Enter" && ready() && (local()||remote())) browse();}}/>
+            <button disabled={!ready() || !(local()||remote())} onClick={()=>browse()}>{local()?"Browse folder":"Search"}</button></div>
+          <Show when={local()&&!current().scope}><p class="field-hint">Configure a local directory using the native client or CLI.</p></Show>
+          <For each={rows()}>{row=><div class="row">
+            <span class="row-main wrap">{row.name}</span><span class="subtle">{row.payload_hold?"Payload hold":row.curated?"Recommended":row.bytes==null?"":amount(row.bytes)}</span>
+            <div class="form-actions">
+              <Show when={!local()}><button disabled={!ready()||!remote()} onClick={()=>open(row.locator)}>Browse files</button></Show>
+              <Show when={!row.payload_hold && recipe(row)}><button disabled={!ready()} onClick={()=>props.choose(row.curated,"")}>Use approved recipe</button></Show>
+              <Show when={local()}><span class="subtle">Load from the native client</span></Show>
+            </div>
+          </div>}</For>
+          <Show when={page()?.result.more}><button disabled={!ready()} onClick={()=>browse(page().page+1)}>Next page</button></Show>
+        </Show>
+      </div>
+    </div>
+    <div class="form-actions"><input aria-label="Open repository URL" placeholder="Repository URL or hf:/gh: locator" value={direct()} onInput={e=>setDirect(e.currentTarget.value)}/>
+      <button disabled={!ready()||!remote()||!direct().trim()} onClick={()=>open(direct().trim())}>Open source</button></div>
+    <Show when={repo()}>{r=><section>
+      <div class="panel-title"><h3 class="wrap">{r().locator}</h3><button onClick={()=>{setRepo(null);setFiles([]);}}>Close</button></div>
+      <Show when={r().payload_hold}><p class="notice">Payload hold — acquisition unavailable.</p></Show>
+      <Show when={!r().payload_hold && recipe(r())}><button disabled={!ready()} onClick={()=>props.choose(r().curated,"")}>Use approved original recipe</button></Show>
+      <Show when={!r().payload_hold}>
+        <h4>Model variants</h4>
+        <For each={r().files.filter(f=>f.role==="weights" || (f.role==="index" && f.path.endsWith(".safetensors.index.json")))}>{file=>
+          <div class="row"><span class="row-main wrap">{file.path}</span><span class="subtle">{amount(file.bytes)} · selected file</span>
+            <button disabled={!ready()} onClick={()=>props.choose(r().locator,file.path)}>Select model</button></div>}</For>
+      </Show>
+      <h4>Advanced file selection</h4>
+      <div class="entries" style={{"max-height":"25rem","overflow-y":"auto"}}>
+        <For each={r().files}>{file=><label class="row"><span class="row-main wrap"><input type="checkbox" disabled={r().payload_hold||!ready()} checked={files().includes(file.path)} onChange={e=>setFiles(old=>e.currentTarget.checked?[...old,file.path]:old.filter(p=>p!==file.path))}/> {file.path}</span><span class="subtle">{file.role} · {amount(file.bytes)}</span></label>}</For>
+      </div>
+      <div class="form-actions"><button disabled={!ready()||r().payload_hold||!files().length} onClick={()=>props.choose(r().locator,files().join("\n"))}>Use selected files</button><span class="subtle">{files().length} selected · {amount(total())} observed</span></div>
+      <p class="field-hint">File listing is metadata only. The original resolver validates exact selection and closure before acquisition. Select a complete model or use an approved recipe.</p>
+    </section>}</Show>
+  </section>;
+}
 export function Models(props) {
   const [shelf,setShelf] = createSignal("cached");
   const [selected,setSelected] = createSignal("");
   const [query,setQuery] = createSignal("");
   const source = createSignal("");
   const [recipeRevision,bumpRecipe] = createSignal(0);
+  const [selectionDraft,setSelectionDraft] = createSignal("");
+  const choose = (locator,selection) => { source[1](locator); setSelectionDraft(selection); bumpRecipe(n=>n+1); document.getElementById("pull-source")?.focus(); };
   const inventory = () => props.inventory.value("models");
   const key = row => row.digest ?? row.slug ?? row.key;
   const title = row => row.slug ?? row.repository ?? "Partial checkpoint";
@@ -146,10 +268,12 @@ export function Models(props) {
   return <>
     <InventoryNotice inventory={props.inventory}/>
     <Show when={inventory()?.warning}><p class="notice">{inventory().warning}</p></Show>
+    <div class="shelves" role="group" aria-label="Model shelf"><For each={["cached","catalog","partial"]}>{name => <button classList={{selected:shelf() === name}} aria-pressed={shelf() === name} onClick={() => { setShelf(name); setSelected(""); setQuery(""); }}>{({cached:"Local",catalog:"Discover",partial:"Transfers"})[name]}</button>}</For></div>
+    <div hidden={shelf()!=="catalog"}><Discover value={props.value} work={props.work} inventory={inventory} choose={choose}/></div>
+    <Show when={shelf()!=="catalog"}>
     <div class="split">
       <section class="panel entries">
         <div class="panel-title"><h2>Model inventory</h2></div>
-        <div class="shelves" role="group" aria-label="Model shelf"><For each={["cached","catalog","partial"]}>{name => <button classList={{selected:shelf() === name}} aria-pressed={shelf() === name} onClick={() => { setShelf(name); setSelected(""); setQuery(""); }}>{name[0].toUpperCase()+name.slice(1)}</button>}</For></div>
         <label class="field-label" for="model-search">Search sources</label>
         <input id="model-search" value={query()} onInput={event => setQuery(event.currentTarget.value)} placeholder="Name or exact identity"/>
         <Show when={rows().length} fallback={<p class="field-hint">{inventory() ? "No matching observations." : "Waiting for cold model inventory."}</p>}>
@@ -186,7 +310,8 @@ export function Models(props) {
         </section>
       }</Show>
     </div>
-    <PullForm value={props.value} work={props.work} source={source} recipeRevision={recipeRevision} navigate={props.navigate}/>
+    </Show>
+    <PullForm value={props.value} work={props.work} source={source} recipeRevision={recipeRevision} selectionDraft={selectionDraft} navigate={props.navigate}/>
   </>;
 }
 export function Devices(props) {

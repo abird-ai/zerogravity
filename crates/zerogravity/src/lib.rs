@@ -17,6 +17,7 @@ pub mod configuration;
 pub mod control;
 pub mod devices;
 pub mod diagnostics;
+pub mod discovery;
 pub mod embedding;
 pub mod model;
 pub mod models;

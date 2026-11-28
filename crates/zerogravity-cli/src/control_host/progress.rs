@@ -94,6 +94,9 @@ impl FinishedTask {
     pub fn new(task: Task, result: &super::work::ActionResult<Completed>) -> Self {
         let (failed, message) = match result {
             Ok(Completed::Message(message)) => (false, message.clone()),
+            Ok(Completed::Discovery(_)) => (false, "Source observations ready".into()),
+            #[cfg(all(feature = "acquisition", target_os = "linux"))]
+            Ok(Completed::ConfirmPull { message, .. }) => (false, message.clone()),
             #[cfg(all(feature = "cache", target_os = "linux"))]
             Ok(Completed::Refused {
                 message,

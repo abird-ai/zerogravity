@@ -10,6 +10,7 @@ pub mod gcs;
 pub mod github;
 pub mod http;
 pub mod huggingface;
+pub use huggingface::model_search_cursor;
 pub mod modelscope;
 pub mod object;
 pub mod oci;

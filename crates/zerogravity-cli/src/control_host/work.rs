@@ -60,6 +60,21 @@ pub(crate) enum Request {
     Stop(u64),
     Settings(settings::Action),
     Inspect(String),
+    Browse {
+        source: String,
+        query: String,
+        page: usize,
+        cursor: Option<String>,
+        online: bool,
+    },
+    Repository {
+        locator: String,
+    },
+    SaveSources {
+        expected: Vec<zerogravity::discovery::Source>,
+        entries: Vec<zerogravity::discovery::Source>,
+    },
+
     Verify(String),
     Reclaim {
         digest: String,
@@ -75,7 +90,7 @@ pub(crate) enum Request {
     },
     #[cfg(all(feature = "acquisition", target_os = "linux"))]
     Pull(crate::pull::native::Intent),
-    #[cfg(all(feature = "web", feature = "acquisition", target_os = "linux"))]
+    #[cfg(all(feature = "acquisition", target_os = "linux"))]
     PullPreview(crate::pull::native::Intent),
 }
 impl Request {
@@ -91,6 +106,9 @@ impl Request {
             Self::Stop(_) => "Stop listener",
             Self::Settings(action) => action.title(),
             Self::Inspect(_) => "Inspect snapshot",
+            Self::Browse { .. } => "Browse source",
+            Self::Repository { .. } => "Inspect repository",
+            Self::SaveSources { .. } => "Update sources",
             Self::Verify(_) => "Verify snapshot",
             Self::Reclaim { apply: false, .. } => "Removal preview",
             Self::Reclaim { apply: true, .. } => "Remove snapshot",
@@ -98,7 +116,7 @@ impl Request {
             Self::CheckFit { .. } => "Check device policy",
             #[cfg(all(feature = "acquisition", target_os = "linux"))]
             Self::Pull(_) => "Pull model",
-            #[cfg(all(feature = "web", feature = "acquisition", target_os = "linux"))]
+            #[cfg(all(feature = "acquisition", target_os = "linux"))]
             Self::PullPreview(_) => "Pull preview",
         }
     }
@@ -152,8 +170,31 @@ impl Response {
     }
 }
 
+#[derive(Clone, Debug, serde::Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub(crate) enum DiscoveryResult {
+    Page {
+        source: String,
+        query: String,
+        page: usize,
+        cursor: Option<String>,
+        online: bool,
+        result: zerogravity::discovery::Page,
+    },
+    #[cfg(all(feature = "acquisition", target_os = "linux"))]
+    Repository {
+        result: zerogravity::discovery::Repository,
+    },
+}
+
 pub(crate) enum Completed {
     Message(String),
+    Discovery(Box<DiscoveryResult>),
+    #[cfg(all(feature = "acquisition", target_os = "linux"))]
+    ConfirmPull {
+        intent: Box<crate::pull::native::Intent>,
+        message: String,
+    },
     #[cfg(all(feature = "cache", target_os = "linux"))]
     Refused {
         message: String,
@@ -254,6 +295,118 @@ pub(super) fn perform(
         super::Origin::Native => false,
     };
     match request {
+        Request::Browse {
+            source,
+            query,
+            page,
+            cursor,
+            online,
+        } => {
+            let doc = document.read()?.map(|(_, doc)| doc).unwrap_or_default();
+            let source = zerogravity::discovery::sources(&doc)
+                .into_iter()
+                .find(|item| item.name == source && item.enabled)
+                .ok_or_else(|| Error::State("Discovery source changed or is disabled".into()))?;
+            if cursor.is_some() && (!online || source.kind == zerogravity::discovery::Kind::Local) {
+                return Err(Error::Malformed("unexpected discovery cursor".into()).into());
+            }
+            let result = if source.kind == zerogravity::discovery::Kind::Local {
+                zerogravity::discovery::local(&source, &query, page, cancel)?
+            } else if online {
+                #[cfg(all(feature = "acquisition", target_os = "linux"))]
+                {
+                    zerogravity::discovery::browse(
+                        &source,
+                        &query,
+                        page,
+                        cursor.as_deref(),
+                        document.offline,
+                        cancel,
+                    )?
+                }
+                #[cfg(not(all(feature = "acquisition", target_os = "linux")))]
+                {
+                    return Err(
+                        Error::Unsupported("Remote discovery requires acquisition".into()).into(),
+                    );
+                }
+            } else {
+                let query = query.to_lowercase();
+                zerogravity::discovery::Page {
+                    entries: zerogravity::discovery::curated(&source)
+                        .into_iter()
+                        .filter(|e| {
+                            e.name.to_lowercase().contains(&query)
+                                || e.curated.as_ref().is_some_and(|n| n.contains(&query))
+                        })
+                        .collect(),
+                    more: false,
+                    next_cursor: None,
+                }
+            };
+            Ok(Completed::Discovery(Box::new(DiscoveryResult::Page {
+                source: source.name,
+                query,
+                page,
+                cursor,
+                online,
+                result,
+            })))
+        }
+        #[cfg(all(feature = "acquisition", target_os = "linux"))]
+        Request::PullPreview(intent) => {
+            let message = intent.preview(runtime, cancel, document.offline)?;
+            Ok(Completed::ConfirmPull {
+                intent: Box::new(intent),
+                message,
+            })
+        }
+        Request::Repository { locator } => {
+            #[cfg(all(feature = "acquisition", target_os = "linux"))]
+            {
+                Ok(Completed::Discovery(Box::new(
+                    DiscoveryResult::Repository {
+                        result: zerogravity::discovery::files(&locator, document.offline, cancel)?,
+                    },
+                )))
+            }
+            #[cfg(not(all(feature = "acquisition", target_os = "linux")))]
+            {
+                let _ = locator;
+                Err(Error::Unsupported("Repository discovery requires acquisition".into()).into())
+            }
+        }
+        Request::SaveSources { expected, entries } => {
+            // Web can change remote source instances, but cannot grant new
+            // filesystem roots. A local root must first be configured natively.
+            if browser
+                && entries.iter().any(|entry| {
+                    entry.kind == zerogravity::discovery::Kind::Local
+                        && !expected
+                            .iter()
+                            .any(|old| old.kind == entry.kind && old.scope == entry.scope)
+                })
+            {
+                return Err(Error::Unsupported(
+                    "Configure local directory roots from the native client or CLI".into(),
+                )
+                .into());
+            }
+            let file = document.target.open()?;
+            let doc = zerogravity::pipelines::parse_document(file.bytes())?;
+            if zerogravity::discovery::sources(&doc) != expected
+                || selection.snapshot().target != document.target
+            {
+                return Err(Error::State(
+                    "Discovery sources changed; refresh before saving".into(),
+                )
+                .into());
+            }
+            let result = zerogravity::discovery::replace(&file, &entries);
+            selection.configuration_changed();
+            result?;
+            Ok(Completed::Message("Discovery sources updated".into()))
+        }
         Request::Inspect(digest) => cache_action(
             control,
             CacheAction::Inspect,
@@ -310,6 +463,9 @@ fn execute(
     let control = runtime.control();
     match request {
         Request::Settings(_) => unreachable!("settings worker dispatch"),
+        Request::Browse { .. } | Request::Repository { .. } | Request::SaveSources { .. } => {
+            unreachable!("discovery worker dispatch")
+        }
         Request::Inspect(_)
         | Request::Verify(_)
         | Request::Reclaim { .. }
@@ -344,8 +500,8 @@ fn execute(
                 .execute(runtime, cancel, document.offline)
                 .map_err(ServiceError::inference)
         }
-        #[cfg(all(feature = "web", feature = "acquisition", target_os = "linux"))]
-        Request::PullPreview(intent) => intent.confirmation().map_err(ServiceError::inference),
+        #[cfg(all(feature = "acquisition", target_os = "linux"))]
+        Request::PullPreview(_) => unreachable!("preview worker dispatch"),
         Request::Load {
             source,
             prompt,

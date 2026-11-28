@@ -122,6 +122,13 @@ pub(super) enum FormKind {
         allow(dead_code, reason = "acquisition forms are optional")
     )]
     PullSource,
+    DiscoverySearch {
+        source: String,
+    },
+    SourceEdit {
+        expected: Vec<zerogravity::discovery::Source>,
+    },
+
     #[cfg_attr(
         not(all(feature = "acquisition", target_os = "linux")),
         allow(dead_code, reason = "acquisition forms are optional")
@@ -161,13 +168,14 @@ impl Form {
                 | FormKind::PullSelection { .. }
                 | FormKind::ConfigValue { .. }
                 | FormKind::RawYaml { .. }
+                | FormKind::SourceEdit { .. }
         )
     }
     fn limit(&self) -> usize {
         match self.kind {
-            FormKind::ConfigValue { .. } | FormKind::RawYaml { .. } => {
-                zerogravity::pipelines::MAX_CONFIG_BYTES
-            }
+            FormKind::ConfigValue { .. }
+            | FormKind::RawYaml { .. }
+            | FormKind::SourceEdit { .. } => zerogravity::pipelines::MAX_CONFIG_BYTES,
             _ => 32 * 1024,
         }
     }
@@ -257,6 +265,8 @@ pub(super) enum LibraryAction {
     Pull,
     Fit,
     Execution,
+    OpenSource,
+    SearchSource,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum DownloadAction {
@@ -1304,6 +1314,12 @@ impl Navigation {
             }
             Char('c') if !self.rail() && self.view == View::Downloads => {
                 Action::Download(DownloadAction::Cancel)
+            }
+            Char('o') if !self.rail() && self.view == View::Models => {
+                Action::Library(LibraryAction::OpenSource)
+            }
+            Char('f') if !self.rail() && self.view == View::Models => {
+                Action::Library(LibraryAction::SearchSource)
             }
             Char('m') if !self.rail() && self.view == View::Models => {
                 Action::Library(LibraryAction::Cycle)
@@ -2576,9 +2592,19 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
                     "Numeric loopback IP:PORT; blank uses selected document/default.",
                     "",
                 ),
+                FormKind::DiscoverySearch { .. } => (
+                    " Search provider ",
+                    "Enter a repository query; submit to browse the provider.",
+                    "",
+                ),
+                FormKind::SourceEdit { .. } => (
+                    " Configure sources ",
+                    "Edit source list (YAML). kind: hugging_face, github or local; local scope is an absolute path. Ctrl-J adds a line.",
+                    "",
+                ),
                 FormKind::PullSource => (
                     " Pull source ",
-                    "Approved catalog target, or hf:/gh:OWNER/REPO@40-character commit SHA.",
+                    "Repository URL, hf:/gh: locator, or approved catalog target.",
                     "",
                 ),
                 FormKind::PullSelection { .. } => (
@@ -2948,9 +2974,9 @@ fn render_library(frame: &mut Frame<'_>, area: Rect, app: &mut App, kind: Kind, 
     let mut x = head.x;
     if kind == Kind::Models && head.height > 0 && head.width >= 30 {
         for (shelf, title) in [
-            (Shelf::Cached, " Cached "),
-            (Shelf::Catalog, " Catalog "),
-            (Shelf::Partial, " Partial "),
+            (Shelf::Cached, " Local "),
+            (Shelf::Catalog, " Discover "),
+            (Shelf::Partial, " Transfers "),
         ] {
             let width = title.len() as u16;
             let rect = Rect::new(x, head.y, width, 1);
@@ -3911,7 +3937,7 @@ mod tests {
         app.navigation.dismiss_modal();
         app.library.shelf = Shelf::Catalog;
         let menu = Menu::new(&app, false);
-        assert!(menu.buttons.iter().any(|b| b.label == "Pull"));
+        assert!(menu.buttons.iter().any(|b| b.label == "Open"));
         assert!(
             !menu
                 .buttons

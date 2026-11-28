@@ -187,15 +187,25 @@ try {
   await click("Load model");
   await waitFor(() => contains("The control action or input was refused"), "typed POST rejection");
   await go("Models");
-  await waitFor(async () => await contains("Model inventory") && await contains("Cached") && !await contains("Waiting for cold model inventory"), "cold model shelf");
-  await click("Catalog");
-  await waitFor(() => contains("qwen3.5-0.8b"), "catalog inventory");
-  await fill("#model-search", "qwen3.5-0.8b");
-  await waitFor(() => evaluate("document.querySelectorAll('.entries .row').length === 1"), "catalog search");
+  await waitFor(async () => await contains("Model inventory") && await contains("Local") && !await contains("Waiting for cold model inventory"), "cold model shelf");
+  await click("Discover");
+  await waitFor(() => contains("Hugging Face"), "source inventory");
+  await evaluate("Array.from(document.querySelectorAll('button.row')).find(b=>b.textContent.includes('Hugging Face')).click()");
+  await waitFor(() => contains("Qwen/Qwen3.5-0.8B"), "curated repository inventory");
+  await fill('[aria-label="Repository query"]', "qwen3.5-0.8b");
+  await waitFor(async () => await contains("Qwen/Qwen3.5-0.8B") && !await contains("Qwen/Qwen3.5-2B"), "curated repository search");
+  await click("Manage sources");
+  await fill("#discovery-name", "qwen-fixture");
+  await fill("#discovery-scope", "Qwen");
+  await click("Add source");
+  await waitFor(() => evaluate("Array.from(document.querySelectorAll('button.row')).some(b=>b.textContent.includes('qwen-fixture'))"), "persisted source addition");
+  await click("Manage sources");
+  await evaluate("Array.from(document.querySelectorAll('.form-actions')).find(r=>r.textContent.includes('qwen-fixture') && r.querySelector('button')).querySelector('button:last-child').click()");
+  await waitFor(() => evaluate("!Array.from(document.querySelectorAll('button.row')).some(b=>b.textContent.includes('qwen-fixture'))"), "persisted source removal");
   await viewport(390,844);
   await waitFor(() => evaluate("document.documentElement.scrollWidth <= innerWidth + 1"), "catalog responsive width");
   await viewport(1440,900);
-  await click("Partial");
+  await click("Transfers");
   await waitFor(() => contains("No matching observations."), "partial shelf");
   await go("Devices");
   await waitFor(async () => await contains("cpu:0") && await contains("Physical inventory"), "physical owner inventory");
@@ -227,7 +237,7 @@ try {
     await waitFor(() => contains("GGUF quant: Q4_K_M"), "exact quant preview");
   }
   if (residentRoot) {
-    await click("Cached");
+    await click("Local");
     await waitFor(() => contains("fixture/serve"), "original cached snapshot shelf");
     await click("Inspect");
     await waitFor(() => contains("Manifest identity checked"), "exact digest inspection");

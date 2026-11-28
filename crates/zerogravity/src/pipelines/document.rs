@@ -36,6 +36,8 @@ pub struct Document {
     pub ui: Option<UiDoc>,
     #[serde(default)]
     pub downloads: Option<DownloadDoc>,
+    #[serde(default)]
+    pub sources: Option<Vec<crate::discovery::Source>>,
 }
 impl Default for Document {
     fn default() -> Self {
@@ -48,6 +50,7 @@ impl Default for Document {
             serve: None,
             ui: None,
             downloads: None,
+            sources: None,
         }
     }
 }

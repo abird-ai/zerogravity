@@ -62,7 +62,13 @@ pub(super) fn topic_usage(topic: Topic, child: Option<&str>) -> zerogravity::Res
                 "USAGE: zerogravity model remove REF [--cache ABS_PATH] --dry-run | --yes\nExact canonical snapshot reclamation; referenced or busy data refuses."
             ),
             Some("search") => println!(
-                "USAGE: zerogravity model search [QUERY]\nOffline family intent catalog, not a model readiness or remote search claim."
+                "USAGE: zerogravity model search [QUERY] [--source NAME]\nWithout --source, search known model definitions. With --source, browse the configured provider."
+            ),
+            Some("sources") => println!(
+                "USAGE: zerogravity model sources [list | add NAME hf|github|local [SCOPE] | edit NAME hf|github|local [SCOPE] | remove NAME | enable NAME | disable NAME]\nNamed discovery sources in the selected config. Local scope is an absolute directory; remote scope is optional namespace or repository."
+            ),
+            Some("browse") => println!(
+                "USAGE: zerogravity model browse NAME [QUERY] [--page N] | REPOSITORY_URL\nMetadata only. --offline uses curated/local observations; never downloads model weights."
             ),
             Some("import") => println!(
                 "USAGE: zerogravity model import --source PATH --repository REPO --commit SHA --file ROLE:PATH ...\nExisting cache import-hf grammar; see cache import-hf --help."

@@ -47,6 +47,20 @@ enum Input {
     Inspect {
         digest: String,
     },
+    Browse {
+        source: String,
+        query: String,
+        page: usize,
+        cursor: Option<String>,
+        online: bool,
+    },
+    Repository {
+        locator: String,
+    },
+    SaveSources {
+        expected: Vec<zerogravity::discovery::Source>,
+        entries: Vec<zerogravity::discovery::Source>,
+    },
     Verify {
         digest: String,
     },
@@ -156,7 +170,8 @@ fn pull(source: &str, selection: &str) -> Option<crate::pull::native::Intent> {
     {
         return None;
     }
-    let valid = match SourceSelector::parse(source).ok()? {
+    let normalized = zerogravity::discovery::normalize_locator(source);
+    let valid = match SourceSelector::parse(&normalized).ok()? {
         SourceSelector::Name(_) => true,
         SourceSelector::HuggingFace(value) | SourceSelector::GitHub(value) => pinned(&value),
         _ => false,
@@ -295,6 +310,29 @@ impl Input {
                 confirm: true,
             } if cfg!(feature = "serve") => Request::Stop(id(&generation)?),
             Self::Inspect { digest: value } => Request::Inspect(digest(value)?),
+            Self::Browse {
+                source,
+                query,
+                page,
+                cursor,
+                online,
+            } if part(&source) && query.len() <= 256 && !query.chars().any(char::is_control) => {
+                Request::Browse {
+                    source,
+                    query,
+                    page,
+                    cursor,
+                    online,
+                }
+            }
+            Self::Repository { locator } if locator.len() <= 4096 => {
+                Request::Repository { locator }
+            }
+            Self::SaveSources { expected, entries } => {
+                zerogravity::discovery::validate(&expected).ok()?;
+                zerogravity::discovery::validate(&entries).ok()?;
+                Request::SaveSources { expected, entries }
+            }
             Self::Verify { digest: value } => Request::Verify(digest(value)?),
             Self::RemovalPreview { digest: value } => Request::Reclaim {
                 digest: digest(value)?,
@@ -424,6 +462,7 @@ pub(super) fn result(shared: &Shared, identity: &str) -> Result<Value, &'static 
         "cancel_requested": result.summary.cancel_requested,
         "message": result.message,
         "response": response,
+        "discovery": result.discovery,
     }))
 }
 

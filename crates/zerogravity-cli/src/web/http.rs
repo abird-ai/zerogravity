@@ -287,7 +287,11 @@ pub(super) fn connection(
                     return error(&mut socket, "503 Service Unavailable");
                 };
                 if path.ends_with("/models") {
-                    json_response(&mut socket, "200 OK", &wire::models(runtime))
+                    json_response(
+                        &mut socket,
+                        "200 OK",
+                        &wire::models(runtime, &shared.selection),
+                    )
                 } else {
                     match wire::devices(runtime) {
                         Ok(value) => json_response(&mut socket, "200 OK", &value),

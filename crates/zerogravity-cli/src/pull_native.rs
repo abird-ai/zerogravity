@@ -15,6 +15,7 @@ pub(crate) enum Intent {
 }
 
 impl Intent {
+    #[cfg(any(feature = "tui", feature = "web"))]
     pub(crate) fn subject(&self) -> crate::control_host::progress::Subject {
         use crate::control_host::progress::Subject;
         match self {
@@ -36,7 +37,8 @@ impl Intent {
     /// An interactive pull is explicit and immutable. No branch/tag guesses, raw
     /// URLs, shell flags, credentials, or auto-selected quantization.
     pub(crate) fn parse(source: &str, selection: &str) -> Result<Self> {
-        let (provider, value) = match SourceSelector::parse(source.trim())? {
+        let normalized = zerogravity::discovery::normalize_locator(source.trim());
+        let (provider, value) = match SourceSelector::parse(&normalized)? {
             SourceSelector::HuggingFace(value) => (Provider::HuggingFace, value),
             SourceSelector::GitHub(value) => (Provider::GitHub, value),
             #[cfg(feature = "model-qwen35")]
@@ -51,6 +53,17 @@ impl Intent {
             }
         };
         let locator = ProviderLocator::parse(provider.label(), &value)?;
+        if provider == Provider::HuggingFace
+            && zerogravity::targets::MODEL_TARGETS.iter().any(|t| {
+                t.payload_hold
+                    && t.repository
+                        .is_some_and(|repo| repo.eq_ignore_ascii_case(&locator.repository))
+            })
+        {
+            return Err(Error::Unsupported(
+                "Repository is on an explicit model payload hold".into(),
+            ));
+        }
         let revision = locator
             .revision
             .filter(|revision| {
@@ -124,6 +137,57 @@ impl Intent {
         Ok(format!(
             "Pull into the selected cache? Existing disk policy (new cache: 16 GiB). No automatic load.\n{selection}"
         ))
+    }
+
+    /// Metadata-only resolution of the actual immutable file closure. An
+    /// offline preview remains explicitly unresolved except for exact recipes.
+    #[cfg(any(feature = "tui", feature = "web"))]
+    pub(crate) fn preview(
+        &self,
+        runtime: &Runtime,
+        cancel: &AtomicBool,
+        offline: bool,
+    ) -> Result<String> {
+        let confirmation = self.confirmation()?;
+        #[cfg(feature = "model-qwen35")]
+        if matches!(self, Self::Recipe(_)) {
+            return Ok(confirmation);
+        }
+        if offline {
+            return Ok(format!(
+                "{confirmation}\nOffline preview: file closure and sizes not resolved."
+            ));
+        }
+        let selection = match self {
+            Self::Files(request) => HubSelection::Files(request),
+            Self::Quant(request) => HubSelection::Quant(request),
+            #[cfg(feature = "model-qwen35")]
+            Self::Recipe(_) => unreachable!(),
+        };
+        let hub = runtime
+            .artifacts()
+            .hub(selection, PullLimits::default(), None, None)?;
+        let client = hub_client(selection.provider(), Some(20))?;
+        let admission = admission(MEMORY_DEFAULT)?;
+        let prepared = hub.resolve(&client, &admission, cancel, PullMode::Inspect)?;
+        let plan = prepared.plan();
+        let bytes = plan.total_bytes().map_or_else(
+            || format!("up to {} bytes", plan.maximum_bytes()),
+            |bytes| format!("{bytes} bytes"),
+        );
+        let mut message = format!(
+            "{confirmation}\nResolved closure: {} files · {bytes}\nRevision: {}",
+            plan.files().len(),
+            plan.source().revision()
+        );
+        // Bounded presentation, not a replacement for the original plan.
+        for file in plan.files().iter().take(24) {
+            message.push_str(&format!("\n{}", file.path()));
+        }
+        if plan.files().len() > 24 {
+            message.push_str("\n… additional closure files");
+        }
+        Ok(message)
     }
 
     pub(crate) fn execute(

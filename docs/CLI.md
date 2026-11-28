@@ -58,6 +58,61 @@ output is a JSON decision, including in text mode; it does not acquire or
 reserve. A refusal may still produce a decision report. Explicit backend
 and device constraints must be satisfied or refused.
 
+## Discover and manage model sources
+
+The Models view in TUI and Web has **Local**, **Discover**, and
+**Transfers** shelves. Discover starts with named sources: Hugging Face
+(`hf`), GitHub (`github`), and local directories (`local`). Open a
+source for curated or configured repositories, search the provider explicitly,
+browse a repository's files, choose a model or file set, and preview the
+resolved acquisition before pulling. Discovery does not download model
+weights or imply that a model can run on the selected backend.
+
+```sh
+zerogravity model sources
+zerogravity model sources add official-qwen hf Qwen
+zerogravity model sources add my-models local /absolute/path/to/models
+zerogravity model sources add llama-cpp github ggml-org/llama.cpp
+zerogravity model browse official-qwen qwen
+zerogravity model search qwen --source hf --format json
+zerogravity model browse https://huggingface.co/Qwen/Qwen3.5-0.8B
+zerogravity model browse my-models
+zerogravity model sources disable official-qwen
+zerogravity model sources enable official-qwen
+zerogravity model sources edit official-qwen hf Qwen/Qwen3.5-0.8B
+zerogravity model sources remove official-qwen
+```
+
+Saved sources use the active configuration document's `sources` list;
+removing or disabling one never deletes cached models or loaded owners.
+A remote scope can be a namespace or a specific repository. A local
+scope is an absolute directory; its immediate model candidates are listed.
+Configure local roots in the CLI/native TUI; the Web client can browse
+configured roots but cannot grant itself new filesystem access. TUI source
+management uses the configuration editor, Web uses named source controls.
+In TUI, select Discover, use `o` to open a source or repository, `f` to
+search a provider, and `d` to preview acquisition. With `--offline`,
+provider search uses the curated/configured references; no remote request
+is made. Normal online discovery uses the existing Hugging Face/GitHub
+credential policy and provider-specific pagination (`--page`; Hugging Face
+also returns the opaque `--cursor`). Other acquisition adapters retain
+their explicit CLI routes; they do not yet have provider browsers.
+
+A direct repository URL is equivalent to its `hf:` or `gh:` locator.
+For example, after browsing a repository, pull a selected file:
+
+```sh
+zerogravity model pull https://huggingface.co/OWNER/REPO --file MODEL.gguf
+zerogravity model pull https://huggingface.co/Qwen/Qwen3.5-0.8B
+```
+
+The second command uses the approved exact original-model recipe when
+compiled. Arbitrary repositories require a file/quant selection; the
+existing resolver expands and validates the required file closure.
+Explicit direct object URLs keep the object acquisition route. The
+provider browser does not bypass payload holds, cache verification, or
+runtime admission.
+
 ## Cached models
 
 ```sh
@@ -70,7 +125,7 @@ zerogravity help model pull
 ```
 
 Here REF denotes a listed canonical reference or exact snapshot digest.
-Search is a static family intent catalog, not remote search or readiness.
+Search without a named source remains the static family intent catalog, not remote search or readiness.
 Acquisition is explicit; the normal hub form is
 `model pull hf:REPO@REV --file PATH` (or the corresponding `gh:` form).
 Choose the intended revision and file; prefer a full immutable commit.

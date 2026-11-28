@@ -273,6 +273,34 @@ impl Scope {
                     add(C::Library(L::Reclaim(true)), "Remove", "x", self.busy());
                     add(C::Library(L::Execution), "Execution…", "e", self.busy());
                 }
+                Some(Key::Source(_))
+                | Some(Key::DiscoverBack)
+                | Some(Key::DiscoverMore)
+                | Some(Key::SourceManager) => {
+                    add(C::Library(L::OpenSource), "Open", "o", self.busy());
+                    if matches!(&self.selection, Some(Key::Source(_))) {
+                        add(
+                            C::Library(L::SearchSource),
+                            "Search repositories…",
+                            "f",
+                            self.busy(),
+                        );
+                    }
+                }
+                Some(Key::Repository(_)) => {
+                    add(C::Library(L::OpenSource), "Browse files", "o", self.busy());
+                    add(C::Details, "Details", "D", None);
+                }
+                Some(Key::RemoteFile { held: true, .. }) => add(C::Details, "Details", "D", None),
+                Some(Key::RemoteFile { held: false, .. }) => {
+                    add(C::Library(L::Pull), "Pull selection…", "d", self.pull());
+                    add(C::Details, "Details", "D", None);
+                }
+                Some(Key::Local(_)) => {
+                    add(C::Library(L::Load(false)), "Load", "l", self.load());
+                    add(C::Library(L::Run), "Run", "p", self.load());
+                    add(C::Details, "Details", "D", None);
+                }
                 Some(Key::Target(_)) | Some(Key::Partial(_)) => {
                     add(
                         C::Library(L::Pull),
@@ -285,6 +313,14 @@ impl Scope {
                         self.pull(),
                     );
                     add(C::Details, "Details", "D", None);
+                    if matches!(&self.selection, Some(Key::Target(_))) {
+                        add(
+                            C::Library(L::OpenSource),
+                            "Browse repository",
+                            "o",
+                            self.busy(),
+                        );
+                    }
                 }
                 _ => add(C::Library(L::Pull), "New pull", "d", self.pull()),
             },

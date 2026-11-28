@@ -351,6 +351,7 @@ pub fn explain(path: &Path, bytes: &[u8]) -> Result<BTreeMap<String, Setting>> {
             None,
         )?;
     }
+    add("sources", yaml(crate::discovery::sources(&doc)), None)?;
     let ui = doc.ui.unwrap_or_default();
     add("ui.theme", yaml(ui.theme.unwrap_or_default()), None)?;
     add("ui.mouse", yaml(ui.mouse.unwrap_or_default()), None)?;

@@ -154,7 +154,7 @@ def shell(root):
                   (b"\x7flog\r", b"received."),
                   (60, b"ZeroGravity"), (b"\t", b"Home")])
     exercise([], [], terminate=True)
-    exercise(["--offline"], [(alt(b"4"), b"Cached"), (alt(b"m"), b"qwen3.5-plus"),
+    exercise(["--offline"], [(alt(b"4"), b"Local"), (alt(b"m"), b"Hugging Face"), (b"o", b"Qwen/Qwen3.5-0.8B"),
                               (alt(b"d"), b"prohibits"), (alt(b"5"), b"Download")])
     exercise(["--help"], [], interactive=False)
     exercise(["--interactive", "never"], [], interactive=False)
@@ -206,32 +206,34 @@ def filter_text(terminal,value,expected,seconds=10):
 
 
 def mouse_interaction(root):
-    with Terminal(root, ["--offline"], width=150, height=24) as terminal:
+    with Terminal(root, ["--offline"], width=150, height=20) as terminal:
         terminal.check_started()
+        terminal.repaint_on_wait = True
         assert b"\x1b[?1006h" in terminal.transcript
-        terminal.send(click(4,5), b"Cached")
-        terminal.send(click(35,2), b"qwen3.5-plus")
+        terminal.send(click(4,5), b"Local")
+        terminal.send(click(35,2), b"Hugging Face")
+        terminal.send(b"o", b"Qwen/Qwen3.5-0.8B")
         # The first visible row after a 3-line wheel movement is the fourth
         # catalog entry. Wheel doesn't alter selection; click must use the
         # actual scrolled row, not its index in the unscrolled catalog.
-        terminal.send(wheel(30,10), b"gemma4")
+        terminal.send(wheel(30,10), b"google/gemma")
         terminal.send(click(30,4), b"Qwen/Qwen3.8-27B")
         # Drag the rail from its default 22 cells to 29; clicking the newly
         # exposed rail area (previously workspace) must navigate.
-        terminal.send(drag(22,18,29,18), b"Models")
+        terminal.send(drag(22,15,29,15), b"Models")
         terminal.send(click(26,6), b"new acquisition disabled")
-        terminal.send(click(26,5), b"Catalog")
+        terminal.send(click(26,5), b"Discover")
         # Resize the actual inner divider, then select through the newly
         # enlarged list region (which was formerly the detail pane).
         terminal.send(drag(95,15,105,15), b"Selected")
-        terminal.send(click(101,5), b"> qwen3.8-flash-next")
-        menu_action(terminal,1,2,b"pinned-indexed-safetensors",opener=click(102,5))
+        terminal.send(click(101,5), b"> Qwen/")
+        terminal.send(b"\x1bOS", b"Actions")
         os.write(terminal.master,b"\x1b")
         time.sleep(0.2)
         # Maximize the list; select a row in the former details area, then
         # restore its old split and observe the selected exact source.
-        terminal.send(click(102,3) + click(140,4), b"> qwen3.8-27b")
-        terminal.send(click(147,3), b"Qwen/Qwen3.8-27B")
+        terminal.send(click(102,3) + click(140,4), b"> Qwen/")
+        terminal.send(click(147,3), b"hf:Qwen/Qwen3.8-27B")
         # Focus details and return with keyboard equivalence. Opening a
         # modal masks every hit target behind it.
         terminal.send(b"\x1b[17~\x1bOP", b"Help")
@@ -252,9 +254,10 @@ def mouse_interaction(root):
     with Terminal(root, ["--offline"], width=60, height=25) as terminal:
         terminal.check_started()
         terminal.send(click(2,0),b"Home")
-        terminal.send(click(4,5),b"Cached")
-        terminal.send(click(12,3),b"qwen3.5-plus")
-        terminal.send(drag(25,13,25,14) + click(4,13),b"> gemma4-26b-a4b-it")
+        terminal.send(click(4,5),b"Local")
+        terminal.send(click(12,3),b"Hugging Face")
+        terminal.send(b"o",b"Qwen/Qwen3.5-0.8B")
+        terminal.send(drag(25,13,25,14) + click(4,13),b"> google/gemma-")
         # Narrow view collapses to one pane; Nav remains available.
         terminal.resize(30)
         os.kill(terminal.proc.pid,signal.SIGWINCH)
@@ -448,25 +451,26 @@ def editor_and_choices(root):
 
         # Search the existing catalog locally and replace the visible
         # query via a drag selection, not a remote provider query.
-        terminal.send(alt(b"4"),b"Cached")
-        terminal.send(click(35,2),b"qwen3.5-plus")
+        terminal.send(alt(b"4"),b"Local")
+        terminal.send(click(35,2),b"Hugging Face")
+        terminal.send(b"o",b"Qwen/Qwen3.5-0.8B")
         # Ordinary digits navigate until search is explicitly focused.
         terminal.send(b"9",b"Operational logs")
-        terminal.send(b"4",b"Catalog")
-        terminal.send(b"sgemma4",b"> gemma4-e2b-it")
+        terminal.send(b"4",b"Discover")
+        terminal.send(b"sgemma-",b"> google/gemma-4-E2B-it")
         terminal.send(b"q8:/?",b"No matches")
         # Escape leaves search and preserves its filter across navigation.
         os.write(terminal.master,b"\x1b")
         time.sleep(0.2)
         terminal.send(b"9",b"Operational logs")
-        terminal.send(b"4",b"gemma4q8:/?")
-        terminal.send(b"s\x15gemma4",b"> gemma4-e2b-it")
+        terminal.send(b"4",b"gemma-q8:/?")
+        terminal.send(b"s\x15gemma-",b"> google/gemma-4-E2B-it")
         x=31
-        terminal.send(drag(x,0,x+6,0)+b"qwen3.5",b"> qwen3.5-plus")
-        terminal.send(alt(b"m"),b"Partial")
-        terminal.send(alt(b"m"),b"Cached")
-        terminal.send(alt(b"m"),b"Catalog")
-        terminal.until(b"qwen3.5-plus")
+        terminal.send(drag(x,0,x+6,0)+b"qwen3.5",b"> Qwen/Qwen3.5-0.8B")
+        terminal.send(alt(b"m"),b"Transfers")
+        terminal.send(alt(b"m"),b"Local")
+        terminal.send(alt(b"m"),b"Discover")
+        terminal.until(b"Qwen/Qwen3.5-0.8B")
         os.write(terminal.master,b"\x11")
         terminal.finish()
 

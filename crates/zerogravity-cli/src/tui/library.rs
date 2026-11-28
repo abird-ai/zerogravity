@@ -12,6 +12,22 @@ use zerogravity::{Error, Result, Runtime, control::ControlPlane};
 pub(super) enum Key {
     Snapshot(String),
     Target(String),
+    Source(String),
+    Repository(String),
+    #[cfg_attr(
+        not(all(feature = "acquisition", target_os = "linux")),
+        allow(dead_code, reason = "remote file observations require acquisition")
+    )]
+    RemoteFile {
+        locator: String,
+        path: String,
+        held: bool,
+    },
+    Local(String),
+    DiscoverBack,
+    DiscoverMore,
+    SourceManager,
+
     #[cfg_attr(
         not(all(feature = "cache", target_os = "linux")),
         allow(dead_code, reason = "checkpoint inventory is optional")
@@ -200,6 +216,15 @@ pub(super) struct Library {
     #[cfg(all(feature = "cache", target_os = "linux"))]
     sources: Vec<zerogravity::control::CachedModelSummary>,
     catalog: Rows,
+    configured_sources: Vec<zerogravity::discovery::Source>,
+    pub discovery_source: Option<String>,
+    pub discovery_query: String,
+    discovery_page: usize,
+    discovery_cursor: Option<String>,
+    discovery_next: Option<String>,
+    discovery_online: bool,
+    pub discovery_repository: Option<String>,
+
     partial: Rows,
     devices: Rows,
     profiles: Rows,
@@ -219,30 +244,13 @@ pub(super) struct Library {
 impl Library {
     pub fn new(editor: Target) -> Self {
         let mut catalog = Rows::default();
-        catalog.replace(
-            zerogravity::targets::MODEL_TARGETS
-                .iter()
-                .map(|target| Row {
-                    key: Key::Target(target.slug.into()),
-                    title: target.slug.into(),
-                    annotation: Some(target.task.label().into()),
-                    details: vec![
-                        format!("Repository: {}", target.repository.unwrap_or("unverified")),
-                        format!("Source: {}", target.source_status.label()),
-                        format!("Execution: {}", target.execution_status.label()),
-                    ],
-                    technical: vec![
-                        format!("Task: {}", target.task.label()),
-                        format!("Source layout: {}", target.source_layout.label()),
-                        if target.payload_hold {
-                            "Payload hold; no catalog acquisition.".into()
-                        } else {
-                            target.note.into()
-                        },
-                    ],
-                })
-                .collect(),
-        );
+        let sources = editor
+            .read()
+            .ok()
+            .flatten()
+            .map(|(_, doc)| zerogravity::discovery::sources(&doc))
+            .unwrap_or_else(zerogravity::discovery::defaults);
+        catalog.replace(source_rows(&sources));
         Self {
             shelf: Shelf::Cached,
             execution_choices: execution::choices(&[]),
@@ -251,6 +259,14 @@ impl Library {
             #[cfg(all(feature = "cache", target_os = "linux"))]
             sources: Vec::new(),
             catalog,
+            configured_sources: sources,
+            discovery_source: None,
+            discovery_query: String::new(),
+            discovery_page: 0,
+            discovery_cursor: None,
+            discovery_next: None,
+            discovery_online: false,
+            discovery_repository: None,
             partial: Rows::default(),
             devices: Rows::default(),
             profiles: Rows::default(),
@@ -269,6 +285,173 @@ impl Library {
     }
 }
 impl Library {
+    pub fn sync_sources(&mut self, sources: &[zerogravity::discovery::Source]) {
+        if self.configured_sources != sources {
+            self.show_sources(sources);
+        }
+    }
+    pub fn show_sources(&mut self, sources: &[zerogravity::discovery::Source]) {
+        self.configured_sources = sources.to_vec();
+        self.discovery_source = None;
+        self.discovery_repository = None;
+        self.discovery_query.clear();
+        self.discovery_page = 0;
+        self.discovery_cursor = None;
+        self.discovery_next = None;
+        self.catalog.set_query(String::new());
+        self.catalog.replace(source_rows(sources));
+    }
+
+    pub fn show_discovery(&mut self, result: crate::control_host::work::DiscoveryResult) {
+        use crate::control_host::work::DiscoveryResult;
+        self.catalog.set_query(String::new());
+        match result {
+            DiscoveryResult::Page {
+                source,
+                query,
+                page,
+                cursor,
+                online,
+                result,
+            } => {
+                self.discovery_query = query;
+                self.discovery_cursor = cursor;
+                self.discovery_online = online;
+                self.discovery_source = Some(source.clone());
+                self.discovery_repository = None;
+                self.discovery_page = page;
+                self.discovery_next = result.next_cursor.clone();
+                let mut rows = vec![back_row("Sources")];
+                rows.extend(result.entries.into_iter().map(|e| {
+                    let key = if e.locator.starts_with("hf:") || e.locator.starts_with("gh:") {
+                        if let Some(target) = &e.curated {
+                            Key::Target(target.clone())
+                        } else {
+                            Key::Repository(e.locator.clone())
+                        }
+                    } else {
+                        Key::Local(e.locator.clone())
+                    };
+                    Row {
+                        key,
+                        title: e.name,
+                        annotation: Some(if e.payload_hold {
+                            "Payload hold".into()
+                        } else if e.curated.is_some() {
+                            "Recommended".into()
+                        } else {
+                            e.bytes.map_or("Discovered".into(), format::bytes)
+                        }),
+                        details: vec![
+                            e.locator,
+                            "Metadata observation · not execution eligibility".into(),
+                        ],
+                        technical: vec![],
+                    }
+                }));
+                if result.more {
+                    rows.push(Row {
+                        key: Key::DiscoverMore,
+                        title: "Next page…".into(),
+                        annotation: None,
+                        details: vec![],
+                        technical: vec![],
+                    });
+                }
+                self.catalog.selected = Some(Key::DiscoverBack);
+                self.catalog.replace(rows);
+                if self.catalog.visible().len() > 1 {
+                    self.catalog.move_selection(1);
+                }
+            }
+            #[cfg(all(feature = "acquisition", target_os = "linux"))]
+            DiscoveryResult::Repository { result } => {
+                self.discovery_repository = Some(result.locator.clone());
+                let mut rows = vec![back_row("Repositories")];
+                if let Some(target) = &result.curated {
+                    #[cfg(feature = "model-qwen35")]
+                    if !result.payload_hold
+                        && zerogravity::models::QwenPullRecipe::for_target(target).is_ok()
+                    {
+                        rows.push(Row {
+                            key: Key::Target(target.clone()),
+                            title: "Approved original model".into(),
+                            annotation: Some("Exact recipe".into()),
+                            details: vec![target.clone()],
+                            technical: vec![],
+                        });
+                    }
+                }
+                for file in result.files {
+                    rows.push(Row {
+                        key: Key::RemoteFile {
+                            locator: result.locator.clone(),
+                            path: file.path.clone(),
+                            held: result.payload_hold,
+                        },
+                        title: file.path,
+                        annotation: Some(file.bytes.map_or("Unknown size".into(), format::bytes)),
+                        details: vec![
+                            format!("Role: {}", file.role),
+                            result.locator.clone(),
+                            if result.payload_hold {
+                                "Payload hold — no pull".into()
+                            } else {
+                                "Select files; resolver revalidates closure".into()
+                            },
+                        ],
+                        technical: vec![],
+                    });
+                }
+                self.catalog.selected = Some(Key::DiscoverBack);
+                self.catalog.replace(rows);
+                if self.catalog.visible().len() > 1 {
+                    self.catalog.move_selection(1);
+                }
+            }
+        }
+    }
+    pub fn browse(
+        &self,
+        source: String,
+        query: String,
+        online: bool,
+        page: usize,
+    ) -> crate::control_host::work::Request {
+        crate::control_host::work::Request::Browse {
+            source,
+            query,
+            page,
+            cursor: if page == 0 {
+                None
+            } else {
+                self.discovery_cursor.clone()
+            },
+            online,
+        }
+    }
+    pub fn current_discovery_source(&self) -> Option<String> {
+        self.discovery_source.clone()
+    }
+    pub fn next_discovery(&self) -> Option<crate::control_host::work::Request> {
+        Some(crate::control_host::work::Request::Browse {
+            source: self.discovery_source.clone()?,
+            query: self.discovery_query.clone(),
+            page: self.discovery_page + 1,
+            cursor: self.discovery_next.clone(),
+            online: self.discovery_online,
+        })
+    }
+    pub fn back_discovery(&self) -> Option<crate::control_host::work::Request> {
+        self.discovery_repository.as_ref()?;
+        Some(self.browse(
+            self.discovery_source.clone()?,
+            self.discovery_query.clone(),
+            self.discovery_online,
+            self.discovery_page,
+        ))
+    }
+
     #[cfg(all(feature = "cache", target_os = "linux"))]
     pub fn source(&self, digest: &str) -> Option<&zerogravity::control::CachedModelSummary> {
         self.sources.iter().find(|source| source.snapshot == digest)
@@ -464,6 +647,40 @@ impl Library {
     }
 }
 
+fn back_row(label: &str) -> Row {
+    Row {
+        key: Key::DiscoverBack,
+        title: format!("‹ {label}"),
+        annotation: None,
+        details: vec![],
+        technical: vec![],
+    }
+}
+fn source_rows(sources: &[zerogravity::discovery::Source]) -> Vec<Row> {
+    let mut rows = sources
+        .iter()
+        .filter(|s| s.enabled)
+        .map(|s| Row {
+            key: Key::Source(s.name.clone()),
+            title: s.name.clone(),
+            annotation: Some(s.kind.label().into()),
+            details: vec![
+                s.scope.clone().unwrap_or_else(|| "Default scope".into()),
+                "Open to browse; search explicitly for remote repositories".into(),
+            ],
+            technical: vec![],
+        })
+        .collect::<Vec<_>>();
+    rows.push(Row {
+        key: Key::SourceManager,
+        title: "Manage sources…".into(),
+        annotation: None,
+        details: vec!["Add, edit, disable or remove configured sources".into()],
+        technical: vec![],
+    });
+    rows
+}
+
 fn models(control: ControlPlane<'_>) -> Models {
     #[cfg(all(feature = "cache", target_os = "linux"))]
     {
@@ -636,11 +853,24 @@ mod tests {
     fn local_search_keeps_exact_visible_selection_without_losing_inventory() {
         let mut library = Library::new(super::super::work::Document::test_default().target);
         library.shelf = Shelf::Catalog;
+        let source = zerogravity::discovery::defaults().remove(0);
+        library.show_discovery(crate::control_host::work::DiscoveryResult::Page {
+            source: source.name.clone(),
+            query: String::new(),
+            page: 0,
+            cursor: None,
+            online: false,
+            result: zerogravity::discovery::Page {
+                entries: zerogravity::discovery::curated(&source),
+                more: false,
+                next_cursor: None,
+            },
+        });
         let rows = library.rows_mut(Kind::Models);
         let count = rows.visible().len();
-        rows.set_query("gemma4".into());
+        rows.set_query("gemma".into());
         assert!(rows.visible().len() > 0 && rows.visible().len() < count);
-        assert!(rows.selected().unwrap().title.contains("gemma4"));
+        assert!(rows.selected().unwrap().title.contains("gemma"));
         rows.set_query("no such source".into());
         assert!(rows.selected().is_none());
         assert_eq!(rows.visible().len(), 0);

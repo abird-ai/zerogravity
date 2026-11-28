@@ -31,6 +31,185 @@ pub(super) fn search(args: &[String]) -> Result<()> {
     Ok(())
 }
 
+/// Browse and manage the selected document's discovery sources. No second
+/// catalog, cache or credential store; remote queries are explicit.
+pub(super) fn discovery(
+    operation: &str,
+    args: &[String],
+    selection: Option<(&str, &str)>,
+    offline: bool,
+    format: Format,
+) -> Result<()> {
+    use std::sync::atomic::AtomicBool;
+    use zerogravity::discovery::{self as d, Kind, Source};
+    let bad =
+        || Error::Malformed("invalid discovery command; see model sources/browse --help".into());
+    let file =
+        zerogravity::configuration::ConfigFile::open(crate::config_cli::selected_path(selection)?)?;
+    if selection.is_some() {
+        file.require_existing()?;
+    }
+    let doc = zerogravity::pipelines::parse_document(file.bytes())?;
+    let mut sources = d::sources(&doc);
+    if operation == "sources" {
+        match args {
+            [] => {}
+            [op] if op == "list" => {}
+            [op, name, kind, scope @ ..]
+                if matches!(op.as_str(), "add" | "edit") && scope.len() <= 1 =>
+            {
+                let kind = match kind.as_str() {
+                    "hf" | "hugging_face" => Kind::HuggingFace,
+                    "github" | "gh" => Kind::Github,
+                    "local" => Kind::Local,
+                    _ => return Err(bad()),
+                };
+                let existing = sources.iter().position(|source| &source.name == name);
+                if (op == "add") == existing.is_some() {
+                    return Err(Error::State(
+                        "source already exists or does not exist".into(),
+                    ));
+                }
+                let source = Source {
+                    name: name.clone(),
+                    kind,
+                    scope: scope.first().cloned(),
+                    enabled: existing.is_none_or(|i| sources[i].enabled),
+                };
+                if let Some(i) = existing {
+                    sources[i] = source;
+                } else {
+                    sources.push(source);
+                }
+                d::replace(&file, &sources)?;
+            }
+            [op, name] if matches!(op.as_str(), "remove" | "enable" | "disable") => {
+                let i = sources
+                    .iter()
+                    .position(|source| &source.name == name)
+                    .ok_or_else(bad)?;
+                if op == "remove" {
+                    sources.remove(i);
+                } else {
+                    sources[i].enabled = op == "enable";
+                }
+                d::replace(&file, &sources)?;
+            }
+            _ => return Err(bad()),
+        }
+        if format == Format::Json {
+            return crate::output::json(&sources);
+        }
+        for s in sources {
+            println!(
+                "{}  {}  {}{}",
+                s.name,
+                s.kind.label(),
+                s.scope.as_deref().unwrap_or("default"),
+                if s.enabled { "" } else { " · disabled" }
+            );
+        }
+        return Ok(());
+    }
+    let (name, rest) = if operation == "search" {
+        let pos = args.iter().position(|a| a == "--source").ok_or_else(bad)?;
+        if pos + 2 != args.len() {
+            return Err(bad());
+        }
+        (&args[pos + 1], &args[..pos])
+    } else {
+        args.split_first().ok_or_else(bad)?
+    };
+    let mut query = "";
+    let mut page = 0;
+    let mut cursor: Option<&str> = None;
+    let mut rest = rest.iter();
+    while let Some(arg) = rest.next() {
+        if arg == "--page" {
+            page = rest.next().ok_or_else(bad)?.parse().map_err(|_| bad())?;
+        } else if arg == "--cursor" {
+            cursor = Some(rest.next().ok_or_else(bad)?.as_str());
+        } else if query.is_empty() && !arg.starts_with('-') {
+            query = arg;
+        } else {
+            return Err(bad());
+        }
+    }
+    let cancel = AtomicBool::new(false);
+    let Some(source) = sources.iter().find(|s| &s.name == name && s.enabled) else {
+        if operation != "browse" || !query.is_empty() || page != 0 || cursor.is_some() {
+            return Err(bad());
+        }
+        #[cfg(all(feature = "acquisition", target_os = "linux"))]
+        {
+            let repository = d::files(name, offline, &cancel)?;
+            if format == Format::Json {
+                return crate::output::json(&repository);
+            }
+            println!("{}", repository.locator);
+            for f in repository.files {
+                println!(
+                    "{}  {}  {}",
+                    f.path,
+                    f.bytes.map_or("unknown".into(), |n| n.to_string()),
+                    f.role
+                );
+            }
+            return Ok(());
+        }
+        #[cfg(not(all(feature = "acquisition", target_os = "linux")))]
+        return Err(Error::Unsupported(
+            "remote repository discovery requires acquisition".into(),
+        ));
+    };
+    let result = if source.kind == Kind::Local {
+        d::local(source, query, page, &cancel)?
+    } else if offline {
+        d::Page {
+            entries: d::curated(source)
+                .into_iter()
+                .filter(|e| e.name.to_lowercase().contains(&query.to_lowercase()))
+                .collect(),
+            more: false,
+            next_cursor: None,
+        }
+    } else {
+        #[cfg(all(feature = "acquisition", target_os = "linux"))]
+        {
+            d::browse(source, query, page, cursor, false, &cancel)?
+        }
+        #[cfg(not(all(feature = "acquisition", target_os = "linux")))]
+        {
+            return Err(Error::Unsupported(
+                "remote discovery requires acquisition; use --offline for curated metadata".into(),
+            ));
+        }
+    };
+    if format == Format::Json {
+        return crate::output::json(&result);
+    }
+    for e in result.entries {
+        println!(
+            "{}  {}{}",
+            e.name,
+            e.locator,
+            if e.payload_hold {
+                " · payload hold"
+            } else {
+                ""
+            }
+        );
+    }
+    if result.more {
+        if let Some(cursor) = result.next_cursor {
+            println!("More results: --page {} --cursor {}", page + 1, cursor);
+        } else {
+            println!("More results: use --page {}", page + 1);
+        }
+    }
+    Ok(())
+}
+
 #[cfg(all(feature = "acquisition", target_os = "linux"))]
 pub(super) fn pull(args: &[String]) -> Result<()> {
     use zerogravity::cache::provenance::ProviderLocator;
@@ -55,12 +234,49 @@ pub(super) fn pull(args: &[String]) -> Result<()> {
     ) {
         return crate::pull::run(args);
     }
-    let (provider, value) = match SourceSelector::parse(first)? {
+    let normalized = zerogravity::discovery::normalize_locator(first);
+    let (provider, value) = match SourceSelector::parse(&normalized)? {
         SourceSelector::HuggingFace(value) => ("huggingface", value),
         SourceSelector::GitHub(value) => ("github", value),
         _ => return Err(Error::Unsupported("model pull requires an explicit hf: or gh: locator and file/quant selection; no implicit acquisition".into())),
     };
     let locator = ProviderLocator::parse(provider, &value)?;
+    if provider == "huggingface"
+        && zerogravity::targets::MODEL_TARGETS.iter().any(|t| {
+            t.payload_hold
+                && t.repository
+                    .is_some_and(|repo| repo.eq_ignore_ascii_case(&locator.repository))
+        })
+    {
+        return Err(Error::Unsupported(
+            "Repository is on an explicit model payload hold".into(),
+        ));
+    }
+    #[cfg(feature = "model-qwen35")]
+    if args.len() == 1
+        && provider == "huggingface"
+        && let Some(target) = zerogravity::targets::MODEL_TARGETS
+            .iter()
+            .find(|t| t.repository == Some(locator.repository.as_str()))
+        && let Ok(recipe) = zerogravity::models::QwenPullRecipe::for_target(target.slug)
+        && locator
+            .revision
+            .as_deref()
+            .is_none_or(|revision| revision == recipe.revision())
+    {
+        let intent = crate::pull::native::Intent::parse(target.slug, "")?;
+        let runtime = zerogravity::Runtime::builder().build()?;
+        let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let _signals = crate::signals::CancellationSignals::register(cancel.clone())?;
+        crate::output::emit!(Status, "{}", intent.confirmation()?);
+        let result = intent.execute(&runtime, &cancel, false);
+        let retired = runtime.shutdown();
+        println!("{}", result?);
+        return retired;
+    }
+    if args.len() == 1 {
+        return Err(Error::Malformed("Select repository files or quantization: model browse REPOSITORY_URL, then model pull SOURCE --file PATH or --quant TAG".into()));
+    }
     let mut canonical = vec![
         if provider == "huggingface" {
             "hf".into()

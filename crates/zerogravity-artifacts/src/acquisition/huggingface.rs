@@ -889,6 +889,37 @@ fn glob_match(pattern: &str, value: &str, work: &mut usize) -> Result<bool> {
     }
     Ok(i == p.len())
 }
+/// A search-page cursor is opaque data, never a caller-supplied request URL.
+pub fn model_search_cursor(value: &str) -> Result<Option<String>> {
+    let Some(next) = next_link(value)? else {
+        return Ok(None);
+    };
+    let url =
+        Url::parse(&next).map_err(|_| Error::Malformed("invalid HF search pagination".into()))?;
+    if url.origin().ascii_serialization() != "https://huggingface.co"
+        || url.path() != "/api/models"
+        || url.fragment().is_some()
+        || !url.username().is_empty()
+        || url.password().is_some()
+    {
+        return Err(Error::Malformed(
+            "HF search pagination escaped model listing".into(),
+        ));
+    }
+    let mut pairs = url.query_pairs().filter(|(key, _)| key == "cursor");
+    let cursor = pairs
+        .next()
+        .map(|(_, value)| value.into_owned())
+        .filter(|value| {
+            !value.is_empty() && value.len() <= 8192 && !value.chars().any(char::is_control)
+        })
+        .ok_or_else(|| Error::Malformed("invalid HF search cursor".into()))?;
+    if pairs.next().is_some() {
+        return Err(Error::Malformed("duplicate HF search cursor".into()));
+    }
+    Ok(Some(cursor))
+}
+
 fn next_link(value: &str) -> Result<Option<String>> {
     let mut result = None;
     for part in value.split(',') {
@@ -980,6 +1011,27 @@ mod tests {
     }
     fn file(path: &str, size: u64) -> serde_json::Value {
         serde_json::json!({"type":"file","path":path,"size":size})
+    }
+
+    #[test]
+    fn discovery_cursor_accepts_only_hub_model_listing() {
+        assert_eq!(
+            model_search_cursor("<https://huggingface.co/api/models?cursor=a%2Bb>; rel=\"next\"")
+                .unwrap(),
+            Some("a+b".into())
+        );
+        assert_eq!(
+            model_search_cursor("<https://huggingface.co/api/models>; rel=prev").unwrap(),
+            None
+        );
+        for value in [
+            "<https://example.invalid/api/models?cursor=x>; rel=next",
+            "<https://huggingface.co/api/datasets?cursor=x>; rel=next",
+            "<https://huggingface.co/api/models?cursor=x&cursor=y>; rel=next",
+            "<https://huggingface.co/api/models?cursor=%0A>; rel=next",
+        ] {
+            assert!(model_search_cursor(value).is_err(), "{value}");
+        }
     }
 
     #[test]

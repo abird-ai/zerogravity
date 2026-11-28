@@ -158,7 +158,7 @@ pub(super) fn snapshot(
 
 /// Cold inventory is a separate authenticated read. Progress/token events
 /// never force cache scans; the browser requests it on entry/invalidation.
-pub(super) fn models(runtime: &Runtime) -> Value {
+pub(super) fn models(runtime: &Runtime, selection: &crate::control_host::Selection) -> Value {
     let catalog: Vec<_> = zerogravity::targets::MODEL_TARGETS.iter().map(|target| {
         #[cfg(all(feature = "acquisition", feature = "model-qwen35", target_os = "linux"))]
         let recipe = (!target.payload_hold).then(|| zerogravity::models::QwenPullRecipe::for_target(target.slug).ok()).flatten().map(|recipe| json!({
@@ -175,7 +175,17 @@ pub(super) fn models(runtime: &Runtime) -> Value {
         })
     }).collect();
 
-    let mut result = json!({"cached": [], "catalog": catalog, "partial": [], "warning": null});
+    let configured = selection
+        .snapshot()
+        .read()
+        .map(|doc| zerogravity::discovery::sources(&doc.map(|(_, doc)| doc).unwrap_or_default()));
+    let sources = configured.as_ref().map(|s| s.as_slice()).unwrap_or(&[]);
+    let curated = sources
+        .iter()
+        .map(|source| (source.name.clone(), zerogravity::discovery::curated(source)))
+        .collect::<std::collections::BTreeMap<_, _>>();
+    let mut result = json!({"cached": [], "catalog": catalog, "partial": [], "warning": null,
+        "sources": sources, "curated": curated, "sources_available": configured.is_ok()});
     #[cfg(all(feature = "cache", target_os = "linux"))]
     let observation = crate::control_host::inventory::cache(runtime.control());
     // Same cold observation as Devices. A failed observation leaves

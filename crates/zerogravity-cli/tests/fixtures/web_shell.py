@@ -266,6 +266,27 @@ def smoke(binary):
                 if recipe:
                     preview = client.action({"kind": "pull_preview", "source": recipe["slug"], "selection": ""})
                     assert recipe["recipe"]["snapshot"] in preview["message"]
+            # Discovery observations cannot publish cache contents or grant a new
+            # filesystem root. Saved remote scopes use the original ConfigFile.
+            sources = models["sources"]
+            assert {s["kind"] for s in sources} == {"hugging_face", "github", "local"}
+            result = client.action({"kind": "browse", "source": "hf", "query": "qwen", "page": 0, "online": False})
+            assert result["discovery"]["kind"] == "page"
+            assert any(e["name"] == "Qwen/Qwen3.5-0.8B" for e in result["discovery"]["result"]["entries"])
+            added = sources + [{"name": "official-qwen", "kind": "hugging_face", "scope": "Qwen", "enabled": True}]
+            client.action({"kind": "save_sources", "expected": sources, "entries": added})
+            assert client.inventory("models")["sources"] == added
+            client.action({"kind": "save_sources", "expected": sources, "entries": sources}, state="failed")
+            forbidden = added + [{"name": "escape", "kind": "local", "scope": "/tmp", "enabled": True}]
+            client.action({"kind": "save_sources", "expected": added, "entries": forbidden}, state="failed")
+            client.action({"kind": "browse", "source": "official-qwen", "query": "", "page": 0, "online": False})
+            client.action({"kind": "save_sources", "expected": added, "entries": sources})
+            assert client.inventory("models")["sources"] == sources
+            # Restore the original exact bytes for the independent settings
+            # fixture (removing the override is an explicit external edit).
+            profile.write_text(original)
+            assert client.snapshot()["download"] is None
+            assert client.inventory("models")["cached"] == []
             # The real typed owner, never a browser-selected filesystem path.
             assert client.inventory("profiles") == {"profiles": ["default", "desk"], "active": "desk"}
             protected = client.config("@active")

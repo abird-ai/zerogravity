@@ -210,7 +210,8 @@ pub(super) const TREE: &[Node] = &[
         name: "model",
         description: "List, inspect and manage cached models",
         children: &[
-            "list", "inspect", "search", "pull", "verify", "remove", "import", "alias",
+            "list", "inspect", "search", "sources", "browse", "pull", "verify", "remove", "import",
+            "alias",
         ],
     },
     Node {
@@ -312,6 +313,12 @@ pub(super) enum ModelCommand {
         yes: bool,
     },
     Search(Vec<String>),
+    Discovery {
+        operation: String,
+        args: Vec<String>,
+        offline: bool,
+        format: Format,
+    },
     Pull(Vec<String>),
     Import(Vec<String>),
     Alias(Vec<String>),
@@ -566,8 +573,30 @@ fn parse_command(args: &[String], g: &mut Globals) -> Result<Command, &'static s
                                 yes: g.yes,
                             }
                         }
-                        "search" => ModelCommand::Search(tail.to_vec()),
-                        "pull" => ModelCommand::Pull(tail.to_vec()),
+                        "search" if !tail.iter().any(|arg| arg == "--source") => {
+                            ModelCommand::Search(tail.to_vec())
+                        }
+                        "search" | "sources" | "browse" => {
+                            let args = g.flat(
+                                tail,
+                                |raw| matches!(raw, "--source" | "--page" | "--cursor"),
+                                false,
+                            )?;
+                            no_jsonl(g.format)?;
+                            ModelCommand::Discovery {
+                                operation: operation.into(),
+                                args,
+                                offline: g.offline,
+                                format: g.format,
+                            }
+                        }
+                        "pull" => {
+                            let mut args = tail.to_vec();
+                            if let Some(source) = args.first_mut() {
+                                *source = zerogravity::discovery::normalize_locator(source);
+                            }
+                            ModelCommand::Pull(args)
+                        }
                         "import" => ModelCommand::Import(tail.to_vec()),
                         "alias" => ModelCommand::Alias(tail.to_vec()),
                         _ => unreachable!(),
@@ -789,7 +818,7 @@ fn parse_command(args: &[String], g: &mut Globals) -> Result<Command, &'static s
             | Command::Run { .. }
             | Command::Config { .. }
             | Command::Profile { .. }
-            | Command::Model(ModelCommand::Read { .. })
+            | Command::Model(ModelCommand::Read { .. } | ModelCommand::Discovery { .. })
     ) || controlled_pull && g.format == Format::Jsonl)
     {
         unsupported_format(g.format)?;
@@ -867,6 +896,20 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn discovery_accepts_trailing_globals_without_reinterpreting_cursor() {
+        assert!(matches!(
+            parse(["--offline", "model", "browse", "hf", "qwen", "--format", "json"]),
+            Command::Model(ModelCommand::Discovery { operation, args, offline: true, format: Format::Json })
+                if operation == "browse" && args == ["hf", "qwen"]
+        ));
+        assert!(matches!(
+            parse(["model", "browse", "hf", "--page", "1", "--cursor", "--quiet"]),
+            Command::Model(ModelCommand::Discovery { args, .. })
+                if args == ["hf", "--page", "1", "--cursor", "--quiet"]
+        ));
+    }
 
     #[test]
     fn shared_globals_never_consume_prompt_or_provider_values() {

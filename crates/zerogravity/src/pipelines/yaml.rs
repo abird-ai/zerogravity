@@ -60,8 +60,12 @@ fn check_yaml_shape(value: &serde_yaml::Value) -> Result<()> {
 /// custom tags, multiple documents and v2 null fields are refused. Parsing
 /// alone does not validate the graph; call [`Document::check`] afterwards.
 pub fn parse_document(bytes: &[u8]) -> Result<Document> {
-    serde_yaml::from_value(parse_document_node(bytes)?)
-        .map_err(|_| Error::Malformed("invalid typed pipeline YAML schema".into()))
+    let document: Document = serde_yaml::from_value(parse_document_node(bytes)?)
+        .map_err(|_| Error::Malformed("invalid typed pipeline YAML schema".into()))?;
+    if let Some(sources) = &document.sources {
+        crate::discovery::validate(sources)?;
+    }
+    Ok(document)
 }
 
 pub(crate) fn parse_document_node(bytes: &[u8]) -> Result<serde_yaml::Value> {

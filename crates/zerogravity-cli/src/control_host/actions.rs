@@ -92,6 +92,7 @@ pub(crate) struct WebResult {
     pub state: &'static str,
     pub message: Option<String>,
     pub response: Option<Response>,
+    pub discovery: Option<Box<work::DiscoveryResult>>,
 }
 
 #[derive(Default)]
@@ -173,8 +174,15 @@ impl Slot {
         if task.subject.is_some() {
             self.last_task = Some(FinishedTask::new(task, &result));
         }
+        let mut discovery = None;
         let (state, message) = match result {
+            Ok(Completed::Discovery(result)) => {
+                discovery = Some(result);
+                ("completed", "Source observations ready".into())
+            }
             Ok(Completed::Message(message)) => ("completed", message),
+            #[cfg(all(feature = "acquisition", target_os = "linux"))]
+            Ok(Completed::ConfirmPull { intent, message }) => { let _ = intent; ("completed", message) },
             #[cfg(all(feature = "cache", target_os = "linux"))]
             Ok(Completed::Refused {
                 message,
@@ -201,6 +209,7 @@ impl Slot {
             state,
             message: Some(message),
             response,
+            discovery,
         });
         self.changed();
     }
@@ -256,7 +265,7 @@ impl Actions {
 
         let generates = request.generates();
         #[cfg(feature = "web")]
-        let settings = matches!(&request, Request::Settings(_));
+        let settings = matches!(&request, Request::Settings(_) | Request::SaveSources { .. });
         let runtime = runtime.clone();
         let selection = selection.clone();
         let document = selection.snapshot();
@@ -430,6 +439,7 @@ impl Actions {
                 state: "running",
                 message: None,
                 response: job.sample(None),
+                discovery: None,
             });
         }
         slot.latest

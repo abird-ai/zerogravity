@@ -587,16 +587,23 @@ Design: [TUI polish follow-up](../cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md).
 
 ### Other deferred work
 
-- [ ] Provider-first Models discovery (28 Nov design): replace static
-  catalog shelf with configured source → repository/folder → variant
-  → existing acquisition preview/pull. Keep Local and existing Downloads
-  authority, remembered source selection, explicit search, add/edit/
-  disable/remove source, and direct URL/path/locator entry. Curated
-  official references appear under their originating provider; discovery,
-  cached availability and execution eligibility remain independent.
-  See [Models design](../cli-ux/NEXT_ITERATION_CLI_UX_AND_MODEL_LIFECYCLE.md#models)
-  and model-acquisition TODO for shared discovery. No implementation or
-  delivery order change in this preparation pass.
+- [x] Provider-first Models discovery initial implementation: Local /
+  Discover / Transfers, HF/GitHub/local source selection, named source
+  editing, curated references, explicit search, repository/variant/file
+  browsing, direct repository URL and local locator commands, existing
+  acquisition preview/confirm and original Downloads/control authority.
+  Live provider metadata and immutable closure preview passed; original
+  Web HTTP and browser smoke, native PTY navigation/mouse and offline
+  configuration tests passed. Full isolated gate: 2629 passed, 0 failed,
+  112 ignored across 327 Rust suites; portable release, PTY/Web, installer
+  and scripts passed. Source removal is not model eviction.
+  See [CLI documentation](../../../docs/CLI.md) and
+  [Models design](../cli-ux/NEXT_ITERATION_CLI_UX_AND_MODEL_LIFECYCLE.md#models).
+- [ ] Additional source adapters and polished native source CRUD forms;
+  native currently uses the existing typed configuration editor for
+  source changes. Web browses preconfigured local roots but does not
+  grant new filesystem access. Keep existing local model execution
+  admission and capability boundaries. See model-acquisition TODO.
 
 - [ ] Optional deeper exact per-request/phase and individual layer
   observations; keep profiling explicit and capability-bound.

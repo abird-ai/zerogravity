@@ -12,7 +12,7 @@ mod components;
 mod gcs;
 #[path = "pull_modelscope.rs"]
 mod modelscope;
-#[cfg(any(feature = "tui", feature = "web"))]
+#[cfg(any(feature = "tui", feature = "web", feature = "model-qwen35"))]
 #[path = "pull_native.rs"]
 pub(crate) mod native;
 #[path = "pull_object.rs"]
@@ -578,14 +578,7 @@ pub(super) fn acquire_for_run(
     }
 }
 
-#[cfg(all(
-    feature = "model-qwen35",
-    any(
-        feature = "tui",
-        feature = "web",
-        all(feature = "text", any(feature = "cuda", feature = "hip"))
-    )
-))]
+#[cfg(feature = "model-qwen35")]
 fn transfer_recipe(
     operation: zerogravity::control::DownloadOperation<'_>,
     hub: &zerogravity::artifacts::HubPull<'_>,

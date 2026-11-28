@@ -21,7 +21,7 @@ export function createControl(key, unauthorized) {
   const [configurationRevision, setConfigurationRevision] = createSignal(0);
   const [logsRevision, setLogsRevision] = createSignal(0);
   const invalidate = kind => {
-    if (kind === "models" || kind === "resync") setModelsRevision(n => n + 1);
+    if (kind === "models" || kind === "configuration" || kind === "resync") setModelsRevision(n => n + 1);
     if (kind === "devices" || kind === "resync") setDevicesRevision(n => n + 1);
     if (kind === "configuration" || kind === "resync") setConfigurationRevision(n => n + 1);
     if (kind === "logs" || kind === "resync") setLogsRevision(n => n + 1);
