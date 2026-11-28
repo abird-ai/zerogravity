@@ -68,6 +68,13 @@ independently after the existing PS-F1/F2/F3 exit.
   and pressure/recovery. Preserve source/numerical/state equivalence and
   cancellation, stale-reader, unload/reload and final physical retirement.
   No new model context/capability claim until real qualification.
+- [ ] Tier-aware scheduling and bounded IO: integrate shared cache provider
+  residency/restore/recompute costs, safe parking/resumption and prefetch
+  with existing fair cohorts. Protect guaranteed/live work; compare
+  resident, recompute and enabled tier policies under mixed concurrent
+  workloads. No hidden synchronous storage read in resident decode.
+  Follow the [tiered cache contract](../memory-and-streaming/ELASTIC_CONTEXT_AND_RESIDENCY.md#5-tiered-state-cache-and-configurable-storage-providers)
+  and existing continuation acceptance scope.
 
 ### OA-1 — async serving transport (26 Nov; after UX-P)
 

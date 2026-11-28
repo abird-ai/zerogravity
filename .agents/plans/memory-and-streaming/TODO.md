@@ -38,6 +38,14 @@ PS-F1/F2/F3 foundation exit and parallel backend order.
   cancellation, model reload and final physical delta on real sources.
   Offload/tier migration/quantized state are optional separately qualified
   extensions, not prerequisites for resident native paging.
+- [ ] Configurable tiered state cache: typed local RAM/SSD and optional
+  external provider capabilities, named instances and budgets, immutable
+  extent publication, admitted asynchronous promotion/demotion/prefetch,
+  cost-aware restore versus recompute, failure/expiry/security and real
+  reclamation. Distinguish dispensable prefix entries from authoritative
+  parked continuations; integrate existing checkpoint/continuation owners.
+  Qualify local spill first, then live parking and optional remote tiers.
+  See [tiered state cache](ELASTIC_CONTEXT_AND_RESIDENCY.md#5-tiered-state-cache-and-configurable-storage-providers).
 
 ### Qwen long-context fit boundary — 27 Oct
 

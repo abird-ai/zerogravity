@@ -159,7 +159,110 @@ in the token loop. Host metadata also has an explicit bounded allocation.
   migration and physical-pressure acceptance; not mandatory overhead on
   resident native execution.
 
-## 5. Intuitive policy and programmable observability
+## 5. Tiered state cache and configurable storage providers
+
+**28 Nov follow-up — proposed, not implemented.** Existing explicit
+state-checkpoint codecs and bounded local IO are the starting consumer,
+not a transparent swapping implementation. In-process prefix retention
+and eviction already exist on qualified CUDA paged paths. Explicit
+committed persistence is qualified for bounded GGUF CPU and original
+HIP contiguous F32 paths; preserve their actual compatibility scopes.
+The current neural checkpoint does not by itself restore full task,
+sampler/RNG, request or output continuation. A provider's ability to
+store bytes does not qualify a state layout or resume path.
+
+### Ownership and policy
+
+- Separate reusable prefix cache from parked live continuations.
+  Prefix entries are dispensable immutable cache; evict/recompute on
+  miss. A suspended live session retains an authoritative continuation
+  record and its exact committed frontier; never discard unrecoverable
+  state or replay already emitted outputs. Use the original session/
+  operation identity, checkpoint and continuation contracts.
+- Maintain one logical state/cache identity, versioned immutable storage
+  descriptors and placement observation in the existing owners. A state
+  object can have a verified copy in more than one tier; count actual
+  backing and temporary replicas separately. Storage residency does
+  not make a second model/session or publish a new neural root.
+- Eligible tiers: local accelerator memory/UMA, admitted host memory,
+  local SSD/NVMe, other explicitly configured cache/storage providers,
+  including remote service/object-backed stores where supported.
+  Local tiers must work without a network. Distinguish original model
+  artifact acquisition/storage from mutable session and derived prefix
+  data. Reuse existing verified IO/storage mechanisms where applicable,
+  not provider names or model-download authority as a state-store grant.
+- A small typed storage contract exposes actual capability and cost:
+  bounded read/write, immutable publish, exact extent/identity/integrity,
+  availability, deletion/expiry and relevant range/atomicity support.
+  Use native local-file and host backing first; optional remote adapters
+  extend the same contract. Do not require a network daemon, Redis,
+  a database, a remote filesystem or one universal object format.
+- Default Auto retains active/hot state on the device, uses host cache
+  for warm/parked state, and considers slower tiers only when explicitly
+  enabled. User/SDK policy can configure named providers, roots/endpoints,
+  allowed tier order, byte budgets, retention/TTL, minimum free space,
+  IO bandwidth/concurrency and prefetch/eviction controls. External
+  credentials are references to existing secret owners. Disable a tier
+  by stopping new placement and draining/reconciling live references;
+  removal is not implicit deletion of authoritative continuation data.
+
+### Promotion, demotion and concurrency
+
+- Demote immutable committed pages/checkpoints or park a complete
+  continuation at a safe operation boundary. Coalesce compatible pages
+  into bounded extents and retain source readers, destination quota and
+  transfer scratch until actual copy/IO completion and integrity check.
+  Publish a valid destination before releasing the last required source.
+  A failed/cancelled transfer keeps the original authoritative copy;
+  uncertain GPU work retains its existing fence/quarantine.
+- On demand, resolve exact compatibility and authorized sharing scope,
+  admit destination backing and asynchronous transfer workspace, and
+  restore through the original private candidate/Ready/publication path.
+  Prefetch likely next-use state and overlap bounded transfer with
+  independent ready work; do not block unrelated decode on disk/network
+  IO. Never advertise a partially uploaded page as ready. Deduplicate
+  concurrent compatible fetches while preserving independent cancellation
+  and lifetime ownership; no cross-scope information leak.
+- Scheduler chooses keep, demote, restore or recompute by actual reuse
+  probability, bytes, transfer latency/bandwidth, prefill cost, queue
+  pressure and latency/SLO constraints. Protect active decode and
+  guaranteed work; use age/fairness, progress margin, hysteresis and
+  bounded IO queues. Slow storage is not free VRAM and is not universally
+  faster than replay. Keep resident kernels free of mandatory tier
+  lookup/remote calls in the token loop.
+- Explicitly handle disk full, missing/corrupt objects, unavailable
+  remote provider, credential revocation, quota reduction, incompatible
+  revision and interrupted writes. Prefix miss can recompute; live
+  continuation may resume only from a complete compatible checkpoint
+  or an explicitly qualified replay path. Surface a typed refusal or
+  recovery state otherwise. Never silently truncate, change arithmetic
+  or restart a live session.
+
+### Privacy, durability and evidence
+
+Prompt-derived state may contain sensitive information. Local memory
+only by default unless a slower tier is enabled; remote placement
+requires explicit authorization and compatible sharing/tenant scope.
+Use authenticated encrypted transport and appropriate at-rest encryption,
+bounded integrity-checked codecs, expiry and deletion policy. Keep
+credentials and payloads out of diagnostics. Durable recovery and
+cross-process/host/device continuation are separate qualified capabilities;
+a local overflow cache need not be durable across a restart.
+
+Report cache hits by tier, actual live/idle/parked bytes, transfer/restore
+and recompute costs, queued IO, evictions, resumed frontier, pressure and
+refusal reason through the same Service/SDK/MCP and UI observations.
+Qualify in order: local RAM/SSD prefix spill/restore; safely parked live
+continuation with full applicable task state; optional external provider
+and cross-owner compatibility. Reuse complete-domain prefix and existing
+checkpoint evidence without broadening it. Compare resident-only,
+recompute, host and SSD/remote policies under real mixed-length and
+concurrent pressure; verify exact continuation/output, bounded staging,
+scope isolation, cancellation, failure recovery, guaranteed capacity
+and final physical retirement. Optional tier work follows direct resident
+paging and elastic admission, not a new prerequisite for native parity.
+
+## 6. Intuitive policy and programmable observability
 
 User normally selects model, context limit and Auto execution. Advanced
 settings can constrain memory budget/headroom, guarantee versus elastic
@@ -190,7 +293,7 @@ held capacity blocks growth/drains, not invalidates live state. Preserve
 explicit user overrides and rollback; experiments consume admitted quota,
 not privileged hidden capacity. No online unbounded autotuning.
 
-## 6. Delivery and acceptance
+## 7. Delivery and acceptance
 
 Follow existing PS-F1/F2/F3 order; use the shared contract when extracting
 the original service and observation surfaces, but don't require native
