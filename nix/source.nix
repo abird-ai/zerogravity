@@ -1,12 +1,14 @@
-# Keep Cargo inputs and complete reviewed vendor trees. Crane's generic filter
-# keeps Rust/TOML only; README/include/license/provenance files are also inputs.
+# Keep complete declared package source/test trees and reviewed vendor inputs.
+# Native kernels, embedded data and fixtures need not have Rust extensions.
 {
   lib,
   craneLib,
   sourceRoot,
 }: let
   cargo = builtins.fromTOML (builtins.readFile (sourceRoot + "/Cargo.toml"));
-  packageRoots = [""] ++ (cargo.workspace.members or []) ++ (cargo.workspace.exclude or []);
+  members = cargo.workspace.members or [];
+  packageRoots = [""] ++ members ++ (cargo.workspace.exclude or []);
+  sourceRoots = lib.concatMap (root: map (dir: "${root}/${dir}") ["src" "examples" "tests" "benches"]) members;
   excluded = builtins.concatLists (map (root:
     map (name:
       if root == ""
@@ -28,24 +30,10 @@ in
       vendorTree = lib.hasPrefix "crates/zerogravity-gpu/vendor/" relative || lib.hasPrefix "crates/zerogravity-serving/vendor/" relative;
       buildOutput = builtins.any (root: relative == root || lib.hasPrefix "${root}/" relative) excluded;
       packageNotice = builtins.elem base ["README.md" "LICENSE" "LICENSE-MIT" "LICENSE-APACHE" "LICENSE-ARM-MATH" "NOTICE"];
-      modelFixture = builtins.elem relative [
-        "crates/zerogravity-model-gemma4/tests/fixtures/official-e2b-it-config.json"
-        "crates/zerogravity-model-gemma4/tests/fixtures/official-26b-it-config.json"
-      ];
-      testFixture = builtins.elem relative [
-        "crates/zerogravity-cli/tests/fixtures/serve_shutdown.py"
-        "crates/zerogravity/tests/fixtures/embedding_sdk.py"
-        "crates/zerogravity/tests/fixtures/transcription_sdk.py"
-        "crates/zerogravity-cli/tests/fixtures/tui_shell.py"
-        "crates/zerogravity-cli/tests/fixtures/web_shell.py"
-        "crates/zerogravity-artifacts/tests/fixtures/azure_wire.py"
-        "crates/zerogravity-artifacts/tests/fixtures/acquisition/ca.pem"
-        "crates/zerogravity-artifacts/tests/fixtures/acquisition/server.pem"
-        "crates/zerogravity-artifacts/tests/fixtures/acquisition/server.key"
-      ];
+      packageSource = builtins.any (root: relative == root || lib.hasPrefix "${root}/" relative) sourceRoots;
       rootInput = builtins.elem relative ["Cargo.toml" "Cargo.lock" "rust-toolchain.toml" "README.md" "LICENSE" "LICENSE-MIT" "LICENSE-APACHE"];
     in
       !buildOutput
       && !webNodeModules
-      && (rootInput || (sourceTree && (craneLib.filterCargoSources path type || vendorTree || webTree || packageNotice || modelFixture || testFixture)));
+      && (rootInput || (sourceTree && (craneLib.filterCargoSources path type || vendorTree || webTree || packageNotice || packageSource)));
   }

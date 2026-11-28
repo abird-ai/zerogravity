@@ -37,11 +37,21 @@
       assert "package" not in manifest and manifest["workspace"]["package"]["version"]
       members = set(manifest["workspace"]["members"])
       assert members == {"crates/zerogravity-core", "crates/zerogravity-artifacts", "crates/zerogravity-cpu", "crates/zerogravity-model-qwen35", "crates/zerogravity-model-gemma4", "crates/zerogravity-model-bert", "crates/zerogravity-gpu", "crates/zerogravity-engine", "crates/zerogravity-serving", "crates/zerogravity", "crates/zerogravity-cli", "tools/gpu-qualify"}, members
+      workspace_source_files = 0
       for member in members:
           cargo_file = pathlib.Path(member) / "Cargo.toml"
           assert (filtered / cargo_file).read_bytes() == (original / cargo_file).read_bytes(), cargo_file
           member_manifest = tomllib.loads((filtered / cargo_file).read_text())
           assert member_manifest["package"]["version"] == {"workspace": True}, cargo_file
+          for directory in ("src", "examples", "tests", "benches"):
+              expected = original / member / directory
+              actual = filtered / member / directory
+              expected_files = sorted(p.relative_to(expected) for p in expected.rglob("*") if p.is_file())
+              actual_files = sorted(p.relative_to(actual) for p in actual.rglob("*") if p.is_file())
+              assert actual_files == expected_files, (member, directory, "source input inventory")
+              for file in expected_files:
+                  assert (actual / file).read_bytes() == (expected / file).read_bytes(), (member, directory, file)
+              workspace_source_files += len(expected_files)
       excluded = set(manifest["workspace"].get("exclude", []))
       vendors = sorted(pathlib.Path(spec["path"]) for spec in manifest["patch"]["crates-io"].values())
       for relative in vendors:
@@ -100,7 +110,7 @@
       relative = pathlib.Path("crates/zerogravity-artifacts/tests/fixtures/azure_wire.py")
       assert (filtered / relative).read_bytes() == (original / relative).read_bytes(), relative
       output.mkdir()
-      (output / "manifest.json").write_text(json.dumps({"vendor_files": files, "workspace_members": sorted(members), "workspace_version_inherited": True, "model_sources": model_sources, "model_fixtures": model_fixtures, "single_root_lock": True, "root_readme_unchanged": True, "arm_math_notice_sha256": hashlib.sha256((filtered / arm_notice).read_bytes()).hexdigest()}, indent=2) + "\n")
+      (output / "manifest.json").write_text(json.dumps({"vendor_files": files, "workspace_members": sorted(members), "workspace_version_inherited": True, "workspace_source_files": workspace_source_files, "model_sources": model_sources, "model_fixtures": model_fixtures, "single_root_lock": True, "root_readme_unchanged": True, "arm_math_notice_sha256": hashlib.sha256((filtered / arm_notice).read_bytes()).hexdigest()}, indent=2) + "\n")
       PY
     '';
 
