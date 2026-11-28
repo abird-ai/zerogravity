@@ -311,11 +311,16 @@ impl ResidentPhysical {
         })
     }
     #[cfg(all(
-        feature = "gemma-bf16-qualification",
         target_os = "linux",
         any(
-            feature = "vulkan",
-            all(feature = "qwen-source-qualification", feature = "hip")
+            feature = "hip-source",
+            all(
+                feature = "gemma-bf16-qualification",
+                any(
+                    feature = "vulkan",
+                    all(feature = "qwen-source-qualification", feature = "hip")
+                )
+            )
         )
     ))]
     pub(crate) fn client(&self) -> &Client {
@@ -337,12 +342,7 @@ impl ResidentPhysical {
         self.attach_inner(source.identity(), owner, cap, Some(source))
             .map(Arc::new)
     }
-    #[cfg(all(
-        feature = "qwen-source-qualification",
-        feature = "gemma-bf16-qualification",
-        feature = "hip",
-        target_os = "linux"
-    ))]
+    #[cfg(all(feature = "hip-source", target_os = "linux"))]
     pub(crate) fn attach_native_model(
         self: &Arc<Self>,
         source: ResidentSource,
@@ -454,6 +454,38 @@ impl ResidentPhysical {
             ResourceOwner::new("backend/physical", "original-owner")?,
         )
     }
+    /// A fresh model envelope on an already admitted native HIP actor.
+    /// The context charge remains separate. No context construction, global
+    /// runtime configuration change, or credit for its retained allocations.
+    #[cfg(all(feature = "hip-source", target_os = "linux"))]
+    pub(crate) fn reuse_hip_context(
+        device: Device,
+        client: &Client,
+        provider_cap: usize,
+        device_cap: u64,
+        context: Arc<crate::physical_service::NativeContextBudget>,
+        policy: &str,
+    ) -> Result<Arc<Self>> {
+        let key =
+            crate::physical_service::physical_key(client.properties().identity.physical.as_ref())?;
+        context.require(&key, client.service_id(), policy)?;
+        let provider = crate::backend::Provider::selected(&device)?;
+        let pre = Self::preadmit_hip_device(&device, provider_cap, device_cap)?;
+        // No bootstrap was attempted: an ordinary admission refusal is
+        // reversible. The preflight still verifies the exact original card.
+        pre.adopt(|pre| {
+            let budget = PhysicalServiceBudget::attach_preadmitted(
+                client,
+                pre,
+                device_cap,
+                provider_cap as u64,
+            )?;
+            let mut physical = Self::from_budget(device, client.clone(), provider, budget)?;
+            physical._native_context = Some(context);
+            Ok(Arc::new(physical))
+        })
+    }
+
     #[cfg(all(
         target_os = "linux",
         any(feature = "hip", feature = "vulkan"),

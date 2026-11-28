@@ -862,28 +862,16 @@ impl ResidentTextModel {
         self.inner.service.ensure_usable()?;
         let service = self.inner.service.clone();
         #[cfg(feature = "cuda-cublas")]
-        let cuda = {
+        {
             let workspace = self.inner.workspace.lock().await;
-            let cuda = workspace.program.is_cuda_forward();
-            if cuda {
+            if workspace.program.is_cuda_forward() {
                 workspace.program.retire_cuda_forward().await?;
             }
-            cuda
-        };
-        drop(self);
-        #[cfg(feature = "cuda-cublas")]
-        if cuda {
-            service
-                .client()
-                .memory_cleanup()
-                .map_err(|error| Error::State(format!("resident-text CUDA cleanup: {error}")))?;
-            if service.resident_bytes()? != 0 || service.model_events()? != 0 {
-                return Err(Error::State(
-                    "resident-text CUDA shutdown left bytes or events".into(),
-                ));
-            }
         }
-        service.close_model_namespace()
+        drop(self);
+        // The last model values may drop after native module retirement.
+        // Drain the original allocator before returning the model's quota.
+        service.cleanup_and_close_model()
     }
 
     #[cfg(feature = "hardware-abort-probe")]

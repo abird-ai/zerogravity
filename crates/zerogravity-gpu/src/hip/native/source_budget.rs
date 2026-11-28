@@ -48,6 +48,20 @@ impl HipSourceBudget {
         Self::new(envelope)
     }
 
+    /// A live model envelope and a stable physical capacity are different
+    /// authorities. Free memory changes when a context or another model exists;
+    /// it must never become a new attestation of the card's capacity.
+    pub fn from_observation(ceiling: u64, usable: u64, requested: Option<u64>) -> Result<Self> {
+        if usable > ceiling {
+            return Err(Error::State(
+                "HIP availability exceeds physical capacity".into(),
+            ));
+        }
+        let mut budget = Self::within_available(usable, requested)?;
+        budget.admission = ceiling;
+        Ok(budget)
+    }
+
     pub fn total_device_bytes(self) -> usize {
         self.total
     }
@@ -122,5 +136,18 @@ mod tests {
             Err(Error::Resource(_))
         ));
         assert_eq!(HipSourceBudget::default(), legacy);
+        let first =
+            HipSourceBudget::from_observation(available, available - 2 * GIB as u64, Some(cap))
+                .unwrap();
+        let next =
+            HipSourceBudget::from_observation(available, available - 6 * GIB as u64, None).unwrap();
+        assert_eq!(
+            first.physical_admission_bytes(),
+            next.physical_admission_bytes()
+        );
+        assert_eq!(first.total_device_bytes(), cap as usize);
+        assert_eq!(next.total_device_bytes(), 90 * GIB);
+        assert!(HipSourceBudget::from_observation(available, available + 1, None).is_err());
+        assert!(HipSourceBudget::from_observation(available, cap - 1, Some(cap)).is_err());
     }
 }

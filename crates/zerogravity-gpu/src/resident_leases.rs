@@ -454,6 +454,29 @@ impl ResidentService {
             .map_err(|_| Error::State("resident event ledger poisoned".into()))
     }
 
+    /// Cold model retirement: after all model-owned readers dropped, settle
+    /// the backend's deferred frees before crediting its original quota.
+    #[cfg(any(feature = "hip-source", feature = "cuda-cublas"))]
+    pub(crate) fn cleanup_and_close_model(&self) -> Result<()> {
+        self.ensure_usable()?;
+        let result = self
+            .client()
+            .memory_cleanup()
+            .map_err(|error| Error::State(format!("resident model allocator cleanup: {error}")))
+            .and_then(|()| self.close_model_namespace());
+        if result.is_err() {
+            self.poisoned.store(true, Ordering::Release);
+            self.budget.fence_flag().store(true, Ordering::Release);
+            self.budget.retained_envelope().fence_unknown();
+            crate::physical_quarantine::quarantine_uncertain_with_owners(
+                self.client().clone(),
+                Vec::new(),
+                vec![self.physical.clone(), self.admission.clone()],
+            );
+        }
+        result
+    }
+
     pub(crate) fn close_model_namespace(&self) -> Result<()> {
         self.ensure_usable()?;
         if self.resident_bytes()? != 0 || self.model_events()? != 0 {

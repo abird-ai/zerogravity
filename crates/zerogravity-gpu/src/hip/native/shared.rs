@@ -220,6 +220,7 @@ impl SharedHipNative {
             policy: POLICY,
             module_opaque_bytes: MODULE_OPAQUE,
             _host: persistent_host,
+            reusable_compiler: None,
             compiler: Some(Arc::new(PersistentCompilerBudget::new(
                 arbiter.clone(),
                 host_key,

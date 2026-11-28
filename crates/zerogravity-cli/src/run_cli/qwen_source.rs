@@ -603,7 +603,7 @@ fn hip_budget(
                 .ok_or_else(|| Error::Limit("device-mib overflow".into()))
         })
         .transpose()?;
-    zerogravity::models::HipSourceBudget::within_available(usable, requested)
+    zerogravity::models::HipSourceBudget::from_observation(ceiling, usable, requested)
 }
 #[cfg(not(feature = "hip"))]
 fn hip_budget(_: &Request, _: &devices::Inventory, _: Option<usize>) -> Result<()> {

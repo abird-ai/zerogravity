@@ -75,6 +75,8 @@ impl HipColdOwner {
 }
 
 #[cfg(feature = "hip-source")]
+mod reusable;
+#[cfg(feature = "hip-source")]
 mod source_budget;
 #[cfg(feature = "hip-source")]
 pub use source_budget::HipSourceBudget;
@@ -147,6 +149,15 @@ impl HipSourceNativePolicy {
             self.module_opaque_bytes() + MAX_CODE,
         )
     }
+
+    #[cfg(feature = "hip-source")]
+    fn context_policy(self) -> &'static str {
+        match self {
+            Self::Gfx1150 => "hip-source-gfx1150-rocm7.2.53211-opaque1g-v1",
+            Self::Gfx1151 => "hip-source-gfx1151-rocm7.2.53211-opaque1g-v1",
+            Self::Fallback => "hip-source-bf16-v1",
+        }
+    }
 }
 #[cfg(feature = "hip-source")]
 pub(crate) fn source_native_policy(device: &Device) -> Result<HipSourceNativePolicy> {
@@ -182,7 +193,11 @@ pub(crate) fn source_preparation_upper_bytes() -> (usize, usize) {
 }
 #[cfg(feature = "hip-source")]
 pub(crate) fn source_preparation_upper_bytes_for(policy: HipSourceNativePolicy) -> (usize, usize) {
-    policy.preparation_upper_bytes()
+    let (host, device) = policy.preparation_upper_bytes();
+    // Scoped metadata is per live native set, not a retained context cache.
+    let metadata =
+        cubecl::hip::scoped_metadata_bytes(MAX_MODULES).expect("bounded native catalogue");
+    (host + metadata, device)
 }
 
 #[cfg(all(
@@ -246,17 +261,7 @@ impl SingleSourceProfile {
             #[cfg(feature = "qwen-source-qualification")]
             Self::Qwen => "x2-gfx1151-qwen27b-initial-cached-full-catalogue-provisional-v1",
             #[cfg(feature = "hip-source")]
-            Self::ResidentText(budget, native) => {
-                use HipSourceNativePolicy::*;
-                match (native, budget == HipSourceBudget::default()) {
-                    (Gfx1150, true) => "hip-source-gfx1150-rocm7.2.53211-opaque1g-default-v1",
-                    (Gfx1150, false) => "hip-source-gfx1150-rocm7.2.53211-opaque1g-explicit-v1",
-                    (Gfx1151, true) => "hip-source-gfx1151-rocm7.2.53211-opaque1g-default-v1",
-                    (Gfx1151, false) => "hip-source-gfx1151-rocm7.2.53211-opaque1g-explicit-v1",
-                    (Fallback, true) => "hip-source-bf16-resident-projections-v1",
-                    (Fallback, false) => "hip-source-bf16-explicit-total-device-budget-v1",
-                }
-            }
+            Self::ResidentText(_, native) => native.context_policy(),
         }
     }
 }
@@ -319,6 +324,8 @@ struct Context {
     policy: &'static str,
     module_opaque_bytes: usize,
     _host: Arc<PersistentHost>,
+    #[cfg(feature = "hip-source")]
+    reusable_compiler: Option<Arc<GlobalResourceLease>>,
     #[cfg(all(
         feature = "qwen-source-qualification",
         feature = "gemma-bf16-qualification"
@@ -330,6 +337,15 @@ struct Context {
     ))]
     _shared_control: Option<Arc<GlobalResourceLease>>,
 }
+#[cfg(feature = "hip-source")]
+impl Drop for Context {
+    fn drop(&mut self) {
+        if let Some(compiler) = &self.reusable_compiler {
+            std::mem::forget(compiler.clone());
+        }
+    }
+}
+
 struct Module {
     _device: Arc<ForeignProviderCharge>,
     _host: WindowWorkspace,
@@ -571,19 +587,43 @@ pub(crate) fn begin_resident_source_with_budget(
     native_policy: HipSourceNativePolicy,
 ) -> Result<ColdNativePreparation> {
     budget.inventory(model_device_upper)?;
-    begin_single_source(
+    reusable::begin(
         device,
         source,
         source_owner,
         SingleSourceProfile::ResidentText(budget, native_policy),
     )
 }
+#[cfg(any(
+    feature = "gemma-bf16-qualification",
+    feature = "qwen-source-qualification"
+))]
 fn begin_single_source(
     device: Device,
     source: &VerifiedTensorSource,
     source_owner: crate::physical_quarantine::CompletionOwner,
     profile: SingleSourceProfile,
 ) -> Result<ColdNativePreparation> {
+    let (physical, context) = bootstrap_context(device, source, profile)?;
+    let service = physical.attach_model(
+        crate::resident_leases::ResidentSource::Windows(source.clone()),
+        ResourceOwner::new("source-bf16-candidate", profile.policy())?,
+        physical.available_model_capacity()?,
+    )?;
+    Ok(ColdNativePreparation {
+        service,
+        context,
+        source: source.clone(),
+        source_owner,
+        scoped: None,
+    })
+}
+
+fn bootstrap_context(
+    device: Device,
+    source: &VerifiedTensorSource,
+    profile: SingleSourceProfile,
+) -> Result<(Arc<crate::resident_leases::ResidentPhysical>, Arc<Context>)> {
     source.require_process_host_workspace(SOURCE_HOST_BYTES)?;
     if !matches!(device, Device::Hip(_)) {
         return Err(Error::State(
@@ -600,6 +640,19 @@ fn begin_single_source(
     // Register_matching never upgrades an existing128MiB CPU contract.
     arbiter.register_matching(host_key.clone(), SOURCE_HOST_BYTES)?;
     let host_lease = context_host_lease(&arbiter, &host_key)?;
+    #[cfg(feature = "hip-source")]
+    let reusable_compiler = if matches!(profile, SingleSourceProfile::ResidentText(..)) {
+        // Peak compiler + opaque retained compiler state share one persistent
+        // allowance. Actual module/metadata leases remain per source. All
+        // compilation is serialized by the original physical queue.
+        Some(Arc::new(source.reserve_detached_host_workspace(
+            SOURCE_HOST_BYTES,
+            ResourceOwner::new("backend/hip", "compiler-context")?,
+            COMPILER_HOST as u64,
+        )?))
+    } else {
+        None
+    };
     configure_single_stream()?;
     // Only retain permanently once the irreversible bootstrap is about to start.
     let persistent_host = Arc::new(PersistentHost(Arc::new(host_lease)));
@@ -612,11 +665,6 @@ fn begin_single_source(
             CONTEXT_DEVICE,
             Some(pre),
         )?;
-    let service = physical.attach_model(
-        crate::resident_leases::ResidentSource::Windows(source.clone()),
-        ResourceOwner::new("source-bf16-candidate", profile.policy())?,
-        physical.available_model_capacity()?,
-    )?;
     // Attach the persistent host before ANY later fallible policy/source step.
     let module_opaque_bytes = profile.module_opaque_bytes();
     let context = Arc::new(Context {
@@ -624,6 +672,8 @@ fn begin_single_source(
         policy: profile.policy(),
         module_opaque_bytes,
         _host: persistent_host,
+        #[cfg(feature = "hip-source")]
+        reusable_compiler,
         #[cfg(all(
             feature = "qwen-source-qualification",
             feature = "gemma-bf16-qualification"
@@ -640,19 +690,17 @@ fn begin_single_source(
             "Gemma actual context partition extent differs".into(),
         ));
     }
-    require_environment(
-        service.client(),
-        service.physical_key(),
+    if let Err(error) = require_environment(
+        physical.client(),
+        physical.physical_key(),
         profile.resident_text_native_policy(),
-    )?;
-
-    Ok(ColdNativePreparation {
-        service,
-        context,
-        source: source.clone(),
-        source_owner,
-        scoped: None,
-    })
+    ) {
+        // The original context exists. No new bootstrap is allowed after an
+        // incompatible or unobservable runtime was constructed.
+        context.device.fence_unknown();
+        return Err(error);
+    }
+    Ok((physical, context))
 }
 
 fn configure_single_stream() -> Result<()> {
@@ -1018,7 +1066,21 @@ impl ColdNativePreparation {
             feature = "qwen-source-qualification",
             feature = "gemma-bf16-qualification"
         )))]
-        let compiler_preparation = None;
+        let compiler_preparation: Option<NativeRetention> = None;
+        #[cfg(feature = "hip-source")]
+        let compiler_preparation = match &context.reusable_compiler {
+            Some(owner) => {
+                if source.detached_host_workspace_bytes(owner, SOURCE_HOST_BYTES)?
+                    != COMPILER_HOST as u64
+                {
+                    return Err(Error::State(
+                        "HIP reusable compiler workspace extent differs".into(),
+                    ));
+                }
+                Some(owner.clone() as NativeRetention)
+            }
+            None => compiler_preparation,
+        };
         let admission = Arc::new(Admission {
             budget,
             context,
