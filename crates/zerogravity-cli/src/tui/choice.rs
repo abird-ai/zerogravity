@@ -52,20 +52,25 @@ impl Picker {
     pub fn execution(
         digest: String,
         revision: u64,
-        mut choices: Vec<Choice>,
+        choices: Vec<Choice>,
         current: Execution,
         profile: &str,
     ) -> Self {
-        if let Some(first) = choices.first_mut() {
-            first.label = format!("Use profile · {profile}");
-        }
+        let mut choices = crate::control_host::execution::for_profile(choices, profile);
         let cursor = choices
             .iter()
             .position(|choice| choice.execution == current)
+            .or_else(|| {
+                (profile == "Auto"
+                    && current.backend == Some(zerogravity::run_policy::Backend::Auto)
+                    && current.device.is_none())
+                .then_some(0)
+            })
             .unwrap_or_else(|| {
                 choices.push(Choice {
-                    label: format!("{} · not currently observed", current.summary(profile)),
+                    label: current.summary(profile),
                     execution: current,
+                    refusal: Some("Not currently observed"),
                 });
                 choices.len() - 1
             });
@@ -128,7 +133,16 @@ impl Picker {
             }
         }
     }
+    pub fn refusal(&self, index: usize) -> Option<&'static str> {
+        match &self.kind {
+            Kind::Execution { choices, .. } => choices[index].refusal,
+            _ => None,
+        }
+    }
     pub fn apply(self) -> Action {
+        if self.refusal(self.cursor).is_some() {
+            return Action::Redraw;
+        }
         match self.kind {
             Kind::Setting {
                 file, key, values, ..
@@ -166,5 +180,25 @@ impl Picker {
             .cursor
             .saturating_add_signed(delta)
             .min(self.count() - 1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use zerogravity::run_policy::Backend;
+
+    #[test]
+    fn unavailable_execution_choice_cannot_apply() {
+        let cpu = Execution {
+            backend: Some(Backend::Cpu),
+            device: None,
+        };
+        let mut choices = crate::control_host::execution::choices(&[]);
+        let unavailable = choices.iter_mut().find(|row| row.execution == cpu).unwrap();
+        unavailable.refusal = Some("GGUF required");
+        let picker = Picker::execution("fixture".into(), 1, choices, cpu, "Auto");
+        assert_eq!(picker.refusal(picker.cursor), Some("GGUF required"));
+        assert_eq!(picker.apply(), Action::Redraw);
     }
 }

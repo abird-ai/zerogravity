@@ -9,6 +9,25 @@ Contracts: [P00–P23 roadmap](../IMPLEMENTATION_ROADMAP.md),
 
 ## Uncommitted
 
+- [x] L5 native launch environment follow-up: default x86-64 Linux Nix
+  development shell shares the ordinary package GPU runtime closure;
+  explicit portable shell remains CPU-only and GPU benchmarking inputs
+  remain in the optional gpu shell. Actual shell realization and full
+  native Cargo build passed, with no lock changes. The raw launch with
+  SDK/loader variables stripped reproduced the three user errors on the
+  exact cached 0.8B. Latest pre-picker packaged source fda84c16 ran
+  Auto and explicit CUDA from fresh hosts, 11+3 tokens, joined retirement.
+  Explicit ROCm reached physical admission and refused 9885299712/
+  8870966887 bytes, not missing libraries. User launch command/log are
+  outside connector read scope; reproduction is independent. Use
+  ordinary nix run or nix develop, not the unwrapped Cargo binary.
+- [ ] Investigate same-process CUDA retirement/reload capacity: successful
+  Auto load and unload left the next explicit CUDA cold observation with
+  5335148135 bytes after headroom, just below the qualified 5 GiB device
+  envelope. Fresh explicit CUDA passed; process retirement restored idle
+  device state. Retain the original bound; reconcile shared compiler/
+  context ownership and admission with measured CUDA backend work.
+
 - [ ] Owner23Oct: bring Vulkan execution to CUDA feature/correctness parity;
   use ROCm/HIP for AMD including pvl-x2 gfx1151. Vulkan source catalogue
   landed in `19ff059`; the real offline build PASSED on x2 25Oct (v-build,

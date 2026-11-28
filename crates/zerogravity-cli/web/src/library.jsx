@@ -22,12 +22,17 @@ function CachedActions(props) {
   const [execution, setExecution] = createSignal(null);
   const choiceKey = choice => JSON.stringify(choice.execution);
   const choices = createMemo(() => {
-    const rows = props.executionChoices ?? [{label:"Use profile default",execution:null}];
+    const rows = props.executionChoices ?? [{label:"Automatic",execution:null}];
     const selected = execution();
-    return selected && !rows.some(row => choiceKey(row) === choiceKey(selected))
-      ? [...rows, {...selected,label:selected.label+" · not currently observed"}] : rows;
+    const inheritedAuto = selected?.execution?.backend === "auto" && !selected.execution.device && props.value.execution_default === "Auto";
+    return selected && !inheritedAuto && !rows.some(row => choiceKey(row) === choiceKey(selected))
+      ? [...rows, {...selected,refusal:"Not currently observed"}] : rows;
   });
-  const current = () => execution() ? choiceKey(execution()) : "null";
+  const current = () => {
+    const selected = execution();
+    return selected?.execution?.backend === "auto" && !selected.execution.device && props.value.execution_default === "Auto"
+      ? "null" : selected ? choiceKey(selected) : "null";
+  };
   const placement = () => execution()?.execution ? {execution:execution().execution} : {};
   const ready = () => props.ready && props.work.ready();
   const empty = () => props.value.runtime.status.phase === "empty";
@@ -41,9 +46,9 @@ function CachedActions(props) {
       <label for="model-execution">Execution</label>
       <select id="model-execution" disabled={!ready() || !runnable()} value={current()} onChange={event => {
         const choice = choices().find(row => choiceKey(row) === event.currentTarget.value);
-        if (choice) setExecution(choice.execution === null ? null : choice);
+        if (choice && !choice.refusal) setExecution(choice.execution === null ? null : choice);
       }}>
-        <For each={choices()}>{choice => <option value={choiceKey(choice)}>{choice.execution === null ? props.value.execution_default ?? "Use profile" : choice.label}</option>}</For>
+        <For each={choices()}>{choice => <option value={choiceKey(choice)} disabled={!!choice.refusal}>{choice.label}{choice.refusal ? " · " + choice.refusal : ""}</option>}</For>
       </select>
     </div>
     <div class="form-actions">

@@ -293,6 +293,40 @@ impl CachedRoute {
             }
         }
     }
+    /// Expose unavailable backend-wide routes with a reason, not as
+    /// actionable selections. Only compatible exact device pairs are shown.
+    #[cfg(any(feature = "tui", feature = "web"))]
+    pub fn choices(
+        self,
+        choices: &[crate::control_host::execution::Choice],
+    ) -> Vec<crate::control_host::execution::Choice> {
+        choices
+            .iter()
+            .filter_map(|choice| {
+                let mut choice = choice.clone();
+                if self.permits(&choice.execution) {
+                    return Some(choice);
+                }
+                if self.refusal().is_some() || choice.execution.device.is_some() {
+                    return None;
+                }
+                choice.refusal =
+                    choice
+                        .refusal
+                        .or(Some(match (self, choice.execution.backend.as_ref()) {
+                            #[cfg(feature = "model-qwen35")]
+                            (
+                                Self::OriginalQwen { .. },
+                                Some(zerogravity::run_policy::Backend::Cpu),
+                            ) => "GGUF required",
+                            (Self::Gguf, _) => "GGUF execution currently uses CPU",
+                            _ => "Not supported for this source",
+                        }));
+                Some(choice)
+            })
+            .collect()
+    }
+
     #[cfg(any(feature = "tui", feature = "web"))]
     pub fn refusal(self) -> Option<&'static str> {
         match self {
@@ -677,6 +711,26 @@ mod tests {
             device: Some("pci:0000:01:00.0".into())
         }));
         assert!(!hip_only.permits(&Execution::on_device("cpu:0".into())));
+        let choices = crate::control_host::execution::choices(&[]);
+        let projected = hip_only.choices(&choices);
+        let cpu = projected
+            .iter()
+            .find(|c| c.execution.backend == Some(Backend::Cpu))
+            .unwrap();
+        assert!(cpu.refusal.is_some());
+        assert!(
+            missing
+                .choices(&choices)
+                .iter()
+                .all(|c| c.execution == Execution::default())
+        );
+        if cfg!(feature = "cpu") {
+            assert!(
+                gguf.choices(&choices)
+                    .iter()
+                    .any(|c| c.execution.backend == Some(Backend::Cpu) && c.refusal.is_none())
+            );
+        }
         let original = SourceLayout {
             weights: 2,
             safetensors: 2,

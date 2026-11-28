@@ -74,21 +74,24 @@ pub(crate) fn profile_summary(run: Option<&zerogravity::pipelines::RunDoc>) -> S
 pub(crate) struct Choice {
     pub label: String,
     pub execution: Execution,
+    pub refusal: Option<&'static str>,
 }
 
 /// Discovery supplies hints, never source-qualified execution guarantees.
 pub(crate) fn choices(devices: &[Observation]) -> Vec<Choice> {
     let mut result = vec![Choice {
-        label: "Use profile default".into(),
+        label: "Automatic".into(),
         execution: Execution::default(),
+        refusal: None,
     }];
-    let mut push = |backend: Backend, device: Option<&Observation>, label: String| {
+    let mut push = |backend: Backend, device: Option<&Observation>, label: String, refusal| {
         result.push(Choice {
             label,
             execution: Execution {
                 backend: Some(backend),
                 device: device.map(|row| row.id.clone()),
             },
+            refusal,
         });
     };
     let backends = [
@@ -99,13 +102,18 @@ pub(crate) fn choices(devices: &[Observation]) -> Vec<Choice> {
         (Backend::Vulkan, cfg!(feature = "vulkan")),
     ];
     for (backend, compiled) in &backends {
-        if *compiled {
+        if *compiled || *backend == Backend::Cpu {
             let label = match backend {
-                Backend::Auto => "Auto · choose backend and device".into(),
-                Backend::Cpu => "CPU · host".into(),
-                _ => format!("{} · automatic device", name(backend)),
+                Backend::Auto => "Automatic".into(),
+                Backend::Cpu => "CPU".into(),
+                _ => format!("{} · any device", name(backend)),
             };
-            push(backend.clone(), None, label);
+            push(
+                backend.clone(),
+                None,
+                label,
+                (!*compiled).then_some("Not compiled"),
+            );
         }
     }
     for row in devices.iter().filter(|row| row.class == "gpu") {
@@ -125,21 +133,13 @@ pub(crate) fn choices(devices: &[Observation]) -> Vec<Choice> {
                 .iter()
                 .any(|hint| hint.split(':').next() == Some(backend.label()))
         };
-        if backends.iter().any(|(backend, compiled)| {
-            *compiled && !matches!(backend, Backend::Auto | Backend::Cpu) && observed(backend)
-        }) {
-            push(
-                Backend::Auto,
-                Some(row),
-                format!("Auto · {vendor} · {}", row.id),
-            );
-        }
         for (backend, compiled) in &backends {
             if *compiled && !matches!(backend, Backend::Auto | Backend::Cpu) && observed(backend) {
                 push(
                     backend.clone(),
                     Some(row),
                     format!("{} · {vendor} · {}", name(backend), row.id),
+                    None,
                 );
             }
         }
@@ -147,9 +147,71 @@ pub(crate) fn choices(devices: &[Observation]) -> Vec<Choice> {
     result
 }
 
+/// Inheritance and explicit Auto are identical for the unconstrained default
+/// profile. Keep both only when the profile actually changes execution policy.
+pub(crate) fn for_profile(mut choices: Vec<Choice>, profile: &str) -> Vec<Choice> {
+    if profile == "Auto" {
+        choices.retain(|choice| {
+            choice.execution
+                != Execution {
+                    backend: Some(Backend::Auto),
+                    device: None,
+                }
+        });
+    } else if let Some(first) = choices.first_mut() {
+        first.label = profile.to_owned();
+    }
+    choices
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn automatic_choice_is_unique_and_device_choices_are_exact() {
+        let device = Observation {
+            id: "pci:0000:01:00.0".into(),
+            class: "gpu".into(),
+            vendor: "nvidia".into(),
+            ceiling: None,
+            available: None,
+            backends: vec![
+                "cuda:binding-unverified".into(),
+                "vulkan:binding-unverified".into(),
+            ],
+            exclusion: None,
+            provenance: String::new(),
+            cuda_ordinal: None,
+            cuda_cc: None,
+        };
+        let rows = for_profile(choices(std::slice::from_ref(&device)), "Auto");
+        assert_eq!(rows[0].label, "Automatic");
+        assert_eq!(rows[0].execution, Execution::default());
+        assert!(
+            rows.iter()
+                .all(|row| row.execution.backend != Some(Backend::Auto))
+        );
+        assert!(
+            rows.iter()
+                .any(|row| row.execution.backend == Some(Backend::Cpu))
+        );
+        let explicit = for_profile(choices(&[device]), "Profile · CPU");
+        assert_eq!(explicit[0].label, "Profile · CPU");
+        assert_eq!(
+            explicit
+                .iter()
+                .filter(|row| row.execution.backend == Some(Backend::Auto))
+                .count(),
+            1
+        );
+        assert!(
+            explicit
+                .iter()
+                .filter(|row| row.execution.device.is_some())
+                .all(|row| matches!(row.execution.backend, Some(Backend::Cuda | Backend::Vulkan)))
+        );
+    }
 
     #[test]
     fn profile_inheritance_and_explicit_pair_overrides() {

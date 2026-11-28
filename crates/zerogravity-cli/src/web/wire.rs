@@ -198,12 +198,16 @@ pub(super) fn models(runtime: &Runtime, selection: &crate::control_host::Selecti
         .and_then(|_| runtime.control().devices().ok());
     #[cfg(not(all(feature = "cache", target_os = "linux")))]
     let inventory: Option<zerogravity::devices::Inventory> = None;
-    let choices = crate::control_host::execution::choices(
-        inventory.as_ref().map_or(&[], |row| row.devices.as_slice()),
+    let choices = crate::control_host::execution::for_profile(
+        crate::control_host::execution::choices(
+            inventory.as_ref().map_or(&[], |row| row.devices.as_slice()),
+        ),
+        &selection.snapshot().execution_default,
     );
     let wire_choice = |choice: &crate::control_host::execution::Choice| {
         json!({
             "label": choice.label,
+            "refusal": choice.refusal,
             "execution": choice.execution.backend.as_ref().map(|backend| json!({
                 "backend": backend.label(),
                 "device": choice.execution.device,
@@ -226,7 +230,7 @@ pub(super) fn models(runtime: &Runtime, selection: &crate::control_host::Selecti
                         "source_layout": model.source_layout,
                         "route": route.label(), "route_refusal": route.refusal(),
                         "route_refusal_code": route.refusal_code(),
-                        "execution_choices": choices.iter().filter(|choice| route.permits(&choice.execution)).map(wire_choice).collect::<Vec<_>>(),
+                        "execution_choices": route.choices(&choices).iter().map(wire_choice).collect::<Vec<_>>(),
                     })
                 }).collect::<Vec<_>>());
                 match observation.partial {

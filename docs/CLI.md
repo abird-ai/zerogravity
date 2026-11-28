@@ -31,6 +31,24 @@ after `nix run .# --` controls ZeroGravity's model acquisition, not Nix's
 dependency fetching. Package realization does not acquire model weights.
 Explicit GPU runtime environment overrides remain supported.
 
+For development on x86-64 Linux, the default Nix shell supplies the same
+GPU runtime as the native package, without the optional benchmark SDKs
+and source trees:
+
+```sh
+nix develop -c cargo run -p zerogravity-cli
+nix develop -c cargo run -p zerogravity-cli -- --offline device list
+```
+
+Use `nix develop .#portable` with explicit CPU/portable Cargo features
+for a CPU-only development environment. The `gpu` shell additionally
+provides optional GPU benchmarking/compiler inputs. A bare
+`target/debug/zerogravity` or `cargo run` outside the native shell is an
+unwrapped executable and does not inherit the Nix package launcher.
+When GPU runtime binding is unavailable on NixOS, use the packaged
+launcher (`nix run .#`) or the default development shell before changing
+drivers or model files.
+
 ## Start and run
 
 ```sh
@@ -50,6 +68,14 @@ supports repeated independent requests. Source and backend selection stay
 explicit: a bare name resolves through the durable local name/catalog
 authority, not a speculative remote search. Absolute paths and `./` paths
 remain local. A local YAML positional argument selects a run document.
+
+In the model execution picker, Automatic chooses the backend and
+device. An explicitly constrained profile also retains its inherited
+choice. Backend-wide choices select an eligible device; exact GPU
+choices bind that backend to a physical PCI identity. Unavailable
+backend-wide routes are shown with a reason, not selectable.
+The ordinary CPU text route currently uses GGUF; original Qwen
+Safetensors snapshots use their qualified CUDA/ROCm routes.
 
 Device listing/inspection reports observations, not model admission.
 The optional model check uses the original run dry-run planner with the

@@ -47,12 +47,21 @@
         url = "https://files.pythonhosted.org/packages/05/76/1a42eafe2a3cd26924e485fb85bc635a2a41fcb14f453a8c037214b32940/flashinfer_python-0.7.2.post1.tar.gz";
         hash = "sha256-VOR0Wn/rbIyQDcR6sXE0BrvSK6dKP0oEY3vOEuv4v2c=";
       };
-in {
-  shell = native.craneLib.devShell {
+  commonShell = {
     checks = {inherit (native) tests clippy;};
     packages = commonPackages;
     RUST_BACKTRACE = "1";
   };
+in {
+  portable = native.craneLib.devShell commonShell;
+
+  # Default Cargo enables all native backends. Use the package's same
+  # runtime closure, without pulling optional benchmark source trees.
+  shell = native.craneLib.devShell (commonShell
+    // pkgs.lib.optionalAttrs (runtime != null) {
+      packages = commonPackages ++ runtime.packages;
+      inherit (runtime) shellHook;
+    });
 
   gpu =
     if gpuPkgs == null

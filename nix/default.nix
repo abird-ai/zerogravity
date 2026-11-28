@@ -123,6 +123,7 @@ in {
   devShells = forAllSystems (system:
     {
       default = development.${system}.shell;
+      portable = development.${system}.portable;
     }
     // nixpkgs.lib.optionalAttrs (system == "x86_64-linux") {
       gpu = development.${system}.gpu;

@@ -253,7 +253,7 @@ try {
     assert.equal(await contains("fixture/serve"), true);
     await waitFor(() => evaluate("!!document.querySelector('#model-execution') && document.querySelector('#model-execution').options.length>1"), "model execution choices");
     assert.equal(await evaluate("document.querySelector('#model-execution').value"), "null");
-    await evaluate(`(() => { const select=document.querySelector("#model-execution"); const cpu=Array.from(select.options).find(o=>o.textContent==="CPU · host"); if(!cpu) throw Error("missing CPU choice"); select.value=cpu.value; select.dispatchEvent(new Event("change",{bubbles:true})); })()`);
+    await evaluate(`(() => { const select=document.querySelector("#model-execution"); const cpu=Array.from(select.options).find(o=>!o.disabled && o.textContent==="CPU"); if(!cpu) throw Error("missing CPU choice"); select.value=cpu.value; select.dispatchEvent(new Event("change",{bubbles:true})); })()`);
     assert.equal(await evaluate("JSON.parse(document.querySelector('#model-execution').value).backend"), "cpu");
     await click("Load");
     await waitFor(() => contains("Model route set loaded"), "explicit CPU load from Models", 90000);

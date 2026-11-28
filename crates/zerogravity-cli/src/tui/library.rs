@@ -486,12 +486,7 @@ impl Library {
         #[cfg(all(feature = "cache", target_os = "linux"))]
         if let Some(model) = self.source(digest) {
             let route = crate::resident::cached_route(&model.snapshot, model.source_layout);
-            return self
-                .execution_choices
-                .iter()
-                .filter(|choice| route.permits(&choice.execution))
-                .cloned()
-                .collect();
+            return route.choices(&self.execution_choices);
         }
         let _ = digest;
         self.execution_choices.clone()

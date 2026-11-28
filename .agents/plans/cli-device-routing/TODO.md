@@ -587,6 +587,18 @@ Design: [TUI polish follow-up](../cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md).
 
 ### Other deferred work
 
+- [x] L5 execution picker follow-up: one Automatic entry for an
+  unconstrained default profile; keep distinct inherited policy only
+  for a constrained profile. Backend-wide automatic placement and
+  compatible exact backend/PCI pairs, no Auto per-device duplicates.
+  CPU shown with GGUF-required reason on original Qwen; other unavailable
+  backend-wide choices explain structural/compile refusals. Disabled
+  selections cannot apply. TUI and Web use the same route projection;
+  load-time physical admission remains unchanged.
+- [ ] Ordinary original-source CPU execution remains a separate model/
+  backend capability; do not label original Safetensors as GGUF or
+  present an unsupported CPU fallback.
+
 - [x] Provider-first Models discovery initial implementation: Local /
   Discover / Transfers, HF/GitHub/local source selection, named source
   editing, curated references, explicit search, repository/variant/file

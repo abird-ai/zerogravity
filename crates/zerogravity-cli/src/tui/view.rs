@@ -453,6 +453,9 @@ impl Navigation {
     }
     fn accept_modal(&mut self) -> Option<Action> {
         self.pointer.cancel();
+        if matches!(&self.modal, Modal::Choice(picker) if picker.refusal(picker.cursor).is_some()) {
+            return Some(Action::Redraw);
+        }
         match std::mem::take(&mut self.modal) {
             Modal::Form { form, .. } => Some(Action::Submit(form)),
             Modal::Choice(picker) => Some(picker.apply()),
@@ -2479,7 +2482,13 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
                     continue;
                 };
                 let selected = i == picker.cursor;
-                let label = format!("{} {}", if selected { ">" } else { " " }, picker.label(i));
+                let refusal = picker.refusal(i);
+                let label = format!(
+                    "{} {}{}",
+                    if selected { ">" } else { " " },
+                    picker.label(i),
+                    refusal.map_or_else(String::new, |reason| format!(" · {reason}"))
+                );
                 button(
                     frame,
                     &mut app.navigation.hits,
@@ -2487,6 +2496,8 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
                     &label,
                     if selected {
                         theme.selected()
+                    } else if refusal.is_some() {
+                        theme.surface().patch(theme.muted())
                     } else {
                         theme.surface()
                     },
@@ -2499,7 +2510,7 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
                 theme,
                 controls,
                 (" Enter apply ", " Esc cancel "),
-                !busy || !picker.is_setting(),
+                (!busy || !picker.is_setting()) && picker.refusal(picker.cursor).is_none(),
                 false,
             );
             if picker.is_setting() && space.width >= 11 {
