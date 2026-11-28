@@ -374,6 +374,24 @@ Git history; current source and this TODO supersede their archived checklists.
 
 ## Uncommitted
 
+- [ ] Provider-first source discovery follow-up (28 Nov design):
+  configurable named source instances, curated official repository
+  references grouped by actual provider, capability-bound paginated
+  remote discovery and scoped local directory browsing. Reuse the
+  configuration authority, SourceSelector/ProviderLocator, resolver,
+  verified cache and transfer ownership. Distinguish discovery metadata,
+  resolved selection, immutable acquired identity and execution
+  qualification. Support direct URLs/paths, named source selection and
+  provider-specific search/list where available; no automatic payload
+  acquisition. Removal/disable of a discovery source must not retire or
+  delete acquired/active owners. Keep credentials private; offline and
+  unsupported discovery are explicit. Deliver typed native operations
+  shared by CLI/TUI/Web and later SDK/MCP, without another registry of
+  execution capabilities. See provider-first Models design in
+  ../cli-ux/NEXT_ITERATION_CLI_UX_AND_MODEL_LIFECYCLE.md. Coordinate the
+  implementation with the existing Service/Client migration; no new
+  foundation prerequisite or scheduling promotion implied.
+
 - [ ] Extend advanced forced interactive/JSONL and aggregate component
   control over independently published original receipts; keep exact
   provider refusal and cancellation semantics.

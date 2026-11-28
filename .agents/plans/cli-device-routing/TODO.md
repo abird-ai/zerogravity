@@ -587,6 +587,17 @@ Design: [TUI polish follow-up](../cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md).
 
 ### Other deferred work
 
+- [ ] Provider-first Models discovery (28 Nov design): replace static
+  catalog shelf with configured source → repository/folder → variant
+  → existing acquisition preview/pull. Keep Local and existing Downloads
+  authority, remembered source selection, explicit search, add/edit/
+  disable/remove source, and direct URL/path/locator entry. Curated
+  official references appear under their originating provider; discovery,
+  cached availability and execution eligibility remain independent.
+  See [Models design](../cli-ux/NEXT_ITERATION_CLI_UX_AND_MODEL_LIFECYCLE.md#models)
+  and model-acquisition TODO for shared discovery. No implementation or
+  delivery order change in this preparation pass.
+
 - [ ] Optional deeper exact per-request/phase and individual layer
   observations; keep profiling explicit and capability-bound.
 - [ ] Optional terminal background helper only with dependency/offline

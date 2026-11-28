@@ -3018,22 +3018,72 @@ the default status screen.
 
 #### Models
 
-Model lifecycle manager:
+**28 Nov provider-first discovery direction (design, not implemented).**
+Replace the static Available/catalog shelf with a source browser. Keep
+the common Models destination and existing Downloads authority.
 
-- Cached;
-- Available/catalog;
-- Partial.
+- **Local:** cached snapshots and explicitly registered local models,
+  independent of their originating provider. Default on opening Models;
+  remember the selected model/source and view.
+- **Discover:** choose a configured source, then browse/search its
+  repositories, namespaces or folders. Show curated official model
+  references immediately within their actual source (e.g. Hugging Face
+  Qwen repositories), followed by live provider results when requested.
+  Curated entries are useful defaults, not the universe of discoverable
+  models or a claim of execution support.
+- **Transfers:** link/filter the existing Downloads view and resumable
+  partial inventory; do not create another transfer queue or monitor.
 
-Actions:
+Discover uses one compact source rail and one repository list/detail
+surface. On narrow terminals use drill-down and Back. Search is explicitly
+focused; normal typing/navigation does not trigger remote requests. A
+persistent source-scoped selection avoids retyping provider/repository
+identifiers. No new permanent top-level destination or toolbar.
 
-- Run;
-- Serve;
-- Pull;
-- Resume;
-- Verify;
-- Inspect;
-- Alias;
-- Remove.
+Built-in source types include Hugging Face, GitHub repositories/releases,
+local directories and existing supported object/component acquisition
+adapters. A configured source is a named instance (type, endpoint or local
+root, optional namespace/repository scope and credential reference), not
+a new executable provider plugin. Add/edit/disable/remove instances
+through the existing configuration owner. Removing a source removes its
+discovery configuration only; acquired snapshots, aliases, active
+transfers, loaded owners and user files have their original lifetimes.
+Built-in defaults can be hidden/re-enabled.
+
+Provider browsing is lazy and bounded/paginated; no full hub enumeration
+or download on startup. HF can browse/search models; GitHub lists
+configured repo scopes/releases and supports explicit search where
+available; local sources list supported model candidates within configured
+roots. Other adapters expose only their actual discovery capability
+(listing, scoped browsing, or direct locator). Offline shows curated and
+already observed/local metadata without performing remote discovery.
+Failures, unavailable capabilities and stale results remain explicit.
+
+Repository details show origin, selected revision, available file sets/
+formats, quantization and size where known, local status and separate
+execution eligibility. Offer original complete source and GGUF/component
+variants only when existing resolver supports the selection; unknown
+completeness or architecture is not silently accepted. Pull previews
+the actual selected source/bytes and uses the existing controlled
+acquisition transaction. Resolve floating refs at preparation and record
+the resulting immutable identity; no manual commit entry for normal use.
+Run/Load/Serve remain subject to the original source-aware planner and
+physical admission, not provider discovery or a successful pull.
+
+Keep a direct Open source action accepting URL, provider locator or local
+path. CLI/SDK support the same typed discovery/resolve/prepare/pull
+behavior, including direct locators and named source shortcuts. Direct
+repository URLs resolve to provider selections; direct file URLs use
+the existing object path; local folders use existing local/import rules.
+No implicit download on run/load without the declared acquisition policy.
+Retain existing local Verify/Inspect/Alias/Remove and exact download
+Resume controls. Never embed credentials in locators, persisted public
+observations or browser responses.
+
+The provider-first view is a projection of common native source discovery,
+not a CLI/UI-private acquisition owner. See model-acquisition TODO for
+the shared capability work. Sequence with the programmable Service/Client
+owner; this design does not change PS-F1/F2/F3 delivery order.
 
 #### Downloads
 
