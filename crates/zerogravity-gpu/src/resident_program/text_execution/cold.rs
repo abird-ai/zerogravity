@@ -40,6 +40,7 @@ pub(crate) struct Admission {
     pub(super) budget: crate::hip::native::HipSourceBudget,
     pub(super) native_policy: crate::hip::native::HipSourceNativePolicy,
     guarded_triangular: bool,
+    greedy_width: Option<usize>,
     pub(super) source: VerifiedTensorSource,
     pub(super) layout: Arc<layout::Layout>,
     pub(super) operands: BTreeMap<String, Arc<PreparedBf16Projection>>,
@@ -134,6 +135,21 @@ impl Admission {
                 layout.preflight.workspace_bytes,
                 requirements.workspace_bytes,
             ])?;
+        }
+        // Native V2 retains original resident weights and compact device feedback.
+        // One reusable reduction arena covers every admitted physical width.
+        let greedy_width = (layout.plan.numerical_profile()
+            == zerogravity_core::numerics::NumericalProfile::HipRocBlasBf16MixedV2)
+            .then(|| match max_sessions {
+                8.. => 8,
+                4..=7 => 4,
+                2..=3 => 2,
+                _ => 1,
+            });
+        if let Some(width) = greedy_width {
+            let sizes = crate::resident_batch_greedy::workspace_bytes(layout.vocabulary, width)?;
+            layout.preflight.workspace_bytes =
+                layout::sum([layout.preflight.workspace_bytes, layout::sum(sizes)?])?;
         }
         let source_weight_bytes = layout.preflight.source_bytes;
         let root_count = 2 * max_sessions + 2;
@@ -246,6 +262,7 @@ impl Admission {
             budget,
             native_policy,
             guarded_triangular: native_policy.prefers_guarded_triangular(),
+            greedy_width,
             source,
             layout,
             operands,
@@ -269,6 +286,7 @@ impl Admission {
                 &self.layout,
                 &self.operands,
                 self.guarded_triangular,
+                self.greedy_width,
             )?,
             self.source.reserve_workspace(1024 * 1024)?,
         ))
@@ -383,7 +401,26 @@ impl Admission {
                 )
             })
             .transpose()?;
+        let greedy = self
+            .greedy_width
+            .map(|width| -> Result<_> {
+                let [a, b, c] =
+                    crate::resident_batch_greedy::workspace_bytes(self.layout.vocabulary, width)?;
+                Ok([
+                    init.allocate_empty(a, BufferRole::Scratch)?,
+                    init.allocate_empty(b, BufferRole::Scratch)?,
+                    init.allocate_empty(c, BufferRole::Scratch)?,
+                ])
+            })
+            .transpose()?;
         let mut accesses = Vec::new();
+        accesses.extend(
+            greedy
+                .iter()
+                .flatten()
+                .cloned()
+                .map(|l| (l, DeviceAccess::Write)),
+        );
         accesses.extend(
             rocblas_workspace
                 .iter()
@@ -449,6 +486,7 @@ impl Admission {
             service,
             native,
             rocblas_workspace,
+            greedy,
             slots,
             scratch,
             parameters,
@@ -480,6 +518,7 @@ pub(in crate::resident_program) struct Cold {
     pub(super) service: Arc<ResidentService>,
     pub(super) native: Arc<crate::hip::native::PreparedSourceNative>,
     pub(super) rocblas_workspace: Option<ResidentLease>,
+    pub(super) greedy: Option<[ResidentLease; 3]>,
     pub(super) slots: Vec<ResidentLease>,
     pub(super) scratch: Vec<ResidentLease>,
     pub(super) parameters: BTreeMap<String, ResidentLease>,

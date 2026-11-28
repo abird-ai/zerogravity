@@ -9,7 +9,7 @@ impl ResidentTextModel {
         self: &Arc<Self>,
         rows: &[(&ResidentTextSession, &BoundInvocation)],
     ) -> Result<ResidentTextCohortPreparation> {
-        self.prepare_hip_cohort_admitted(rows, InvocationPhase::Decode)
+        self.prepare_hip_cohort_admitted(rows, InvocationPhase::Decode, false, None)
             .await
     }
 
@@ -17,6 +17,8 @@ impl ResidentTextModel {
         self: &Arc<Self>,
         rows: &[(&ResidentTextSession, &BoundInvocation)],
         phase: InvocationPhase,
+        compact: bool,
+        device_tokens: Option<&[&ResidentToken]>,
     ) -> Result<ResidentTextCohortPreparation> {
         if !matches!(self.admission.cohort_width, 4 | 8)
             || !matches!(rows.len(), 2 | 4 | 8)
@@ -39,7 +41,21 @@ impl ResidentTextModel {
         {
             return Err(Error::Unsupported("HIP cohort invocation shape".into()));
         }
-        for (session, invocation) in rows {
+        if compact && !self.supports_device_greedy()
+            || device_tokens.is_some_and(|tokens| {
+                !compact || phase != InvocationPhase::Decode || tokens.len() != rows.len()
+            })
+        {
+            return Err(Error::Unsupported(
+                "HIP cohort feedback/readout policy".into(),
+            ));
+        }
+        let readout = match (emit_logits, compact) {
+            (false, _) => Readout::None,
+            (true, false) => Readout::Logits,
+            (true, true) => Readout::Greedy,
+        };
+        for (index, (session, invocation)) in rows.iter().enumerate() {
             if !Arc::ptr_eq(&session.model, self)
                 || invocation.input().emit_logits() != emit_logits
                 || invocation.input().token_count() != tokens
@@ -48,6 +64,9 @@ impl ResidentTextModel {
             {
                 return Err(Error::State("source HIP cohort row/root differs".into()));
             }
+            if let Some(tokens) = device_tokens {
+                session.require_device_feedback(invocation, tokens[index])?;
+            }
             let call = self.bind_invocation(invocation, phase, false)?;
             scopes.push(self.reader_scope(CALL_HOST_BYTES)?);
             requests.push(call.materialize()?);
@@ -55,7 +74,7 @@ impl ResidentTextModel {
         }
         let Some(inner) = self
             .inner
-            .prepare_text_execution_cohort(&sessions, &requests, &scopes, emit_logits)
+            .prepare_text_execution_cohort(&sessions, &requests, &scopes, readout, device_tokens)
             .await?
         else {
             return Ok(ResidentTextCohortPreparation::Capacity);
@@ -72,9 +91,12 @@ impl ResidentModel {
         sessions: &[&ResidentSession],
         requests: &[ForwardPlan],
         scopes: &[Arc<ReaderScope>],
-        emit_logits: bool,
+        readout: Readout,
+        device_tokens: Option<&[&ResidentToken]>,
     ) -> Result<Option<PreparedResidentCohort>> {
         let width = sessions.len();
+        let emit_logits = !matches!(readout, Readout::None);
+        let compact = matches!(readout, Readout::Greedy);
         if !matches!(width, 2 | 4 | 8) || requests.len() != width || scopes.len() != width {
             return Err(Error::Unsupported(
                 "HIP text-execution cohort requires two, four or eight rows".into(),
@@ -121,6 +143,26 @@ impl ResidentModel {
         {
             return Err(Error::Unsupported(
                 "HIP cohort requires aligned invocation rows".into(),
+            ));
+        }
+
+        if let Some(tokens) = device_tokens
+            && (tokens.len() != width
+                || phase != InvocationPhase::Decode
+                || !compact
+                || tokens
+                    .iter()
+                    .zip(&bases)
+                    .zip(&calls)
+                    .any(|((token, base), call)| {
+                        token.producer != Some(*base)
+                            || token.lease.bytes() != 12
+                            || !Arc::ptr_eq(token.lease.service(), &self.service)
+                            || call.tokens().ids() != [token.id]
+                    }))
+        {
+            return Err(Error::State(
+                "HIP cohort committed device feedback differs".into(),
             ));
         }
 
@@ -175,6 +217,16 @@ impl ResidentModel {
             };
             buffers
         };
+        let packets = if compact {
+            if width * 12 > self.service.remaining_capacity()? {
+                return Ok(None);
+            }
+            (0..width)
+                .map(|_| self.service.allocate_uninitialized(12, BufferRole::Output))
+                .collect::<Result<Vec<_>>>()?
+        } else {
+            Vec::new()
+        };
         let ticket = self.service.queue().submit(
             self.service.budget(),
             ResourceOwner {
@@ -206,6 +258,23 @@ impl ResidentModel {
             workspace.state_accesses.clone()
         };
         accesses.extend(buffers.accesses());
+        accesses.extend(
+            packets
+                .iter()
+                .cloned()
+                .map(|lease| (lease, DeviceAccess::Write)),
+        );
+        let token_handles = device_tokens.map(|tokens| {
+            accesses.extend(
+                tokens
+                    .iter()
+                    .map(|token| (token.lease.clone(), DeviceAccess::Read)),
+            );
+            tokens
+                .iter()
+                .map(|token| token.lease.handle().offset_end(8))
+                .collect::<Vec<_>>()
+        });
         for (session, candidate) in sessions.iter().zip(&candidates) {
             accesses.extend(candidate.state_accesses(&session.domains)?);
         }
@@ -219,7 +288,13 @@ impl ResidentModel {
         }
         let submitted = workspace
             .program
-            .launch_text_execution_cohort(&mut flight, requests, &bindings, &buffers)
+            .launch_text_execution_cohort(
+                &mut flight,
+                requests,
+                &bindings,
+                &buffers,
+                token_handles.as_deref(),
+            )
             .await?;
         if submitted.fused_dispatches == 0 {
             return Err(Error::State(
@@ -227,56 +302,108 @@ impl ResidentModel {
             ));
         }
 
-        let mut reads = vec![lease_for(&accesses, &submitted.status)?.readback(0, 4)?];
-        if let Some(logits) = &buffers.logits {
-            reads.push(logits.readback(0, logits.bytes())?);
-        }
+        let (reads, greedy_dispatches, native_greedy_dispatches) = if compact {
+            let logits = buffers
+                .logits
+                .as_ref()
+                .ok_or_else(|| Error::State("HIP compact cohort logits absent".into()))?;
+            let greedy =
+                workspace
+                    .program
+                    .launch_hip_source_greedy(&flight, &logits.handle(), &packets)?;
+            // Shared status is folded into every packet after the complete
+            // cohort reduction. The original flight retains the private leases.
+            (
+                packets
+                    .iter()
+                    .map(|packet| packet.readback(0, 12))
+                    .collect::<Result<Vec<_>>>()?,
+                greedy.dispatches,
+                greedy.native_dispatches,
+            )
+        } else {
+            let mut reads = vec![lease_for(&accesses, &submitted.status)?.readback(0, 4)?];
+            if let Some(logits) = &buffers.logits {
+                reads.push(logits.readback(0, logits.bytes())?);
+            }
+            (reads, 0, 0)
+        };
+        let dispatches = submitted
+            .dispatches
+            .checked_add(greedy_dispatches)
+            .ok_or_else(|| Error::Limit("HIP cohort dispatch count".into()))?;
         let outputs = bases
             .iter()
             .copied()
             .zip(&candidates)
-            .map(|(base, candidate)| Ok((base, candidate.write_outputs()?)))
+            .enumerate()
+            .map(|(row, (base, candidate))| {
+                let mut leases = candidate.write_outputs()?;
+                leases.extend(packets.get(row).cloned());
+                Ok((base, leases))
+            })
             .collect::<Result<Vec<_>>>()?;
         let (ready, read) = flight
             .complete_cohort_with_readback(&outputs, &reads, |data| {
-                if !all_zero(&data[0]) {
-                    return Err(Error::State("HIP cohort status refused".into()));
-                }
-                if emit_logits && words(&data[1])?.iter().any(|value| !value.is_finite()) {
-                    return Err(Error::State("HIP cohort nonfinite logits".into()));
+                if compact {
+                    if data.len() != width {
+                        return Err(Error::State("HIP cohort greedy packet coverage".into()));
+                    }
+                    for packet in data {
+                        validate_greedy_packet(packet, self.vocab)?;
+                    }
+                } else {
+                    if !all_zero(&data[0]) {
+                        return Err(Error::State("HIP cohort status refused".into()));
+                    }
+                    if emit_logits && words(&data[1])?.iter().any(|value| !value.is_finite()) {
+                        return Err(Error::State("HIP cohort nonfinite logits".into()));
+                    }
                 }
                 Ok(())
             })
             .await?;
         slot.finish()?;
 
-        let logits = if emit_logits {
+        let logits = if matches!(readout, Readout::Logits) {
             words(&read[1])?
         } else {
             Vec::new()
         };
         let row_words = self.vocab as usize;
+        let mut packets = packets.into_iter();
         let mut prepared = Vec::with_capacity(width);
         for (row, ((attempt, candidate), ready)) in
             attempts.into_iter().zip(candidates).zip(ready).enumerate()
         {
             let domains = candidate.into_domains()?;
             self.validate_domains(&domains, true)?;
+            let device_token = packets.next().map(|lease| ResidentToken {
+                lease,
+                producer: None,
+                id: u32::from_ne_bytes(read[row][0..4].try_into().unwrap()),
+                max_bits: u32::from_ne_bytes(read[row][4..8].try_into().unwrap()),
+            });
+            let bytes = match readout {
+                Readout::Greedy => 12,
+                Readout::Logits => row_words * 4 + usize::from(row == 0) * 4,
+                Readout::None => usize::from(row == 0) * 4,
+            };
             prepared.push(PreparedInference {
                 attempt,
                 domains,
                 derived: Vec::new(),
                 ready,
                 readback: InferenceReadback {
-                    logits: if emit_logits {
+                    logits: if matches!(readout, Readout::Logits) {
                         logits[row * row_words..(row + 1) * row_words].to_vec()
                     } else {
                         Vec::new()
                     },
-                    dispatches: usize::from(row == 0) * submitted.dispatches,
-                    bytes: usize::from(emit_logits) * row_words * 4 + usize::from(row == 0) * 4,
-                    chunk_bytes: usize::from(emit_logits) * row_words * 4
-                        + usize::from(row == 0) * 4,
+                    device_token,
+                    dispatches: usize::from(row == 0) * dispatches,
+                    bytes,
+                    chunk_bytes: bytes,
                     state_only_steps: usize::from(!emit_logits),
                     logit_steps: usize::from(emit_logits),
                     ..Default::default()
@@ -287,9 +414,9 @@ impl ResidentModel {
             model: Arc::clone(self),
             roots,
             prepared,
-            dispatches: submitted.dispatches,
+            dispatches,
             fused_dispatches: submitted.fused_dispatches,
-            native_greedy_dispatches: 0,
+            native_greedy_dispatches,
             execution_mode: zerogravity_core::provider::ExecutionMode::Native,
         }))
     }

@@ -270,6 +270,23 @@ pub struct ResidentToken {
     pub id: u32,
     pub max_bits: u32,
 }
+#[cfg(all(
+    target_os = "linux",
+    any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
+))]
+fn validate_greedy_packet(packet: &[u8], vocabulary: u64) -> Result<()> {
+    if packet.len() != 12 {
+        return Err(Error::State("source greedy packet extent".into()));
+    }
+    let id = u32::from_ne_bytes(packet[0..4].try_into().unwrap());
+    let bits = u32::from_ne_bytes(packet[4..8].try_into().unwrap());
+    let flags = u32::from_ne_bytes(packet[8..12].try_into().unwrap());
+    if u64::from(id) >= vocabulary || !f32::from_bits(bits).is_finite() || flags != 0 {
+        return Err(Error::State("source greedy packet invalid".into()));
+    }
+    Ok(())
+}
+
 #[derive(Clone, Copy)]
 pub enum Readout {
     None,
@@ -2315,6 +2332,51 @@ impl ResidentModel {
         Ok(ForwardCandidateState::Contiguous { domains, bindings })
     }
 
+    fn launch_forward_greedy(
+        &self,
+        workspace: &Workspace,
+        flight: &crate::resident_leases::ResidentSubmission<'_>,
+        logits: &DeviceBuffer,
+        packet: &ResidentLease,
+        status: &Handle,
+    ) -> Result<usize> {
+        #[cfg(feature = "cuda-cublas")]
+        if let Some(greedy) = &workspace.greedy {
+            logits.require_layout(ResidentBufferLayout::new(
+                ResidentPhysicalType::Bf16,
+                self.vocab as usize,
+            )?)?;
+            return crate::resident_greedy::launch_bf16_numeric_zero(
+                self.service.client(),
+                &logits.handle,
+                self.vocab as usize,
+                &greedy[0],
+                &greedy[1],
+                &packet.handle(),
+                status,
+            );
+        }
+        #[cfg(all(feature = "hip-source", feature = "hip"))]
+        {
+            let _ = status;
+            logits.require_layout(ResidentBufferLayout::new(
+                ResidentPhysicalType::F32,
+                self.vocab as usize,
+            )?)?;
+            return Ok(workspace
+                .program
+                .launch_hip_source_greedy(flight, &logits.handle, std::slice::from_ref(packet))?
+                .dispatches);
+        }
+        #[allow(unreachable_code)]
+        {
+            let _ = (workspace, flight, logits, packet, status);
+            Err(Error::Unsupported(
+                "forward source has no greedy lowering".into(),
+            ))
+        }
+    }
+
     async fn execute_forward_source(
         &self,
         base: RootBinding,
@@ -2407,14 +2469,15 @@ impl ResidentModel {
             ResidentOutput::Logits => workspace.logit_accesses.clone(),
         };
         let packet = if matches!(readout, Readout::Greedy) {
-            let greedy = workspace.greedy.as_ref().ok_or_else(|| {
-                Error::Unsupported("CUDA forward model has no greedy workspace".into())
-            })?;
-            for handle in greedy {
-                accesses.push((
-                    lease_for(&workspace.leases, handle)?.clone(),
-                    DeviceAccess::Write,
-                ));
+            // CUDA's original two-buffer workspace is external to its body.
+            // HIP's shared cold reduction arena is already in logit_accesses.
+            if let Some(greedy) = &workspace.greedy {
+                for handle in greedy {
+                    accesses.push((
+                        lease_for(&workspace.leases, handle)?.clone(),
+                        DeviceAccess::Write,
+                    ));
+                }
             }
             let packet = self
                 .service
@@ -2467,38 +2530,18 @@ impl ResidentModel {
             submitted
         };
         #[cfg(not(feature = "cuda-cublas"))]
-        let submitted = submitted;
+        let mut submitted = submitted;
         if let Some(packet) = &packet {
             let logits = submitted
                 .logits
                 .as_ref()
                 .ok_or_else(|| Error::State("CUDA forward greedy logits absent".into()))?;
-            let greedy = workspace.greedy.as_ref().ok_or_else(|| {
-                Error::Unsupported("CUDA forward model has no greedy workspace".into())
-            })?;
-            #[cfg(feature = "cuda-cublas")]
-            {
-                logits.require_layout(ResidentBufferLayout::new(
-                    ResidentPhysicalType::Bf16,
-                    self.vocab as usize,
-                )?)?;
-                submitted.dispatches += crate::resident_greedy::launch_bf16_numeric_zero(
-                    self.service.client(),
-                    &logits.handle,
-                    self.vocab as usize,
-                    &greedy[0],
-                    &greedy[1],
-                    &packet.handle(),
-                    &submitted.status,
-                )?;
-            }
-            #[cfg(not(feature = "cuda-cublas"))]
-            {
-                let _ = (logits, greedy, packet);
-                return Err(Error::Unsupported(
-                    "forward source device greedy requires CUDA".into(),
-                ));
-            }
+            let dispatches =
+                self.launch_forward_greedy(&workspace, &flight, logits, packet, &submitted.status)?;
+            submitted.dispatches = submitted
+                .dispatches
+                .checked_add(dispatches)
+                .ok_or_else(|| Error::Limit("source greedy dispatch count".into()))?;
         }
         #[cfg(feature = "hardware-abort-probe")]
         self.qualification_after_launch(flight.handles().len())
@@ -2589,19 +2632,7 @@ impl ResidentModel {
                         }
                     }
                     Readout::Greedy => {
-                        let packet = &values[0];
-                        if packet.len() != 12 {
-                            return Err(Error::State("CUDA forward greedy packet extent".into()));
-                        }
-                        let id = u32::from_ne_bytes(packet[0..4].try_into().unwrap());
-                        let bits = u32::from_ne_bytes(packet[4..8].try_into().unwrap());
-                        let flags = u32::from_ne_bytes(packet[8..12].try_into().unwrap());
-                        if u64::from(id) >= self.vocab
-                            || !f32::from_bits(bits).is_finite()
-                            || flags != 0
-                        {
-                            return Err(Error::State("CUDA forward invalid greedy packet".into()));
-                        }
+                        validate_greedy_packet(&values[0], self.vocab)?;
                     }
                     Readout::None => {
                         if !all_zero(&values[0]) {

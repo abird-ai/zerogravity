@@ -82,16 +82,38 @@ impl ResidentProgram {
             }
             #[cfg(all(feature = "hip-source", feature = "hip", target_os = "linux"))]
             ResidentProgramBody::TextExecution(body) => {
-                if compact_greedy || device_token.is_some() {
-                    return Err(Error::Unsupported(
-                        "HIP text execution has no compact CUDA greedy readout".into(),
+                if device_token.is_some() && !compact_greedy {
+                    return Err(Error::State(
+                        "HIP device input requires compact readout".into(),
                     ));
                 }
-                body.execute(flight, request, states, output, observer)
-                    .await
+                body.execute(
+                    flight,
+                    request,
+                    states,
+                    output,
+                    device_token.as_ref(),
+                    observer,
+                )
+                .await
             }
             _ => Err(Error::State(
                 "text execution reached another resident body".into(),
+            )),
+        }
+    }
+
+    #[cfg(all(feature = "hip-source", feature = "hip", target_os = "linux"))]
+    pub(crate) fn launch_hip_source_greedy(
+        &self,
+        flight: &Flight<'_>,
+        logits: &cubecl::server::Handle,
+        packets: &[crate::resident_leases::ResidentLease],
+    ) -> Result<crate::resident_batch_greedy::GreedySubmission> {
+        match &self.body {
+            ResidentProgramBody::TextExecution(body) => body.launch_greedy(flight, logits, packets),
+            _ => Err(Error::State(
+                "HIP greedy reached another resident body".into(),
             )),
         }
     }
@@ -117,10 +139,12 @@ impl ResidentProgram {
         requests: &[ForwardPlan],
         states: &[Vec<StateBinding>],
         buffers: &super::text_execution::CohortBuffers,
+        device_tokens: Option<&[cubecl::server::Handle]>,
     ) -> Result<super::text_execution::CohortSubmission> {
         match &self.body {
             ResidentProgramBody::TextExecution(body) => {
-                body.execute_cohort(flight, requests, states, buffers).await
+                body.execute_cohort(flight, requests, states, buffers, device_tokens)
+                    .await
             }
             _ => Err(Error::Unsupported(
                 "cohort requires HIP text execution".into(),

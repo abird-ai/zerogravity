@@ -10,6 +10,7 @@ pub(super) fn kernels(
     l: &layout::Layout,
     operands: &BTreeMap<String, Arc<PreparedBf16Projection>>,
     guarded_triangular: bool,
+    greedy_width: Option<usize>,
 ) -> Result<Vec<Box<dyn CubeKernel>>> {
     let mut out: Vec<Box<dyn CubeKernel>> = Vec::new();
     let b = || BufferCompilationArg { inplace: None };
@@ -456,15 +457,36 @@ pub(super) fn kernels(
                     width
                 );
             }
-            SourceOperatorKind::EmbeddingRows
-            | SourceOperatorKind::Sigmoid { .. }
-            | SourceOperatorKind::Multiply { .. } => {}
+            SourceOperatorKind::EmbeddingRows => {
+                if greedy_width.is_some() {
+                    let tensor = &d.matrices()[0];
+                    add!(
+                        super::super::bf16_projection::gather_widened_row::GatherWidenedRow,
+                        32,
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        (),
+                        tensor.rows,
+                        tensor.columns
+                    );
+                }
+            }
+            SourceOperatorKind::Sigmoid { .. } | SourceOperatorKind::Multiply { .. } => {}
             _ => {
                 return Err(Error::Unsupported(
                     "text-execution cold kernel implementation absent".into(),
                 ));
             }
         }
+    }
+    if let Some(width) = greedy_width {
+        out.extend(crate::resident_batch_greedy::widened_bf16_kernels(
+            client,
+            l.vocabulary,
+            width,
+        )?);
     }
     let mut ids = std::collections::HashSet::new();
     out.retain(|k| ids.insert(k.id()));

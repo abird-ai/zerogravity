@@ -164,6 +164,9 @@ impl ResidentTextCohortPending {
     pub fn fused_dispatches(&self) -> usize {
         self.inner.fused_dispatches()
     }
+    pub fn native_greedy_dispatches(&self) -> usize {
+        self.inner.native_greedy_dispatches()
+    }
     pub fn commit(
         self,
         sessions: &mut [&mut ResidentTextSession],
@@ -758,7 +761,12 @@ impl ResidentTextModel {
         #[cfg(all(feature = "hip-source", feature = "hip"))]
         if self.contract.uses_torch_mixed_operators() {
             return self
-                .prepare_hip_cohort_admitted(rows, InvocationPhase::Prefill)
+                .prepare_hip_cohort_admitted(
+                    rows,
+                    InvocationPhase::Prefill,
+                    self.supports_device_greedy(),
+                    None,
+                )
                 .await;
         }
         #[cfg(feature = "cuda-cublas")]
@@ -767,6 +775,43 @@ impl ResidentTextModel {
         }
         #[allow(unreachable_code)]
         Err(Error::Unsupported("source prefill cohort backend".into()))
+    }
+
+    /// Compact readout and committed-token feedback are part of the selected
+    /// original native route, not of a host-side generation loop.
+    fn supports_device_greedy(&self) -> bool {
+        match self.contract {
+            #[cfg(feature = "cuda-cublas")]
+            NumericalContract::CudaSm86Bf16ReferenceV1 => true,
+            #[cfg(all(feature = "hip-source", feature = "hip"))]
+            NumericalContract::HipRocBlasBf16MixedV2 => true,
+            _ => false,
+        }
+    }
+
+    pub async fn prepare_greedy_decode_cohort_admitted(
+        self: &Arc<Self>,
+        rows: &[(&ResidentTextSession, &BoundInvocation, &ResidentToken)],
+    ) -> Result<ResidentTextCohortPreparation> {
+        #[cfg(all(feature = "hip-source", feature = "hip"))]
+        if self.contract.uses_torch_mixed_operators() {
+            let inputs = rows
+                .iter()
+                .map(|(session, invocation, _)| (*session, *invocation))
+                .collect::<Vec<_>>();
+            let tokens = rows.iter().map(|(_, _, token)| *token).collect::<Vec<_>>();
+            return self
+                .prepare_hip_cohort_admitted(&inputs, InvocationPhase::Decode, true, Some(&tokens))
+                .await;
+        }
+        #[cfg(feature = "cuda-cublas")]
+        {
+            return self.prepare_cuda_greedy_decode_cohort_admitted(rows).await;
+        }
+        #[allow(unreachable_code)]
+        Err(Error::Unsupported(
+            "source device-token cohort backend".into(),
+        ))
     }
 
     fn reader_scope(self: &Arc<Self>, bytes: usize) -> Result<Arc<ReaderScope>> {
@@ -956,17 +1001,34 @@ impl ResidentTextModel {
 }
 impl ResidentTextSession {
     pub fn supports_device_greedy(&self) -> bool {
-        #[cfg(feature = "cuda-cublas")]
+        self.model.supports_device_greedy()
+    }
+
+    /// HIP's current cohort is aligned; CUDA can accept distinct decode
+    /// frontiers. This constraint is independent of the readout format.
+    pub fn decode_frontiers_compatible(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.model, &other.model)
+            && (!self.model.contract.uses_torch_mixed_operators()
+                || self.binding().frontier() == other.binding().frontier())
+    }
+
+    fn require_device_feedback(
+        &self,
+        invocation: &BoundInvocation,
+        token: &ResidentToken,
+    ) -> Result<()> {
+        if !self.supports_device_greedy()
+            || token.producer != Some(self.binding())
+            || token.lease.bytes() != 12
+            || !Arc::ptr_eq(token.lease.service(), &self.model.inner.service)
+            || invocation.input().token_count() != 1
+            || invocation.input().ids() != [token.id]
         {
-            matches!(
-                self.model.contract,
-                NumericalContract::CudaSm86Bf16ReferenceV1
-            )
+            return Err(Error::State(
+                "resident-text device token differs from committed decode root/input".into(),
+            ));
         }
-        #[cfg(not(feature = "cuda-cublas"))]
-        {
-            false
-        }
+        Ok(())
     }
     pub fn binding(&self) -> RootBinding {
         self.inner.binding()
@@ -1035,7 +1097,7 @@ impl ResidentTextSession {
     ) -> Result<ResidentTextPreparation> {
         if !self.supports_device_greedy() {
             return Err(Error::Unsupported(
-                "resident-text device greedy requires CUDA forward".into(),
+                "resident-text source has no prepared device greedy readout".into(),
             ));
         }
         self.prepare_inner(
@@ -1056,18 +1118,12 @@ impl ResidentTextSession {
         token: &ResidentToken,
         cancelled: Option<Arc<AtomicBool>>,
     ) -> Result<ResidentTextPreparation> {
-        if !self.supports_device_greedy()
-            || mode != InvocationPhase::Decode
-            || token.producer != Some(self.binding())
-            || token.lease.bytes() != 12
-            || !Arc::ptr_eq(token.lease.service(), &self.model.inner.service)
-            || invocation.input().token_count() != 1
-            || invocation.input().ids() != [token.id]
-        {
+        if mode != InvocationPhase::Decode {
             return Err(Error::State(
-                "resident-text device token differs from committed decode root/input".into(),
+                "source device feedback requires decode".into(),
             ));
         }
+        self.require_device_feedback(invocation, token)?;
         self.prepare_inner(
             invocation,
             mode,

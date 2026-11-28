@@ -7,7 +7,7 @@ use zerogravity_core::resource_arbiter::{AllocationClass, AllocationRequest, Res
 impl ResidentTextModel {
     /// Compatible native cached-decode calls. Stateful CUDA kernels may internally
     /// split a wider cohort while preserving each session's private frontier/root.
-    pub async fn prepare_greedy_decode_cohort_admitted(
+    pub(super) async fn prepare_cuda_greedy_decode_cohort_admitted(
         self: &Arc<Self>,
         rows: &[(&ResidentTextSession, &BoundInvocation, &ResidentToken)],
     ) -> Result<ResidentTextCohortPreparation> {
@@ -29,15 +29,12 @@ impl ResidentTextModel {
                 || !invocation.input().emit_logits()
                 || invocation.input().token_count() != 1
                 || invocation.input().base() as u64 != session.binding().frontier()
-                || invocation.input().ids() != [token.id]
-                || token.producer != Some(session.binding())
-                || token.lease.bytes() != 12
-                || !Arc::ptr_eq(token.lease.service(), &self.inner.service)
             {
                 return Err(Error::State(
                     "source CUDA decode cohort row/token/root differs".into(),
                 ));
             }
+            session.require_device_feedback(invocation, token)?;
             let call = self.bind_invocation(invocation, InvocationPhase::Decode, false)?;
             scopes.push(self.reader_scope(CALL_HOST_BYTES)?);
             requests.push(call.materialize()?);
@@ -461,22 +458,7 @@ impl ResidentModel {
                         ));
                     }
                     for packet in values {
-                        if packet.len() != 12 {
-                            return Err(Error::State(
-                                "ordinary source prefill cohort packet extent".into(),
-                            ));
-                        }
-                        let id = u32::from_ne_bytes(packet[0..4].try_into().unwrap());
-                        let bits = u32::from_ne_bytes(packet[4..8].try_into().unwrap());
-                        let flags = u32::from_ne_bytes(packet[8..12].try_into().unwrap());
-                        if u64::from(id) >= self.vocab
-                            || !f32::from_bits(bits).is_finite()
-                            || flags != 0
-                        {
-                            return Err(Error::State(
-                                "ordinary source prefill cohort invalid greedy packet".into(),
-                            ));
-                        }
+                        validate_greedy_packet(packet, self.vocab)?;
                     }
                 } else if values.len() != 1 || !all_zero(&values[0]) {
                     return Err(Error::State(
@@ -795,20 +777,7 @@ impl ResidentModel {
                     ));
                 }
                 for packet in values {
-                    if packet.len() != 12 {
-                        return Err(Error::State("ordinary source cohort packet extent".into()));
-                    }
-                    let id = u32::from_ne_bytes(packet[0..4].try_into().unwrap());
-                    let bits = u32::from_ne_bytes(packet[4..8].try_into().unwrap());
-                    let flags = u32::from_ne_bytes(packet[8..12].try_into().unwrap());
-                    if u64::from(id) >= self.vocab
-                        || !f32::from_bits(bits).is_finite()
-                        || flags != 0
-                    {
-                        return Err(Error::State(
-                            "ordinary source cohort invalid greedy packet".into(),
-                        ));
-                    }
+                    validate_greedy_packet(packet, self.vocab)?;
                 }
                 Ok(())
             })

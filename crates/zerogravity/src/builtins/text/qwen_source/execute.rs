@@ -324,12 +324,11 @@ impl Executor for SourceText {
         }
         let first_prefill = prefill(first);
         let row_prefill = prefill(row);
-        if first_prefill.is_none()
-            && row_prefill.is_none()
-            && !first.state.session.supports_device_greedy()
-        {
-            return first.state.session.binding().frontier()
-                == row.state.session.binding().frontier();
+        if first_prefill.is_none() && row_prefill.is_none() {
+            return first
+                .state
+                .session
+                .decode_frontiers_compatible(&row.state.session);
         }
         let rows_compatible = match (first_prefill, row_prefill) {
             (Some((_, left)), Some((_, right))) => first
@@ -439,39 +438,28 @@ impl Executor for SourceText {
                     .map_err(ServiceError::inference)?;
 
                 if rows[0].state.session.supports_device_greedy() {
-                    #[cfg(all(feature = "model-qwen35", feature = "cuda"))]
+                    let inputs = rows
+                        .iter()
+                        .zip(&invocations)
+                        .map(|(row, invocation)| {
+                            (
+                                &row.state.session,
+                                invocation.bound_invocation(),
+                                row.state
+                                    .feedback
+                                    .as_ref()
+                                    .and_then(|feedback| feedback.device.as_ref())
+                                    .expect("validated device feedback"),
+                            )
+                        })
+                        .collect::<Vec<_>>();
+                    match block_on(model.prepare_greedy_decode_cohort_admitted(&inputs))
+                        .map_err(ServiceError::inference)?
                     {
-                        let inputs = rows
-                            .iter()
-                            .zip(&invocations)
-                            .map(|(row, invocation)| {
-                                (
-                                    &row.state.session,
-                                    invocation.bound_invocation(),
-                                    row.state
-                                        .feedback
-                                        .as_ref()
-                                        .and_then(|feedback| feedback.device.as_ref())
-                                        .expect("validated device feedback"),
-                                )
-                            })
-                            .collect::<Vec<_>>();
-                        match block_on(model.prepare_greedy_decode_cohort_admitted(&inputs))
-                            .map_err(ServiceError::inference)?
-                        {
-                            ResidentTextCohortPreparation::Capacity => {
-                                return Ok(Preparation::Capacity);
-                            }
-                            ResidentTextCohortPreparation::Ready(ready) => ready,
+                        ResidentTextCohortPreparation::Capacity => {
+                            return Ok(Preparation::Capacity);
                         }
-                    }
-                    #[cfg(not(all(feature = "model-qwen35", feature = "cuda")))]
-                    {
-                        return Err(ServiceError::new(
-                            500,
-                            "source_cohort",
-                            "device-token cohort requires CUDA",
-                        ));
+                        ResidentTextCohortPreparation::Ready(ready) => ready,
                     }
                 } else {
                     #[cfg(all(feature = "model-qwen35", feature = "hip"))]
@@ -512,7 +500,7 @@ impl Executor for SourceText {
                 model_tokens,
                 committed_roots: 0,
                 fused_projections: ready.fused_dispatches() as u64,
-                fused_sampler: 0,
+                fused_sampler: ready.native_greedy_dispatches() as u64,
                 cohort_width: if fused { rows.len() } else { 0 },
                 state_only: work.state_only,
             },

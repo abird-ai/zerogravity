@@ -1018,6 +1018,230 @@ mod tests {
         assert!(!device.fenced);
     }
 
+    #[test]
+    #[ignore = "approved original HF source, actual native HIP V2, isolated process"]
+    fn native_hip_compact_feedback_matches_full_readout() {
+        use crate::{
+            accelerator::program::InvocationPhase,
+            gpu::{
+                InferenceReadback, ResidentOutput, ResidentTextCohortPreparation,
+                ResidentTextPreparation, ResidentTextPublication,
+            },
+            numerics::{ActivationPrecision, greedy_finite},
+        };
+        let snapshot = std::env::var("ZG_QWEN_SOURCE_SNAPSHOT").expect("approved snapshot");
+        let root = std::env::var_os("ZG_QWEN_CACHE_ROOT").map(std::path::PathBuf::from);
+        let arbiter = ResourceArbiter::process_shared();
+        let resource = PhysicalDeviceKey::new("host", "system-ram").unwrap();
+        arbiter
+            .register_matching(resource.clone(), 16 * 1024 * 1024 * 1024)
+            .unwrap();
+        let admission = TransferAdmission {
+            arbiter: arbiter.clone(),
+            resource,
+            owner: ResourceOwner::new("source-feedback", "differential").unwrap(),
+        };
+        let host = ServingHost::from_process_admission(&admission).unwrap();
+        let _bootstrap =
+            crate::tokenize_admission::approve_arbiter(&admission, "bootstrap").unwrap();
+        let parts = open_source(
+            "source-feedback",
+            CacheOptions::new(root, 96 * 1024 * 1024 * 1024),
+            select_snapshot(&snapshot).unwrap(),
+            512,
+            &host,
+            NumericalContract::HipRocBlasBf16MixedV2,
+        )
+        .unwrap();
+        let plan = &parts.source.plan;
+        let tokens = [
+            "A red bird follows the river. ",
+            "The blue train climbs a mountain. ",
+        ]
+        .map(|prompt| {
+            let mut ids = parts
+                .tokenizer
+                .prompt_tokens(&prompt.repeat(2), false)
+                .unwrap();
+            assert!(ids.len() >= 8);
+            ids.truncate(8);
+            ids
+        });
+        let compare = |full: &InferenceReadback, compact: &InferenceReadback| {
+            ActivationPrecision::Bf16WidenedF32
+                .validate_values(&full.logits)
+                .unwrap();
+            let (id, value) = greedy_finite(&full.logits).unwrap();
+            let packet = compact.device_token.as_ref().unwrap();
+            assert_eq!((packet.id, packet.max_bits), (id, value.to_bits()));
+            assert!(compact.logits.is_empty());
+            assert_eq!(compact.bytes, 12);
+        };
+        block_on(async {
+            let model = ResidentModel::load_hip_forward_source_with_budget_and_cohort(
+                Device::Hip(Default::default()),
+                plan.source().clone(),
+                parts.source.clone(),
+                plan.plan().clone(),
+                4,
+                4,
+                crate::gpu::HipSourceBudget::default(),
+                None,
+            )
+            .await
+            .unwrap();
+            let mut full = [
+                model.session().await.unwrap(),
+                model.session().await.unwrap(),
+            ];
+            let mut device = [
+                model.session().await.unwrap(),
+                model.session().await.unwrap(),
+            ];
+            let mut packets = Vec::new();
+            for lane in 0..2 {
+                let call = plan
+                    .bind_invocation(
+                        InvocationPhase::Prefill,
+                        0,
+                        tokens[lane].clone().into(),
+                        true,
+                    )
+                    .unwrap();
+                let ResidentTextPreparation::Ready(expected) = full[lane]
+                    .prepare(
+                        call.bound_invocation(),
+                        InvocationPhase::Prefill,
+                        ResidentOutput::Logits,
+                        None,
+                    )
+                    .await
+                    .unwrap()
+                else {
+                    panic!("full prefill refused")
+                };
+                let ResidentTextPublication::Committed(expected) =
+                    full[lane].commit(expected).unwrap()
+                else {
+                    panic!("full prefill discarded")
+                };
+                let ResidentTextPreparation::Ready(pending) = device[lane]
+                    .prepare_greedy(call.bound_invocation(), InvocationPhase::Prefill, None)
+                    .await
+                    .unwrap()
+                else {
+                    panic!("compact prefill refused")
+                };
+                compare(&expected, pending.readback());
+                let ResidentTextPublication::Committed(read) =
+                    device[lane].commit(pending).unwrap()
+                else {
+                    panic!("compact prefill discarded")
+                };
+                packets.push(read.device_token.as_ref().unwrap().clone());
+            }
+            // Same two independent roots and same decode geometry for both
+            // readouts; no comparison across different GEMM reduction orders.
+            for base in 8..10 {
+                let calls = packets
+                    .iter()
+                    .map(|packet| {
+                        plan.bind_invocation(
+                            InvocationPhase::Decode,
+                            base,
+                            Arc::from([packet.id]),
+                            true,
+                        )
+                        .unwrap()
+                    })
+                    .collect::<Vec<_>>();
+                assert!(
+                    device[0]
+                        .prepare_greedy_device_token(
+                            calls[0].bound_invocation(),
+                            InvocationPhase::Decode,
+                            &packets[1],
+                            None,
+                        )
+                        .await
+                        .is_err(),
+                    "foreign root packet accepted"
+                );
+                let inputs = full
+                    .iter()
+                    .zip(&calls)
+                    .map(|(session, call)| (session, call.bound_invocation()))
+                    .collect::<Vec<_>>();
+                let ResidentTextCohortPreparation::Ready(expected) =
+                    model.prepare_decode_cohort_admitted(&inputs).await.unwrap()
+                else {
+                    panic!("full decode cohort refused")
+                };
+                let expected = expected
+                    .commit(&mut full.iter_mut().collect::<Vec<_>>())
+                    .unwrap();
+                let inputs = device
+                    .iter()
+                    .zip(&calls)
+                    .zip(&packets)
+                    .map(|((session, call), token)| (session, call.bound_invocation(), token))
+                    .collect::<Vec<_>>();
+                let before = device.each_ref().map(|session| session.binding());
+                let ResidentTextCohortPreparation::Ready(pending) = model
+                    .prepare_greedy_decode_cohort_admitted(&inputs)
+                    .await
+                    .unwrap()
+                else {
+                    panic!("compact decode cohort refused")
+                };
+                assert!(pending.fused_dispatches() > 0 && pending.native_greedy_dispatches() > 0);
+                let reads = pending
+                    .commit(&mut device.iter_mut().collect::<Vec<_>>())
+                    .unwrap();
+                for lane in 0..2 {
+                    compare(&expected[lane], &reads[lane]);
+                    assert_eq!(device[lane].binding().frontier(), base as u64 + 1);
+                    assert_ne!(device[lane].binding(), before[lane]);
+                    let next = plan
+                        .bind_invocation(
+                            InvocationPhase::Decode,
+                            base + 1,
+                            Arc::from([packets[lane].id]),
+                            true,
+                        )
+                        .unwrap();
+                    assert!(
+                        device[lane]
+                            .prepare_greedy_device_token(
+                                next.bound_invocation(),
+                                InvocationPhase::Decode,
+                                &packets[lane],
+                                None,
+                            )
+                            .await
+                            .is_err(),
+                        "stale root packet accepted"
+                    );
+                }
+                packets = reads
+                    .iter()
+                    .map(|r| r.device_token.as_ref().unwrap().clone())
+                    .collect();
+            }
+            drop((packets, full, device));
+            model.shutdown().await.unwrap();
+        });
+        drop(parts);
+        let physical = arbiter
+            .snapshot(&PhysicalDeviceKey::new("pci", "0000:c6:00.0").unwrap())
+            .unwrap();
+        assert_eq!(physical.reserved, 4 * 1024 * 1024 * 1024);
+        assert!(!physical.fenced);
+        println!(
+            "HIP_COMPACT_FEEDBACK_PASS singleton=true cohort=true exact_token_bits=true readback_bytes=12 foreign_and_stale_refused=true retired=true"
+        );
+    }
+
     #[cfg(feature = "state-checkpoint")]
     #[test]
     #[ignore = "approved original HF source, actual native HIP V2, fresh isolated process"]

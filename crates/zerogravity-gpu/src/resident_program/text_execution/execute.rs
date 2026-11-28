@@ -18,6 +18,33 @@ use zerogravity_core::{
 };
 
 impl Cold {
+    pub(in crate::resident_program) fn launch_greedy(
+        &self,
+        flight: &Flight<'_>,
+        logits: &Handle,
+        packets: &[ResidentLease],
+    ) -> Result<crate::resident_batch_greedy::GreedySubmission> {
+        let workspace = self.greedy.as_ref().ok_or_else(|| {
+            Error::Unsupported("HIP source has no prepared greedy workspace".into())
+        })?;
+        flight.require_accesses(workspace.iter().map(|lease| (lease, DeviceAccess::Write)))?;
+        flight.require_accesses(packets.iter().map(|lease| (lease, DeviceAccess::Write)))?;
+        let handles = workspace.each_ref().map(ResidentLease::handle);
+        let packets = packets
+            .iter()
+            .map(ResidentLease::handle)
+            .collect::<Vec<_>>();
+        crate::resident_batch_greedy::launch_widened_bf16(
+            self.service.client(),
+            logits,
+            self.layout.vocabulary,
+            packets.len(),
+            &handles,
+            &packets,
+            &self.status_view()?,
+        )
+    }
+
     pub(super) async fn enqueue_projection(
         &self,
         flight: &mut Flight<'_>,
@@ -119,6 +146,7 @@ impl Cold {
         request: &ForwardPlan,
         states: &[StateBinding],
         output: ResidentOutput,
+        device_token: Option<&Handle>,
         mut observer: Option<&mut dyn super::super::text_observation::TextObserver>,
     ) -> Result<ResidentSubmission> {
         let call = self.validate_request(request)?;
@@ -154,7 +182,10 @@ impl Cold {
                 unreachable!("validated original materialization")
             };
             dispatches = dispatches
-                .checked_add(self.node(flight, node, descriptor, &state).await?)
+                .checked_add(
+                    self.node(flight, node, descriptor, &state, device_token)
+                        .await?,
+                )
                 .ok_or_else(|| Error::Limit("text-execution dispatch count".into()))?;
             if let Some(observer) = &mut observer {
                 for port in self.layout.plan.source_observation_ports(node_index)? {
@@ -221,6 +252,7 @@ impl Cold {
         node: &PlanNode,
         d: &SourceOperator,
         states: &BTreeMap<StateSlot, &StateBinding>,
+        device_token: Option<&Handle>,
     ) -> Result<usize> {
         let rows = d.invocation().tokens().len();
         let base = d.invocation().tokens().base();
@@ -251,6 +283,7 @@ impl Cold {
             &self.slots,
             &inputs,
             &outputs,
+            device_token,
         )
         .await
     }
@@ -267,6 +300,7 @@ impl Cold {
         slots: &[ResidentLease],
         inputs: &[Handle],
         outputs: &[Handle],
+        device_token: Option<&Handle>,
     ) -> Result<usize> {
         let input_lengths = d.input_elements()?;
         let output_lengths = d.output_elements()?;
@@ -278,6 +312,47 @@ impl Cold {
                 let tensor = &d.matrices()[0];
                 let p = &self.operands[&tensor.name];
                 let width = tensor.columns;
+                if let Some(token) = device_token {
+                    let ids = d.invocation().tokens().ids();
+                    if ids.len() != 1
+                        || rows != 1
+                        || token.size_in_used() != 4
+                        || token.service != client.service_id()
+                        || self.greedy.is_none()
+                    {
+                        return Err(Error::State("HIP committed device embedding input".into()));
+                    }
+                    let resident = p.resident().ok_or_else(|| {
+                        Error::State(
+                            "HIP device feedback requires original resident embedding".into(),
+                        )
+                    })?;
+                    return resident.with_rows(
+                        flight,
+                        &self.source,
+                        p.matrix(),
+                        0..tensor.rows,
+                        &mut |actual| {
+                            // The token is selected by the device, but also must agree
+                            // with the source-bound invocation and committed receipt.
+                            unsafe {
+                                super::super::bf16_projection::gather_widened_row::launch_unchecked(
+                                    client,
+                                    grid(width),
+                                    dim(),
+                                    arg(actual.handle(), tensor.rows * width / 2),
+                                    arg(token, 1),
+                                    arg(&outputs[0], width),
+                                    arg(&status, 1),
+                                    ids[0],
+                                    tensor.rows,
+                                    width,
+                                );
+                            }
+                            Ok(1)
+                        },
+                    );
+                }
                 for (row, &id) in d.invocation().tokens().ids().iter().enumerate() {
                     let target = subview(&outputs[0], row * width * 4, width * 4)?;
                     let range = id as usize..id as usize + 1;

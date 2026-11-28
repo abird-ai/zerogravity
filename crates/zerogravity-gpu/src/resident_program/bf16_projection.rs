@@ -822,6 +822,39 @@ pub(crate) fn widen(
     }
 }
 
+/// Gather one source-exact packed BF16 matrix row selected by a committed
+/// device token. No host ID upload or intermediate packed row allocation.
+#[cfg(all(feature = "hip-source", feature = "hip", target_os = "linux"))]
+#[cube(launch_unchecked)]
+pub(crate) fn gather_widened_row(
+    matrix: &[u32],
+    token: &[u32],
+    output: &mut [f32],
+    status: &[Atomic<u32>],
+    expected: u32,
+    #[comptime] rows: usize,
+    #[comptime] width: usize,
+) {
+    let i = ABSOLUTE_POS;
+    if i < width {
+        let id = token[0];
+        if id != expected || id >= u32::cast_from(rows) {
+            if i == 0usize {
+                status[0].fetch_or(crate::program_kernels::INVALID_REDUCTION);
+            }
+            output[i] = 0.0f32;
+        } else {
+            let word = usize::cast_from(id) * (width / 2usize) + i / 2usize;
+            let bits =
+                ((matrix[word] >> (u32::cast_from(i % 2usize) * 16u32)) & 0xffffu32) << 16u32;
+            if (bits & 0x7f800000u32) == 0x7f800000u32 {
+                status[0].fetch_or(crate::program_kernels::NONFINITE_VALUE);
+            }
+            output[i] = f32::reinterpret(bits);
+        }
+    }
+}
+
 #[cfg(test)]
 mod row_tests {
     use super::{row_destination, row_extents, row_tile};

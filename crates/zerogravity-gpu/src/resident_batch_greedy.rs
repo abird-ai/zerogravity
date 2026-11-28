@@ -19,9 +19,9 @@ pub(crate) struct GreedySubmission {
 /// Two original per-row reduction workspaces plus dense terminal records.
 /// External independent 12-byte output packets remain separately admitted.
 pub(crate) fn workspace_bytes(vocabulary: usize, rows: usize) -> Result<[usize; 3]> {
-    if !matches!(rows, 2 | 4 | 8) {
+    if !matches!(rows, 1 | 2 | 4 | 8) {
         return Err(Error::Unsupported(
-            "native greedy rows must be 2/4/8".into(),
+            "native greedy rows must be 1/2/4/8".into(),
         ));
     }
     let original = crate::resident_greedy::workspace_bytes(vocabulary)?;
@@ -78,6 +78,8 @@ fn check_buffer(client: &Client, handle: &Handle, bytes: usize) -> Result<()> {
 enum LogitLayout {
     F32,
     #[allow(dead_code)]
+    WidenedBf16NumericZero,
+    #[allow(dead_code)]
     PackedBf16NumericZero,
 }
 
@@ -92,7 +94,7 @@ impl LogitLayout {
             .checked_mul(rows)
             .and_then(|n| {
                 n.checked_mul(match self {
-                    Self::F32 => 4,
+                    Self::F32 | Self::WidenedBf16NumericZero => 4,
                     Self::PackedBf16NumericZero => 2,
                 })
             })
@@ -191,6 +193,29 @@ pub(crate) fn launch(
         private_packets,
         status,
         LogitLayout::F32,
+    )
+}
+
+/// Finite numeric greedy on exact BF16 values carried in F32 storage.
+#[cfg(all(feature = "hip-source", feature = "hip", target_os = "linux"))]
+pub(crate) fn launch_widened_bf16(
+    client: &Client,
+    logits: &Handle,
+    vocabulary: usize,
+    rows: usize,
+    workspace: &[Handle; 3],
+    private_packets: &[Handle],
+    status: &Handle,
+) -> Result<GreedySubmission> {
+    launch_layout(
+        client,
+        logits,
+        vocabulary,
+        rows,
+        workspace,
+        private_packets,
+        status,
+        LogitLayout::WidenedBf16NumericZero,
     )
 }
 
@@ -362,17 +387,20 @@ fn launch_layout(
     // distinct physical bindings pass the closed preflight above.
     unsafe {
         match layout {
-            LogitLayout::F32 => batch_argmax_logits::launch_unchecked(
-                client,
-                grid(rows * count),
-                threads,
-                BufferArg::from_raw_parts(logits.clone(), rows * vocabulary),
-                BufferArg::from_raw_parts(workspace[0].clone(), words[0]),
-                BufferArg::from_raw_parts(status.clone(), 1),
-                vocabulary,
-                rows,
-                strides[0],
-            ),
+            LogitLayout::F32 | LogitLayout::WidenedBf16NumericZero => {
+                batch_argmax_logits::launch_unchecked(
+                    client,
+                    grid(rows * count),
+                    threads,
+                    BufferArg::from_raw_parts(logits.clone(), rows * vocabulary),
+                    BufferArg::from_raw_parts(workspace[0].clone(), words[0]),
+                    BufferArg::from_raw_parts(status.clone(), 1),
+                    vocabulary,
+                    rows,
+                    strides[0],
+                    matches!(layout, LogitLayout::WidenedBf16NumericZero),
+                )
+            }
             LogitLayout::PackedBf16NumericZero => {
                 batch_argmax_bf16_logits_numeric_zero::launch_unchecked(
                     client,
@@ -403,7 +431,7 @@ fn launch_layout(
                 rows,
                 strides[current],
                 strides[destination],
-                matches!(layout, LogitLayout::PackedBf16NumericZero),
+                !matches!(layout, LogitLayout::F32),
             );
             native_dispatches += 1;
             count = next;
@@ -414,14 +442,26 @@ fn launch_layout(
             grid(rows),
             threads,
             BufferArg::from_raw_parts(workspace[current].clone(), words[current]),
-            BufferArg::from_raw_parts(workspace[2].clone(), rows * ARGMAX_RECORD_WORDS),
+            BufferArg::from_raw_parts(
+                if rows == 1 {
+                    private_packets[0].clone()
+                } else {
+                    workspace[2].clone()
+                },
+                rows * ARGMAX_RECORD_WORDS,
+            ),
             BufferArg::from_raw_parts(status.clone(), 1),
             vocabulary,
             rows,
             strides[current],
         );
         native_dispatches += 1;
-        for (row, packet) in private_packets.iter().enumerate() {
+        for (row, packet) in
+            private_packets
+                .iter()
+                .enumerate()
+                .take(if rows == 1 { 0 } else { rows })
+        {
             program_kernels::copy_strided_words::launch_unchecked(
                 client,
                 grid(ARGMAX_RECORD_WORDS),
@@ -440,9 +480,87 @@ fn launch_layout(
         }
     }
     Ok(GreedySubmission {
-        dispatches: native_dispatches + rows,
+        dispatches: native_dispatches + if rows == 1 { 0 } else { rows },
         native_dispatches,
     })
+}
+
+/// Prepare the exact same widened-BF16 kernels used by singleton and cohort
+/// launches, before the resident source is published.
+#[cfg(all(feature = "hip-source", feature = "hip", target_os = "linux"))]
+pub(crate) fn widened_bf16_kernels(
+    client: &Client,
+    vocabulary: usize,
+    max_rows: usize,
+) -> Result<Vec<Box<dyn cubecl_server::kernel::CubeKernel>>> {
+    let mut out: Vec<Box<dyn cubecl_server::kernel::CubeKernel>> = Vec::new();
+    let b = || BufferCompilationArg { inplace: None };
+    macro_rules! add {
+        ($k:path, $($a:expr),*) => {
+            out.push(Box::new(<$k>::new(
+                KernelSettings::new(CubeDim::new_1d(32).into(), ExecutionMode::Unchecked, AddressType::U32),
+                client.properties_shared(), client.target_properties_shared(), $($a),*
+            )))
+        };
+    }
+    for rows in [1usize, 2, 4, 8].into_iter().filter(|&r| r <= max_rows) {
+        let sizes = workspace_bytes(vocabulary, rows)?;
+        let strides = [sizes[0] / 4 / rows, sizes[1] / 4 / rows];
+        let mut count = program_kernels::argmax_partial_count(vocabulary, TILE)?;
+        let mut current = 0;
+        add!(
+            batch_argmax_logits::BatchArgmaxLogits,
+            b(),
+            b(),
+            b(),
+            vocabulary,
+            rows,
+            strides[0],
+            true
+        );
+        while count > 1 {
+            let destination = 1 - current;
+            add!(
+                batch_argmax_partials::BatchArgmaxPartials,
+                b(),
+                b(),
+                b(),
+                count,
+                vocabulary,
+                rows,
+                strides[current],
+                strides[destination],
+                true
+            );
+            count = count.div_ceil(TILE);
+            current = destination;
+        }
+        add!(
+            batch_finish_argmax::BatchFinishArgmax,
+            b(),
+            b(),
+            b(),
+            vocabulary,
+            rows,
+            strides[current]
+        );
+        if rows > 1 {
+            add!(
+                program_kernels::copy_strided_words::CopyStridedWords,
+                b(),
+                b(),
+                b(),
+                (),
+                (),
+                (),
+                (),
+                1usize,
+                ARGMAX_RECORD_WORDS,
+                false
+            );
+        }
+    }
+    Ok(out)
 }
 
 #[cube(launch_unchecked)]
@@ -453,6 +571,7 @@ fn batch_argmax_logits(
     #[comptime] count: usize,
     #[comptime] rows: usize,
     #[comptime] destination_stride: usize,
+    #[comptime] widened_bf16: bool,
 ) {
     let absolute = ABSOLUTE_POS;
     let groups = count.div_ceil(TILE);
@@ -476,8 +595,13 @@ fn batch_argmax_logits(
                     let bits = source[usize::cast_from(src)];
                     if (bits & 0x7f800000u32) == 0x7f800000u32 {
                         flags |= program_kernels::NONFINITE_VALUE;
+                    } else if comptime!(widened_bf16) && (bits & 0xffffu32) != 0u32 {
+                        flags |= program_kernels::INVALID_REDUCTION;
                     } else {
-                        let key = program_kernels::finite_sortable_key(bits);
+                        let mut key = program_kernels::finite_sortable_key(bits);
+                        if comptime!(widened_bf16) {
+                            key = program_kernels::finite_numeric_sortable_key(bits);
+                        }
                         let token = u32::cast_from(id);
                         if !found || key > best_key || (key == best_key && token < best_id) {
                             found = true;
@@ -712,7 +836,7 @@ mod tests {
 
     #[test]
     fn trained_vocabulary_has_complete_original_row_workspaces() {
-        for rows in [2usize, 4, 8] {
+        for rows in [1usize, 2, 4, 8] {
             assert_eq!(
                 workspace_bytes(248_320, rows).unwrap(),
                 [11_640 * rows, 48 * rows, 12 * rows]
@@ -723,7 +847,7 @@ mod tests {
 
     #[test]
     fn refuse_unbounded_or_empty_native_greedy_geometry() {
-        for rows in [0, 1, 3, 9, usize::MAX] {
+        for rows in [0, 3, 9, usize::MAX] {
             assert!(workspace_bytes(248_320, rows).is_err());
         }
         for vocabulary in [0, program_kernels::MAX_WORD_OPS + 1, usize::MAX] {

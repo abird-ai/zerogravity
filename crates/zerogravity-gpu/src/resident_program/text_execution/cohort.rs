@@ -249,6 +249,7 @@ impl Cold {
         requests: &[ForwardPlan],
         states: &[Vec<StateBinding>],
         buffers: &CohortBuffers,
+        device_tokens: Option<&[Handle]>,
     ) -> Result<CohortSubmission> {
         let calls = self.cohort_calls(requests)?;
         let width = calls.len();
@@ -258,6 +259,9 @@ impl Cold {
         let base = calls[0].tokens().base();
         let rows = calls[0].tokens().len();
         let decode = calls[0].phase() == InvocationPhase::Decode;
+        if device_tokens.is_some_and(|tokens| !decode || tokens.len() != width || rows != 1) {
+            return Err(Error::State("HIP cohort device-token extent/phase".into()));
+        }
         let emit_logits = buffers.logits.is_some();
         let maps = calls
             .iter()
@@ -443,6 +447,7 @@ impl Cold {
                             &buffers.slots,
                             &inputs,
                             &outputs,
+                            None,
                         )
                         .await?,
                     )
@@ -519,6 +524,7 @@ impl Cold {
                             &buffers.slots,
                             &inputs,
                             &outputs,
+                            device_tokens.map(|tokens| &tokens[row]),
                         )
                         .await?,
                     )
