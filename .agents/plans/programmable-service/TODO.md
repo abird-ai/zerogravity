@@ -1,12 +1,13 @@
 # Programmable service and execution stack
 
 Base: `6986470e46c1cc5d0ac4601dc9163cf041d73e7b`
-Status: UX-11D accepted; PS-F1 prepared for the current provider-discovery handoff; foundation implementation not started.
+Status: UX-11D accepted; provider discovery landed; foundation API/protocol contracts specified; implementation not started.
 Owner: @pvl; root coordinates shared contracts and the queue.
 
 See [service/SDK design](README.md),
-[composition and adaptive execution](COMPOSITION_AND_ADAPTIVE_EXECUTION.md)
-and [foundation phases and parallel lanes](IMPLEMENTATION_PHASES.md).
+[composition and adaptive execution](COMPOSITION_AND_ADAPTIVE_EXECUTION.md),
+[foundation phases and parallel lanes](IMPLEMENTATION_PHASES.md),
+and the authoritative [API/protocol contracts](API_AND_PROTOCOLS.md).
 
 The user set the order on 28 Nov: UX-11D → PS-F1/F2/F3 → independent
 ROCm, CUDA, MCP/native attachment and capability lanes. Full MCP, generalized
@@ -45,12 +46,24 @@ Documentation batch; runtime implementation has not started.
 - [x] Prepare the original host/source/receipt extraction boundaries and leave
   runtime implementation to the separately assigned foundation owner.
 
-### Provider handoff and PS-F1 preparation — this documentation commit
+### `f4e4d76b` — Provider handoff and PS-F1 preparation
 
 - [x] Audit the incoming native discovery/configuration boundary, current
   frontend-reaped operations, original receipts and existing qualification
   coverage. Record the extraction map and five bounded acceptance scopes in
   [PS-F1 implementation entry](IMPLEMENTATION_PHASES.md#ps-f1--reusable-service-and-simple-sdk).
+
+### API/protocol contracts and Rust implementation policy — this documentation commit
+
+- [x] Specify native inputs/results and builder/run/stream ownership; distinguish
+  acquired sources, immutable revisions, live references and durable commands.
+- [x] Define typed authoring/activation, native HTTP/Unix attachment and optional
+  SDK-hosted rmcp projection, independent versioning and bounded observations.
+- [x] Align SDK/composition examples and phase ownership; make library reuse,
+  practical zero-cost design and proportionate end-to-end validation explicit.
+- [x] Reconcile landed provider discovery at fda84c16: native source configuration,
+  browse/repository pages/cursors and existing qualification. Broader discovery
+  adapters remain independent; acquisition/eligibility retain original owners.
 
 ## Uncommitted
 
@@ -60,17 +73,16 @@ Documentation batch; runtime implementation has not started.
   execution capabilities are qualified; remaining package/Web/About metadata
   proposals are separate from the applied README and diagram.
 
-**PS-F1 entry — prepared; provider handoff pending (28 Nov):**
+**PS-F1 entry — API/protocol contracts prepared (28 Nov):**
 
-- [ ] Receive the provider owner's completed supported slice and qualification
-  handoff before taking its overlapping source/configuration/control/UI files.
-  Reconcile actual accepted source, including page/cursor semantics and documented
-  search limits; reuse the owner's checks without a fresh provider/backend
-  matrix or a historical source freeze.
+- [ ] Coordinate current control/preparation/lifecycle file ownership before
+  extraction; read the latest source and retain the ongoing GPU lifetime fixes.
+  Reuse applicable owner checks without another provider/backend matrix or a
+  historical source freeze.
 
 Start with current AGENTS.md, CURRENT_HANDOFF, this checklist, service design
-§§2–4 and 12–14, and the linked PS-F1 entry. The provider design and acceptance
-remain in [model acquisition](../model-acquisition/TODO.md) and
+§§2–4 and 12–14, the [API contract](API_AND_PROTOCOLS.md), and the linked PS-F1
+entry. The provider design and acceptance remain in [model acquisition](../model-acquisition/TODO.md) and
 [CLI source discovery](../cli-ux/NEXT_ITERATION_CLI_UX_AND_MODEL_LIFECYCLE.md).
 Source-provider definitions already live in the SDK facade. Reuse them and
 move their orchestration into Service; retain execution-provider contracts
@@ -82,6 +94,11 @@ migrated frontends and actual load/run/stream/serve/shutdown acceptance.
 
 ### PS-F1 — Reusable Service and simple SDK
 
+Contract: [public SDK](API_AND_PROTOCOLS.md#3-public-sdk). Apply the shared
+[Rust reuse/performance](API_AND_PROTOCOLS.md#2-rust-design-and-library-reuse)
+and [proportionate validation](API_AND_PROTOCOLS.md#8-validation-without-process-overhead)
+rules throughout the implementation; each checkbox is part of the coherent unit.
+
 - [ ] Extract host plus shared configuration, accepted source discovery,
   source selection, explicit acquisition and resident preparation together;
   reuse existing discovery/configuration/cache authorities and keep UI glue local.
@@ -91,7 +108,9 @@ migrated frontends and actual load/run/stream/serve/shutdown acceptance.
   registration, operation, listener and client lifetimes.
 - [ ] Expose pull/load/run/stream/serve/inspect over original operations; preserve
   effective settings, explicit acquisition and actionable native errors.
-- [ ] Use original committed outputs/usage/results, not bounded UI copies.
+- [ ] Use original committed outputs/usage/results with explicit usage scope;
+  preserve reliable terminal cancellation/worker-loss outcomes and one drained
+  receipt across run/stream/start modes, without bounded UI copies as results.
 - [ ] Provide wakeable async waits and a shared blocking driver without token
   scheduling duplication, UI polling dependence or per-call async runtimes.
 - [ ] Migrate CLI/TUI/Web to the same service behavior; embedding installs no
@@ -100,6 +119,9 @@ migrated frontends and actual load/run/stream/serve/shutdown acceptance.
   exit. Sequential live registration remains required in PS-F3.
 
 ### PS-F2 — Programmable contracts, records and observation
+
+Contract: [typed authoring](API_AND_PROTOCOLS.md#4-programmable-authoring-and-live-control)
+and [commands/results/observations](API_AND_PROTOCOLS.md#5-operations-errors-and-observation).
 
 - [ ] Add distinct task/model/mapping drafts, scoped IDs, atomic bounded edits,
   validation, immutable freeze/derive and exact prepared references.
@@ -111,8 +133,10 @@ migrated frontends and actual load/run/stream/serve/shutdown acceptance.
   errors through Client; borrowed native interfaces remain valid Rust APIs.
 - [ ] Establish adapter grant context and Service-side mutation/private-detail
   enforcement without introducing a general identity-management framework.
-- [ ] Implement stable command/attempt identity and argument-conflict checks,
-  explicit ephemeral/durable acknowledgements and bounded retained outcomes.
+- [ ] Atomically deduplicate scoped command intent before resolving floating
+  inputs/defaults; retain resolved recipe and operation before durable dispatch.
+  Distinguish attempt identity, ephemeral/durable acknowledgement, current grants
+  and bounded result/deduplication retention.
 - [ ] Persist immutable recipes/artifact references before durable acknowledgement;
   reuse atomic storage and add an index only for actual consistency needs.
 - [ ] Reconcile service/domain epochs, interrupted and completion-unknown work;
@@ -129,6 +153,8 @@ migrated frontends and actual load/run/stream/serve/shutdown acceptance.
   idempotent recovery and truthful unsupported-capability acceptance.
 
 ### PS-F3 — Live ownership and common foundation exit
+
+Contract: [references and activation](API_AND_PROTOCOLS.md#4-programmable-authoring-and-live-control).
 
 - [ ] Implement bounded live add-registration through original catalog/admission;
   loading B preserves registered A, its source owner and existing sessions.
@@ -165,6 +191,11 @@ These are scheduling/integration items, not duplicate backend acceptance lists.
 Vulkan and optional compiled providers keep the later priority in the full plan.
 
 ### PS-M — SDK-hosted MCP and native attachment
+
+Contract: [MCP projection](API_AND_PROTOCOLS.md#7-mcp-projection-m1)
+and [native attachment](API_AND_PROTOCOLS.md#6-native-attachment-protocol-m2).
+Use optional rmcp and existing HTTP/async/serde libraries; no custom framing or
+CLI-private SDK. M1/M2 remain independent over the native foundation.
 
 - [ ] M1: implement optional MCP host directly over Client, usable by embedded
   SDK applications without CLI/daemon dependency.
@@ -273,7 +304,10 @@ for 210 relative links/anchors across 11 Markdown files, Markdown structure,
 SVG XML, both PNGs and whitespace; the diagram and screenshots were visually
 reviewed. No runtime build or GPU qualification is implied.
 
-During implementation:
+During implementation, extend these shared scenarios; API rows are not separate
+test/fixture/evidence gates. Reuse accepted unchanged-path evidence, combine
+related behavior, and add narrow checks only for concrete unresolved risks.
+Performance checks target real hot paths/workloads, not every accessor.
 
 - [ ] F1: original source/output/usage and request/owner shutdown semantics across
   embedded SDK and migrated native clients.

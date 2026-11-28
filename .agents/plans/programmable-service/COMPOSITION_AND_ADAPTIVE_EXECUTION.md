@@ -18,6 +18,8 @@ Agents must be able to define a supported model using existing primitives, compo
 
 All APIs, tool names, schemas and examples in this document are proposed. They do not imply that general DAGs, model authoring, arbitrary fusion, dynamic portfolios or all media tasks already execute. No builds, tests, benchmarks, model acquisitions or source implementation changes are performed for this design.
 
+**API authority:** [API and protocol contracts](API_AND_PROTOCOLS.md) defines the shared lifecycle, reference types, native operations and MCP mapping. The examples below illustrate that contract; builders do not introduce an independent execution representation.
+
 **Implementation order:** [foundation phases and parallel lanes](IMPLEMENTATION_PHASES.md) establishes the native SDK contracts before independent ROCm, CUDA, MCP and capability work. Full composition and protocol implementation do not gate backend parity. The live checklist is [TODO.md](TODO.md).
 
 ## 2. Three connected views, existing execution authorities
@@ -129,7 +131,7 @@ let pipeline = p.prepare().await?;
 let result = pipeline.run("Explain this proposal.").await?;
 ```
 
-Port handles refer to draft values, not runtime tensor pointers. Reusing a port creates another consumer with checked lifetime/budget requirements. A call to an already defined subpipeline has the same typed boundary as a model/task call.
+Local builders perform no hidden network I/O; prepare submits/checks/freezes the exact definition and awaits its prepared result. Loaded-handle conveniences record immutable model/task revisions, then bind exact registrations during preparation. Port handles refer to draft values, not runtime tensor pointers. Reusing a port creates another consumer with checked lifetime/budget requirements. A call to an already defined subpipeline has the same typed boundary as a model/task call.
 
 The template operation is a registered bounded pure operation, not an arbitrary host callback serialized to the service. Builder closures/functions execute at authoring time; runtime behavior is the checked definition.
 
@@ -186,7 +188,7 @@ A model assembled from several sources needs an authenticated aggregate binding 
 The proposed builder records existing recognized operations into the original program. A hypothetical decoder-shaped model can look like this:
 
 ```rust
-let source = zg.sources().open(source_artifact).await?;
+let source = zg.artifacts().inspect(source_artifact).await?;
 let spec = checked_model_spec(&source)?; // explicit source-role/math specification
 let mut m = zg.models().definition("example-decoder", &source)?;
 
@@ -220,7 +222,9 @@ m.output("logits", logits)?;
 m.task(spec.text_generation_task())?;
 
 let definition = m.finish()?;
-let candidate = zg.prepare(definition).await?;
+let draft = zg.drafts().create(definition).await?;
+let revision = zg.drafts().freeze(draft).await?;
+let candidate = zg.prepare(revision).await?;
 ```
 
 This illustrates the target interface for a source whose actual equations match that structure; it is not an asserted implementation of any named model. Composite helpers such as qkv/causal_attention expand to their registered primitive/effect contracts. KV mutations remain provisional under the original invocation; the helper cannot publish state.
@@ -285,7 +289,7 @@ let chain = zg.implementations()
     .finish()?;
 
 let candidate = zg.revisions()
-    .derive(model.revision())
+    .derive(model.mapping_revision())
     .map_region(&norm, &chain)
     .prepare()
     .await?;
@@ -301,18 +305,19 @@ Explicit chains can be DAGs, with branches, joins and layout/copy steps. Physica
 let fused = zg.implementations()
     .for_region(&norm)
     .fuse()
+    .provider(fusion_provider)
     .backend(Backend::Rocm)
     .compile()
     .await?;
 
 let alternative = zg.revisions()
-    .derive(model.revision())
+    .derive(model.mapping_revision())
     .map_region(&norm, &fused)
     .prepare()
     .await?;
 ```
 
-Here compile returns a checked implementation artifact/recipe, not execution permission. Preparation still validates target/bindings and admits original physical owners.
+fusion_provider identifies an advertised compiler/provider or finite transform template; a backend alone does not identify a fusion compiler. Here compile returns a checked implementation artifact/recipe, not execution permission. Preparation still validates target/bindings and admits original physical owners.
 
 fuse() requests a transformation from a compiler/provider that advertises support for that region. propose() can enumerate alternatives; compile() returns one explicitly selected immutable implementation artifact/recipe or a typed refusal. Like a finished chain recipe, that artifact still requires ordinary mapping preparation before execution. Static attributes such as RMS epsilon remain frozen semantic bindings, not implicit implementation-tuning parameters. Already compiled opaque library kernels cannot be mechanically concatenated into a correct fused kernel. An agent may supply a new implementation artifact for the same contract through the existing kernel-authoring/isolation path.
 
@@ -335,9 +340,9 @@ A mapping is validated and benchmarked as a connected plan. Independently fastes
 This mapping is a product capability:
 
 ```rust
-let mapping = candidate.execution().inspect().await?;
+let mapping = zg.execution().inspect(candidate.reference()).await?;
 
-let lowered = mapping.for_region(norm.id())?;
+let lowered = mapping.for_region(norm.reference())?;
 let causes = mapping.explain_transfer(transfer_id)?;
 let origins = mapping.semantic_origins(kernel_instance_id)?;
 ```
@@ -376,7 +381,8 @@ Expose the same checked authoring model through typed tools:
 | composition_create | Create a task-pipeline, model-definition or mapping draft. |
 | composition_edit | Apply an atomic typed edit batch against an expected draft revision. |
 | composition_validate | Report structural, source, type/shape/effect and capability issues by node/port. |
-| composition_prepare | Freeze checked recipe and prepare it; return the ordinary operation handle. |
+| composition_freeze | Resolve/check the exact draft version and retain an immutable revision. |
+| composition_prepare | Prepare that exact revision; return the ordinary accepted operation handle. |
 | execution_inspect | Inspect semantic/physical mapping and actual selection for a run. |
 | transform_propose | Request inline/outline/fusion/layout/capture candidates where supported. |
 | workloads_profile | Collect explicitly selected observation fields and coverage. |
@@ -389,8 +395,9 @@ Example task connection:
 
 ```json
 {
+  "command_key": "edit-review-1",
   "draft_id": "draft_17",
-  "expected_revision": 4,
+  "expected_version": "4",
   "edits": [
     {
       "op": "add_model_call",
@@ -413,8 +420,9 @@ An execution-mapping draft can add kernel steps, bind semantic input/parameter/a
 
 ```json
 {
+  "command_key": "edit-mapping-1",
   "draft_id": "mapping_draft_12",
-  "expected_revision": 2,
+  "expected_version": "2",
   "edits": [
     {
       "op": "map_region",
@@ -458,6 +466,8 @@ Raw prompt/token/tensor/output capture is an explicit separate choice. A profile
 
 ### 9.2 The experiment loop
 
+E1 starts with the finite candidate comparison in the [API contract](API_AND_PROTOCOLS.md#44-profiles-studies-and-activation). The following higher-level search/policy convenience is an E2 consumer of those same bounded operations; it does not require an optimizer framework in the foundations.
+
 ```rust
 let profile = zg.workloads()
     .observe("assistant")
@@ -466,8 +476,8 @@ let profile = zg.workloads()
     .record()
     .await?;
 
-let space = SearchSpace::from(model.revision())
-    .region_candidates(norm.id(), [chain, fused])
+let space = SearchSpace::from(model.mapping_revision())
+    .region_candidates(norm.reference(), [chain, fused])
     .scheduler_candidates(allowed_scheduler_settings)
     .workspace_limit(workspace_budget);
 
@@ -482,14 +492,15 @@ let study = zg.experiments()
     .run()
     .await?;
 
-let policy = study.qualified_policy()?;
-zg.activate("assistant", &policy)
-    .if_generation(active_generation)
-    .for_new_requests()
-    .await?;
+if let Some(policy) = study.qualified_policy()? {
+    zg.activate("assistant", &policy)
+        .if_generation(active_generation)
+        .for_new_requests()
+        .await?;
+}
 ```
 
-The numbers are illustrative budgets/scenarios, not measurements or current support claims. allowed_scheduler_settings come from actual capabilities. explicit_workload is an authorized replay or declared representative corpus/synthetic workload; profile distributions alone are not inputs.
+qualified_policy returns None unless E2 has prepared a portfolio satisfying the recorded contract/objectives; E1 comparison alone does not supply an adaptive policy. The numbers are illustrative budgets/scenarios, not measurements or current support claims. allowed_scheduler_settings come from actual capabilities. explicit_workload is an authorized replay or declared representative corpus/synthetic workload; profile distributions alone are not inputs.
 
 Search budget limits candidates, compilations, host/GPU time, retained artifacts, traces, workspace, concurrent trials and permitted interference with live serving. A failed invariant stops affected work. No qualified gain leaves the active policy unchanged and records no improvement established.
 
@@ -547,7 +558,7 @@ Saved experiments retain task/model definition, source/parameter bindings, numer
 
 A reusable model package consists of its source/config/tensor-role specification, typed model definition, task/tokenizer/processor declarations and validated implementation coverage. Optional target-specific implementation artifacts are reproducible derivatives. Do not duplicate base weights into every candidate or replace live owner identity with a manifest digest.
 
-The complete proposed acceptance unit is:
+The later combined capability-roadmap demonstration is below. It is not the F1–F3 exit or a gate on backend/MCP independence:
 
 1. Author a small real supported model definition using existing primitives; validate it against an independent reference.
 2. Compose it into a typed multi-stage task through both SDK and MCP.
@@ -558,12 +569,13 @@ The complete proposed acceptance unit is:
 7. Keep admitted sessions/compositions pinned, continue serving, and expose actual selections and metrics.
 8. Save the recipe/study; reattach, rerun and resume supported checkpoints without new runtime/state/resource authorities.
 
-Begin with an existing useful primitive family and the actual supported task path. Do not require a universal compiler, arbitrary media, a full optimizer framework or another fixture system before this end-to-end unit. Generalize ranked values, state/control/output contracts only as the next real authored model requires, with explicit unsupported defaults.
+Deliver and validate each lane through its existing coherent outcome; combine this demonstration when those capabilities exist. Reuse the same library primitives and existing qualification support, without a test/evidence cycle per builder/edit/kernel wrapper. Begin with an existing useful primitive family and the actual supported task path. Do not require a universal compiler, arbitrary media, a full optimizer framework or another fixture system before this end-to-end unit. Generalize ranked values, state/control/output contracts only as the next real authored model requires, with explicit unsupported defaults.
 
 Composition and mapping contracts belong in the initial native service/SDK foundations, exercised by existing supported consumers. Broader task/model authoring, MCP protocol implementation, backend parity and other capability lanes then progress independently on those contracts. Profiling, experiments and policy activation build on the same objects. Arbitrary new native code still requires the isolation/admission prerequisites in the service proposal before execution.
 
 ## References
 
+- [API and protocol contracts](API_AND_PROTOCOLS.md)
 - [Service and execution-stack proposal](README.md)
 - [Foundation phases and parallel implementation](IMPLEMENTATION_PHASES.md)
 - [Implementation checklist](TODO.md)

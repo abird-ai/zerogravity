@@ -1,14 +1,14 @@
 Author: Project owner
 Co-authors: GPT-6 Astra Pro; GPT-6.1 Sol (service, composition and execution review)
 Owner: @pvl
-Status: UX-11D accepted; provider-first handoff pending; foundation preparation complete, implementation not started
+Status: UX-11D accepted; provider discovery landed; foundation API/protocol contracts specified, implementation not started
 Decision: 28 November 2026 (Asia/Singapore)
 
 # Programmable stack — foundations and parallel implementation
 
 ## 1. Delivery decision
 
-UX-11D acceptance is complete. Let the current provider-first discovery owner finish and hand off its supported implementation, then complete the shared foundations below. This handoff serializes ownership of the overlapping source files. After the foundation exit, ROCm parity, CUDA parity, MCP/native attachment and capability development can proceed independently through the same SDK and execution contracts.
+UX-11D acceptance is complete and provider-first discovery landed at fda84c16. Reuse that supported implementation and coordinate overlapping source ownership with the current runtime/lifecycle owner, then complete the shared foundations below. Broader provider expansion stays independent. After the foundation exit, ROCm parity, CUDA parity, MCP/native attachment and capability development can proceed independently through the same SDK and execution contracts.
 
 This supersedes the earlier serial sequence in the [service design](README.md) and the former requirement to finish ROCm parity before beginning the CUDA campaign. It does not change numerical acceptance, source authorization, device holds or physical lifetime rules. Accepted backend results and useful dormant primitives remain valid within their original scopes.
 
@@ -16,11 +16,11 @@ The common prerequisite is **PS-F1 → PS-F2 → PS-F3**, not completion of the 
 
 The SDK is the native programming surface. It can be used directly, embedded in another application, or consumed by an optional MCP host. The MCP implementation is an outward adapter over Service/Client; it does not own inference or require CLI-private orchestration.
 
-All interfaces in these documents remain target APIs until implemented and accepted. This document defines outcomes and dependency boundaries; [TODO.md](TODO.md) is the live completion checklist.
+All interfaces in these documents remain target APIs until implemented and accepted. [API and protocol contracts](API_AND_PROTOCOLS.md) defines the public surface, identities, lifetimes, wire mapping and compatibility in one place. This document defines outcomes and dependency boundaries; [TODO.md](TODO.md) is the live completion checklist.
 
 ```mermaid
 flowchart TB
-    U["UX-11D accepted"] --> D["Provider discovery handoff"]
+    U["UX-11D accepted"] --> D["Provider discovery landed"]
     D --> F1["F1: reusable service and SDK"]
     F1 --> F2["F2: programmable native contracts"]
     F2 --> F3["F3: live ownership and foundation exit"]
@@ -58,6 +58,8 @@ Initial task/model/mapping drafts can import and freeze existing supported defin
 
 ### Maintenance rules
 
+Apply the [Rust design and reuse rules](API_AND_PROTOCOLS.md#2-rust-design-and-library-reuse): share existing library primitives, use efficient native ownership/static dispatch where useful, and keep adapters outside hot execution. Prefer clean, simple high performance when available; otherwise simple design with targeted optimization of measured hot paths. These are responsibilities, not a crate/trait/test per concept.
+
 - Prefer small modules in existing crates. Add a crate only for a real dependency, packaging or isolation boundary.
 - Distinguish definition identity, numerical/state compatibility, implementation identity and live prepared ownership. Content digests cannot substitute for live permits.
 - Keep model-specific mathematics and source roles in their model adapters. Shared operators and physical implementations remain model-neutral.
@@ -73,7 +75,9 @@ Initial task/model/mapping drafts can import and freeze existing supported defin
 
 **Outcome:** one embedded Service supports the public SDK and existing CLI/TUI/Web through the original Runtime and execution owners.
 
-**Entry:** UX-11D is accepted. Complete the current provider-first discovery handoff before taking ownership of its overlapping configuration/control/UI files. Inspect the accepted implementation and its existing qualification; reported commit IDs identify work, not a requirement to restore historical source. Broader provider features remain in their owning plan.
+**API:** [Public SDK and result/lifetime contracts](API_AND_PROTOCOLS.md#3-public-sdk). F1 establishes the completed-result builder convention and exact registration/listener/request identities; wire transport remains M2.
+
+**Entry:** UX-11D is accepted and native discovery is committed. Read its current implementation/qualification and coordinate active configuration/control/preparation/lifecycle file ownership before extraction. Reported commit IDs identify work, not a requirement to restore historical source. Broader provider features remain in their owning plan.
 
 #### Incoming source boundary
 
@@ -90,13 +94,13 @@ Keep three operations distinct: discover/select → explicitly resolve and pull 
 | Engine `router/{event_channel,dispatch}.rs` and `output.rs` | Extend original charged receipt waiting for native async use; retain exact output, usage, errors, cancellation and backpressure. | Rendering or forwarding events. |
 | CLI `output/operational.rs` and log views | Own configurable operational event/sink lifetimes without inheriting the process-global CLI singleton. | Select terminal/file destinations and restore terminal state. |
 
-The provider handoff should state the implemented subset and outstanding limits. Current incoming code covers HF/GitHub/local kinds; custom endpoints, new credential stores, every release/object adapter and full hub enumeration are independent additions. Preserve native page/cursor semantics and documented search limits through Service; a bounded response is not whole-catalog enumeration.
+The provider plan states the implemented subset and outstanding limits. Landed discovery covers HF/GitHub/local kinds; custom endpoints, new credential stores, every release/object adapter and full hub enumeration are independent additions. Preserve native page/cursor semantics and documented search limits through Service; a bounded response is not whole-catalog enumeration.
 
 #### One implementation unit
 
 1. Put reusable Service/Client modules in the existing SDK facade and extract the complete cold discovery/acquisition/preparation flow. Preserve advanced Runtime/provider interfaces and explicit acquisition policy. The service does not depend on CLI types, TTY behavior or a Web host.
 2. Give Service autonomous management supervision. Preserve the bounded single management action slot initially; no UI polling or result query may be required to reap work. This slot does not limit ordinary SDK run/stream concurrency: inference admission continues through the original scheduler. Retain typed discovery pages, repository observations, pull receipts and terminal errors independently of the native view or Web `latest` result. Leave durable command/restart storage in F2.
-3. Implement the supported `pull`, `load`, `model.run/stream`, `serve`, capability/inspection and joined-shutdown surface. Native async waits use the existing receiver's `poll_recv`; the blocking facade shares a long-lived driver. Neither creates a second token channel or per-call runtime. Complete output/usage comes from original terminal events, including results larger than the current 64 KiB UI display limit.
+3. Implement the supported `pull`, `load`, `model.run/stream`, `serve`, capability/inspection and joined-shutdown surface. Native async waits use the existing receiver's `poll_recv`; the blocking facade shares a long-lived driver. Extend original receipt completion for cancellation/worker-loss paths and drain the same bounded receiver when collecting a result. Neither creates a second token channel or per-call runtime. Complete output/usage comes from original outcomes, including results larger than the current 64 KiB UI display limit; pipeline usage states whether it covers the final stage or all collected stages.
 4. Migrate CLI/TUI/Web dispatch to the same Service. Keep model registration and listener generation checks, safe public errors and full native causes. Source edits retain stale-document checks; restricted clients cannot grant new local filesystem roots. Removing a discovery source changes its configuration, while acquired snapshots, aliases, transfers, model owners and user files retain their original lifetimes.
 
 Embedding installs no process-global logging, signals, sockets or UI implicitly. Client/view disconnection does not shut down the owner. Owner shutdown stops new management submissions, cancels and joins work outside shared locks, closes owned listeners, retires the original Runtime and finishes sinks, preserving primary and cleanup errors. Terminal restoration remains adapter work before potentially long joins.
@@ -121,6 +125,8 @@ The cold atomic route-set transaction is the F1 consumer. Sequential live regist
 
 **Outcome:** every later client and capability uses one native authoring/control model.
 
+**API:** [Typed authoring/live references](API_AND_PROTOCOLS.md#4-programmable-authoring-and-live-control) and [commands, errors and observations](API_AND_PROTOCOLS.md#5-operations-errors-and-observation). Establish these native shapes now; later adapters add transport, and capability lanes add supported semantics.
+
 Implement the small shared object vocabulary: immutable artifacts/recipes; typed task/model/mapping drafts and revisions; live prepared references; operations/attempts; activation generations; checkpoint compatibility descriptors. Reuse existing source/session/registration identities.
 
 Exercise the authoring boundary with an existing model definition, serial pipeline and one actual supported closed-region preparation. Validate complete ports, numerical/state/source effects and original provider binding. For already supported definitions, imported scopes retain their deterministic expansion into the canonical plan. Additional nested authoring and primitive edits are capability increments in PS-C2. Mapping descriptions remain preparation inputs and inspection views.
@@ -132,7 +138,7 @@ Implement a small native grant context: trusted embedded ownership and explicitl
 Implement the minimal durable core now:
 
 - Persist an accepted durable command with its resolved argument identity before returning a durable acknowledgement.
-- Repeated command keys resolve to the same operation or a typed argument conflict.
+- Atomically deduplicate scoped command keys against submitted intent before re-resolving floating references/defaults. Same intent returns its original result/operation; different intent conflicts. Durable acceptance commits before mutation/submission effects; result access still checks current grants.
 - Retain immutable recipes and bounded operation/attempt outcomes; distinguish ephemeral work.
 - Use existing atomic artifact/cache primitives. Introduce a small transactional index only for concrete consistency/search requirements.
 - Record service epochs, coarse dirty/clean physical-domain ownership epochs and interrupted/completion-unknown outcomes. After unclean or unknown submitted work, fresh admission on an affected domain requires trusted original backend/supervisor retirement proof; otherwise retain unavailable/quarantined status. Process death, elapsed time or a superficial health probe do not restore credit.
@@ -153,6 +159,8 @@ Define the checkpoint envelope and exact compatibility fields around existing qu
 ### PS-F3 — Safe live ownership and foundation integration
 
 **Outcome:** later lanes can change supported registrations and prepared revisions without redesigning the shared lifecycle.
+
+**API:** [Prepared references and guarded activation](API_AND_PROTOCOLS.md#4-programmable-authoring-and-live-control). Publish actual generations and retirement/coexistence outcomes; complete candidates, diagnostic regions and persistent recipes remain distinct.
 
 Implement a bounded add-registration transaction through the original catalog, scheduler and admission. Preparing/loading B while A is registered must not rebuild A, replace its source owner or silently discard its sessions. Publish exact registrations only after successful preparation; release failed unpublished work through original retirement.
 
@@ -242,9 +250,9 @@ Vulkan and optional compiled providers remain lower-priority consumers of these 
 
 ### PS-M — two independent integration milestones
 
-**M1: SDK-hosted MCP.** Bind an embedded Client directly. Expose capability discovery, exact model operations, supported draft/prepare/inspect operations, operation get/cancel/results and bounded observation. Implement negotiated supported protocol features; ordinary operation polling remains available without optional protocol extensions. Keep inference, browser control and privileged experiments scoped by native authorization.
+**M1: SDK-hosted MCP.** Implement the [MCP projection](API_AND_PROTOCOLS.md#7-mcp-projection-m1) using optional rmcp with normal compatible dependency resolution. Bind an embedded Client directly. Expose capability discovery, exact model operations, supported draft/prepare/inspect operations, operation get/cancel/results and bounded observation. Implement negotiated supported protocol features; ordinary operation polling remains available without optional protocol extensions. Keep inference, browser control and privileged experiments scoped by native authorization.
 
-**M2: native attachment and process modes.** Implement versioned owned wire DTOs, authenticated local endpoint, service epoch/identity and bounded subscriptions. Headless foreground mode owns Service. TUI/Web attach to the selected existing service or embed it only after serialized discovery establishes absence. Authentication/version/busy/live-owner failures do not launch a hidden second runtime. Explicit embedded/connect modes remain available.
+**M2: native attachment and process modes.** Implement the [native attachment protocol](API_AND_PROTOCOLS.md#6-native-attachment-protocol-m2): HTTP/JSON and bounded SSE over a private Unix socket, reusing existing transport libraries. Include owned wire DTOs, authenticated local endpoint, service epoch/identity and bounded subscriptions. Headless foreground mode owns Service. TUI/Web attach to the selected existing service or embed it only after serialized discovery establishes absence. Authentication/version/busy/live-owner failures do not launch a hidden second runtime. Explicit embedded/connect modes remain available.
 
 M1 can use an embedded Client before M2 exists; M2 can serve native clients before M1 exists. Their integration proves the same SDK/MCP operation against an embedded and attached Service, with correct disconnect and owner-shutdown behavior.
 
@@ -335,7 +343,7 @@ Initially assign available lanes to ROCm, CUDA and MCP as capacity permits. Comp
 
 ## 7. Acceptance and stopping rules
 
-Each phase/lane closes on useful end-to-end behavior, not a collection of helpers. Reuse existing qualification support and approved sources. Test changed numerical/source/state/lifetime behavior, actual affected backend execution, meaningful fault/cancellation cases and the assembled repository gate according to AGENTS.md. Do not build a mandatory fixture matrix per interface.
+Each phase/lane closes on useful end-to-end behavior. Follow [validation without process overhead](API_AND_PROTOCOLS.md#8-validation-without-process-overhead): fold API/protocol concerns into the existing coherent scenarios. Reuse qualification support, approved sources and unchanged-path evidence. Test actual changed numerical/source/state/lifetime behavior and concrete failure risks, with the assembled gate according to AGENTS.md. No separate gate, fixture matrix, receipt/archive or performance benchmark per helper, method, type or schema.
 
 - Foundation acceptance enables parallel work immediately.
 - Native SDK acceptance does not wait for MCP or UI projection. Later joint tests verify their equivalence.
@@ -365,6 +373,7 @@ Repository root for those references: /home/pvl/spaces/abird/src/zerogravity.
 
 ## References
 
+- [API and protocol contracts](API_AND_PROTOCOLS.md)
 - [Service design and simple SDK](README.md)
 - [Task/model composition and adaptive execution](COMPOSITION_AND_ADAPTIVE_EXECUTION.md)
 - [Live implementation checklist](TODO.md)

@@ -1,7 +1,7 @@
 Author: Project owner
 Co-authors: GPT-6 Astra Pro; GPT-6.1 Sol (independent architecture, SDK and MCP review)
 Owner: @pvl
-Status: Accepted design direction; UX-11D accepted; foundation implementation follows the current provider-discovery handoff
+Status: Accepted design direction; UX-11D accepted and provider discovery landed; foundation API/protocol contracts specified
 Date: 28 November 2026 (Asia/Singapore)
 
 # ZeroGravity — programmable service and execution stack
@@ -18,7 +18,7 @@ The principal redesign is to make the existing application host reusable outside
 
 **28 Nov composition extension:** task pipelines, model definitions and deep execution mappings are first-class authoring surfaces in both SDK and MCP. Agents can build supported models from reusable primitives, inspect semantic-to-kernel provenance, derive chain/fusion candidates and tune finite execution policies from actual workloads. See [composition and adaptive execution](COMPOSITION_AND_ADAPTIVE_EXECUTION.md) for the complete authoring contracts and examples; this extends the lifecycle design below without another inference runtime or canonical IR.
 
-This document records the accepted design direction; implementation has not started for this plan. API names and examples below are target interfaces, not claims that they compile today. No new numerical, performance, model, backend, persistence or isolation support follows from this proposal.
+This document records the accepted design direction; implementation has not started for this plan. [API and protocol contracts](API_AND_PROTOCOLS.md) is the authoritative target surface for SDK operations, typed authoring, native attachment and MCP. It also records Rust performance/reuse and proportionate validation rules. API names and examples below are target interfaces, not claims that they compile today. No new numerical, performance, model, backend, persistence or isolation support follows from this proposal.
 
 ## 2. Source audit and starting point
 
@@ -103,7 +103,7 @@ A `zerogravityd` executable may later be a thin alternative entry point. A secon
 
 Auto bootstrap discovers a service by a user/instance-scoped endpoint and identity under the existing XDG namespace. It serializes probe-and-create using an ownership lock. Only verified absence permits embedded fallback. Authentication failure, version mismatch, a busy endpoint or an unresponsive live owner does not cause a hidden second runtime. Explicit isolated instances have distinct names and budgets. Names/caps do not coordinate physical capacity: concurrent ZeroGravity hosts sharing a device require parent-authoritative resource envelopes, or disjoint devices. This cross-process mechanism is new work; until it exists, overlapping independently owned instances must refuse coordinated sharing rather than each count the whole device.
 
-Prefer a private Unix-domain control socket for the local native client; keep authenticated HTTP for Web/MCP/remote clients. A remote path refers to the service machine. Local inputs use explicit artifact upload/import rather than accidentally interpreting a laptop path on another host.
+Use HTTP/JSON and bounded SSE over a private Unix-domain socket for native local attachment, with the existing transport libraries. Keep authenticated HTTP projections for Web/MCP/remote clients; the [protocol contract](API_AND_PROTOCOLS.md#6-native-attachment-protocol-m2) defines their distinct responsibilities. A remote path refers to the service machine. Local inputs use explicit artifact upload/import rather than accidentally interpreting a laptop path on another host.
 
 ### 4.3 Lifetimes are explicit
 
@@ -137,7 +137,7 @@ Use the existing model/source/session identities, plus a small common vocabulary
 | Artifact | Immutable source, kernel code/binary, input/reference, trace or result bytes; existing verified model artifacts remain canonical. |
 | Revision | Immutable resolved recipe: model/program identity, component references, numerical policy, implementation choices, placement and execution policies; optional parent revision. |
 | Prepared revision | A revision bound to the original target-specific prepared owners/ExecutableBundle. This is live ownership, not another serialized physical plan. |
-| Operation | Service-owned progress/cancellation/result handle for pull, preparation, experiment, activation, restore or inference. A run is an operation's actual execution attempt/result. |
+| Operation | Accepted service-owned work such as pull, preparation, experiment, activation, restore or explicitly background inference. Ordinary foreground RunHandle/RunStream retain request-scoped lifetime over the original receipt; they do not require a durable operation record. |
 | Checkpoint | Original committed neural state plus the task continuation needed for the declared resume scope. |
 | Workspace/experiment | A named namespace grouping revisions, trials, artifacts, checkpoints and results. It is not another execution runtime. |
 
@@ -152,7 +152,7 @@ Keep identity dimensions explicit within these contracts:
 
 Changing an implementation need not change semantics if it satisfies the same qualified contract. Equal shapes or equal digests never grant state restore, live source rights or permission to replay a graph. Durable recipes are reauthenticated and re-prepared after restart.
 
-A draft is editable; validation/preparation freezes a new immutable revision. Human YAML and typed Rust builders produce the same checked model. Avoid arbitrary patches to mutable runtime structs and a registry per layer.
+A draft is editable; validation observes its exact version, freeze produces an immutable resolved revision, and preparation binds supported live execution. A convenience prepare builder can perform those steps explicitly under one request. Human YAML and typed Rust builders produce the same checked model. Avoid arbitrary patches to mutable runtime structs and a registry per layer.
 
 ## 6. Every layer is inspectable and programmable
 
@@ -225,7 +225,7 @@ Persist desired activation separately from observed live generation. A durable c
 
 ## 8. Native MCP
 
-MCP exposes the same Client/service operations as Rust, CLI and Web. It neither shells out to parse CLI text nor obtains raw mutable runtime pointers. OpenAI-compatible inference remains a narrower projection of the same native model/run semantics.
+MCP exposes the same Client/service operations as Rust, CLI and Web. The [MCP projection](API_AND_PROTOCOLS.md#7-mcp-projection-m1) defines concrete tools, typed results and optional rmcp reuse; this section explains the design. It neither shells out to parse CLI text nor obtains raw mutable runtime pointers. OpenAI-compatible inference remains a narrower projection of the same native model/run semantics.
 
 Use a bounded set of schema-defined tools, grouped by domain:
 
@@ -368,7 +368,7 @@ A seed alone does not fix batching, reduction order, provider choices, adaptive 
 
 ## 12. SDK target
 
-Use one convenient Client API over embedded or attached service. Preserve advanced Runtime and provider interfaces for users who need them. Async and blocking facades use the same operations; the engine does not require Tokio policy. Async waits use wakeable bounded service channels, not blocking OutputStream::next() on an async executor thread or a busy-poll loop.
+Use one convenient Client API over embedded or attached service. [Public SDK contracts](API_AND_PROTOCOLS.md#3-public-sdk) defines the builders, input/results, reference scopes and exact run/stream/cancel semantics; examples here show the intended experience. Preserve advanced Runtime and provider interfaces for users who need them. Async and blocking facades use the same operations; the engine does not require Tokio policy. Async waits use wakeable bounded service channels, not blocking OutputStream::next() on an async executor thread or a busy-poll loop.
 
 ### Pull, load and run
 
@@ -388,7 +388,7 @@ println!("{}", answer.text());
 service.shutdown().await?;
 ```
 
-Pull means explicit acquisition and verified artifact publication. Load means source eligibility, preparation and resource admission. It accepts a Source handle, local path or an existing cache/catalog selector. Load does not silently acquire missing weights. An explicitly selected auto-acquire policy may offer that convenience.
+Pull means explicit acquisition and verified artifact publication. Load means source eligibility, preparation and resource admission. It accepts an AcquiredSource, local path or an existing cache/catalog selector. AcquiredSource retains exact acquisition identity/receipt and is distinct from discovery::Source configuration. Load does not silently acquire missing weights. An explicitly selected auto-acquire policy may offer that convenience.
 
 Names in examples are catalog selectors, not immutable source identities. Pull/load return the actual selected digest and effective preparation. Local-only input is just:
 
@@ -422,7 +422,7 @@ let mut stream = model
     .stream()
     .await?;
 
-while let Some(event) = stream.next().await? {
+while let Some(event) = stream.try_next().await? {
     if let Some(text) = event.text_delta() {
         print!("{text}");
     }
@@ -431,7 +431,7 @@ let result = stream.result().await?;
 println!("{:?}", result.usage());
 ```
 
-Stream EOF retains the actual terminal RunResult for stream.result(); that call reads the cached terminal outcome and never resubmits work. EOF without a terminal outcome is an error.
+Stream EOF retains the actual terminal RunResult for stream.result(); called earlier, result drains the same original receiver. It never resubmits work or waits behind its own unread bounded events. EOF without a terminal outcome is an error; cancellation acknowledgement remains distinct from observed outcome and physical retirement.
 
 Plain run(...).await returns a terminal RunResult, not merely an acceptance receipt. Advanced callers use run(...).start().await for a RunHandle, then handle.result().await or handle.cancel().await. A RunResult contains finish reason, usage, identity and observed revision; length-limited output remains explicitly length-limited.
 
@@ -451,7 +451,7 @@ println!("{}", listener.address());
 listener.wait().await?;
 ```
 
-This shares the original registration, memory and scheduler. Default binding is loopback. Listener stop addresses its exact generation. Application signal handling remains the application's responsibility; the CLI supplies normal signal integration.
+This shares the original registration, memory and scheduler, enforcing the exact exposed model/route set in the original serving owner. Default binding is loopback. Listener stop addresses its exact generation. Application signal handling remains the application's responsibility; the CLI supplies normal signal integration.
 
 ### Opt into placement and limits
 
@@ -469,34 +469,38 @@ Ordinary calls use explicit documented Auto policy. A selected backend/device is
 ### Inspect, derive, compare and activate
 
 ```rust
-let base = zg.revisions().active("assistant").await?;
-let norm = base.program().region("decoder.rms_norm")?;
+let active = zg.revisions().active("assistant").await?;
+let baseline = active.prepared();
+let program = model.program().await?;
+let norm = program.region(norm_region_id)?;
 
-let candidate = zg
-    .revisions()
-    .derive(&base)
-    .replace_kernel(norm, kernel_artifact)
+let candidate = zg.revisions()
+    .derive(model.mapping_revision())
+    .map_region(&norm, &implementation_recipe)
     .prepare()
     .await?;
 
-let report = zg
-    .experiments()
-    .compare(&base, &candidate)
+let report = zg.experiments()
+    .compare(&baseline, &candidate)
     .workload(workload_artifact)
+    .acceptance(service_objectives)
+    .budget(study_budget)
     .check_inherited_contract()
     .record("rms-norm-tuning")
     .run()
     .await?;
 
-report.require_acceptable()?;
-
-zg.activate("assistant", &candidate)
-    .if_generation(base.activation_generation())
-    .for_new_requests()
-    .await?;
+if report.accepts(candidate.reference())? {
+    zg.activate("assistant", &candidate)
+        .if_generation(active.generation())
+        .for_new_requests()
+        .await?;
+}
 ```
 
-Region identity comes from inspection of the actual revision; the example name is illustrative. The saved workload and acceptance policy define the tested scope. No arbitrary caller boolean is proof that a candidate is qualified.
+Region identity comes from inspection of the exact semantic revision; mapping_revision identifies its implementation recipe. The local derive builder records a base reference and edits, resolving that exact base at awaited submission. active() returns an observed binding generation/prepared reference, not a mutable deployment owner.
+
+The recorded workload and acceptance objectives define the tested scope and any required gain. No qualifying result leaves the binding unchanged; Service still checks grants, qualification, exact owners and coexistence before activation.
 
 ### Resume or repeat recorded work
 
@@ -531,7 +535,7 @@ Keep model decisions in model-owned adapters and physical operations in backends
 
 ## 14. Delivery units and acceptance
 
-**28 Nov scheduling decision:** finish UX-11D acceptance, then complete the shared PS-F1/F2/F3 foundations. After their bounded exit, ROCm parity, CUDA parity, SDK-hosted MCP/native attachment and capability development proceed in independent lanes.
+**28 Nov scheduling decision:** UX-11D is accepted and provider discovery landed; complete the shared PS-F1/F2/F3 foundations after coordinating current source ownership. After their bounded exit, ROCm parity, CUDA parity, SDK-hosted MCP/native attachment and capability development proceed in independent lanes.
 
 See [implementation phases and parallel dependencies](IMPLEMENTATION_PHASES.md) and [the live checklist](TODO.md). They replace the earlier serial sequence; full MCP, generalized composition, tuning, checkpoint expansion and arbitrary-code isolation do not gate backend parity.
 
@@ -565,6 +569,7 @@ Implement in substantial end-to-end units. Minimal acceptance scenarios:
 - [Live model performance](../cli-ux/LIVE_MODEL_PERFORMANCE.md)
 - [UX-11 and durable operational logging](../cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md)
 - [Correctness policy](../numerics-and-context/CORRECTNESS_POLICY.md)
+- [API and protocol contracts](API_AND_PROTOCOLS.md)
 - [Foundation phases and parallel implementation](IMPLEMENTATION_PHASES.md)
 - [README positioning and SDK preview proposal](README_PROPOSAL.md)
 - [This proposal's implementation checklist](TODO.md)
