@@ -7,6 +7,25 @@ The architecture is described in the [engineering specification](ENGINEERING_SPE
 This guide describes the checked-in build interfaces; it does not certify every
 platform, model or release target.
 
+## Install the CLI
+
+The first prebuilt binary release is pending. To install the portable CPU build
+with the terminal and Web interfaces, use Git and the repository's Rust toolchain:
+
+```sh
+git clone https://github.com/abird-ai/zerogravity.git
+cd zerogravity
+cargo install --locked --path crates/zerogravity-cli \
+  --no-default-features --features cpu,model-qwen35,text,tui,web
+zerogravity --help
+```
+
+Cargo builds an optimized executable and installs it in `$CARGO_HOME/bin`
+(default `$HOME/.cargo/bin`); keep that directory on PATH. This build runs
+supported local Qwen3.5 text models on CPU. GPU backends, acquisition and inference
+serving use the full native build below and its runtime dependencies.
+No model weights are downloaded by installation.
+
 ## Local Rust development
 
 The [toolchain](../rust-toolchain.toml) pins Rust 1.95.0 with rustfmt and Clippy.
@@ -82,8 +101,10 @@ the network. Keep actual network isolation and applicable acquisition authority.
 ## Nix development and native checks
 
 The [flake](../flake.nix) pins nixpkgs, crane and rust-overlay. Native dependency
-builds, packages and checks are separate derivations. Its default package and
-app select the CPU text frontend.
+builds, packages and checks are separate derivations. On x86-64 Linux the default
+package and app select the full native runtime; `.#portable` selects the CPU
+build. See [the native package guide](CLI.md#native-nix-package) for launcher and
+runtime-library details.
 
 ```sh
 nix develop

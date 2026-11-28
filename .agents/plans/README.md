@@ -1,6 +1,6 @@
 # Plans
 
-**Current delivery order:** [Full implementation plan](FULL_IMPLEMENTATION_PLAN.md) — foundations → CLI/TUI/Web → ROCm parity → CUDA parity → Vulkan → optional compiled providers. This supersedes older ordering in linked designs; detailed owner TODOs and source/quality/lifetime constraints remain authoritative.
+**Current delivery order:** finish UX-11D acceptance → [programmable-stack foundations PS-F1/F2/F3](programmable-service/IMPLEMENTATION_PHASES.md) → parallel ROCm, CUDA, MCP/native attachment and capability lanes. Vulkan and optional compiled providers retain later priority. The [full implementation plan](FULL_IMPLEMENTATION_PLAN.md) supersedes older serial ordering; owning TODOs and source/quality/lifetime constraints remain authoritative.
 
 This folder is the agent planning entry point. Start here, then work from
 `TODO.md`. Git is the authoritative history (author, time, diff, provenance sha);
@@ -18,8 +18,8 @@ The latest [comprehensive takeover through OA-7D](../docs/FULL_COMPREHENSIVE_HAN
 work and the recovered OA-7E work. The
 [OA-7E takeover prompt](../docs/NEXT_AGENT_2026-11-27_OA7E.md) is historical;
 OA-7E landed at signed 1585b579, actual learned SDK and assembled gate passed.
-User-priority [UX-11 A/B/C/D presentation, diagnostics and source-aware launch](cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md#28-nov--ux-11-follow-up-user-priority-before-rocm-continuation) source implementation landed at the D checkpoint. Focused CLI/UI/runtime validation passed; pinned native Nix package realization and complete assembled gate remain open. Actual L5 GPU environment and eligibility diagnosis in CURRENT_HANDOFF. Pause measured ROCm work at P3C; resume after outstanding qualification without reopening accepted operator evidence.
-Prior unit: [Phase 3 ROCm readiness](FULL_IMPLEMENTATION_PLAN.md#3-rocm--match-vllm-first) on X2 after bounded Phase 2 acceptance and [OA-10 closeout](serving-and-speculation/NEXT_ITERATION_OPENAI_COMPATIBLE_SERVING.md#oa-10--compatibility-closeout).
+User-priority [UX-11 A/B/C/D presentation, diagnostics and source-aware launch](cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md#28-nov--ux-11-follow-up-user-priority-before-rocm-continuation) source implementation landed at the D checkpoint. Focused CLI/UI/runtime validation passed; pinned native Nix package realization and complete assembled gate remain open. Actual L5 GPU environment and eligibility diagnosis in CURRENT_HANDOFF. Retain measured ROCm work at P3C. After UX-11D acceptance, complete PS-F1/F2/F3, then resume ROCm and CUDA independently alongside MCP and capability lanes without reopening unchanged accepted operator evidence.
+Prior unit: [Phase 3 ROCm readiness](FULL_IMPLEMENTATION_PLAN.md#3-rocm--amd-parity) on X2 after bounded Phase 2 acceptance and [OA-10 closeout](serving-and-speculation/NEXT_ITERATION_OPENAI_COMPATIBLE_SERVING.md#oa-10--compatibility-closeout).
 P3A ordinary cold cohort/exact device envelope and comparator usage
 completeness implemented at 50f6e276; X2 exact commit sync and locked
 offline Cargo restore complete. Full gate 2,603/0/112 (326 suites,

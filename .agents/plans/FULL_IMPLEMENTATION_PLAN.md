@@ -4,6 +4,7 @@ Author: Project owner
 Co-authors: GPT-6.2
 Owner: @pvl
 Decision: 24 Nov 2026
+Scheduling update: 28 Nov 2026 — foundations then parallel backend/adapter lanes
 
 **One execution fabric. Native models first. Mature operators wherever possible.
 Compiled execution where it earns its place.**
@@ -26,24 +27,34 @@ availability claims belong to measured status.
 
 | Phase | Objective | Exit |
 | --- | --- | --- |
-| 1. Foundations | Complete the shared execution, provider, source, state, memory and control contracts | Real native consumers on a coherent common foundation; optional compiled-region seam ready |
-| 2. CLI, TUI and Web | One usable product and control surface, then OpenAI-compatible serving | Native terminal and embedded Web clients use the same SDK/runtime; public serving and benchmark paths ready |
-| 3. ROCm | Match or beat optimized vLLM first on AMD | Matched qualified native source-model serving workloads |
-| 4. CUDA | Match or beat optimized vLLM next on NVIDIA | Matched qualified native source-model serving workloads |
+| 1. Foundations | Shared execution, provider, source, state, memory and control contracts | Accepted native consumers and optional compiled-region seam; preserve the bounded exit |
+| 2. CLI, TUI and Web | One usable product/control surface and public serving | Complete the separately owned UX-11D implementation and required qualification |
+| 2.4. Programmable stack foundations | Reusable Service/SDK, typed programming contracts, durable operations and safe live ownership | PS-F1/F2/F3 common foundation exit; later lanes can extend the same contracts independently |
+| 3. ROCm — parallel lane | Match or beat optimized vLLM on AMD | Matched qualified native source-model serving workloads |
+| 4. CUDA — parallel lane | Match or beat optimized vLLM on NVIDIA | Matched qualified native source-model serving workloads |
 | 5. Vulkan | Native backend feature/correctness and performance parity | Real-model execution and measured native Vulkan competitiveness |
 | 6. Compiled providers | Optional MIGraphX, TensorRT, IREE and ONNX Runtime | Real supported models or closed regions, measured benefit, original ownership |
 
-The order is deliberate. Finish the common foundations before frontend work;
-finish CLI/TUI/Web before the performance campaigns. The 26 Nov user decision
-adds native TUI interaction/visual polish (§2.2A) before public serving (§2.3).
-Accepted UX-1–10 remains the baseline, not reopened foundations. Finish the ROCm campaign
-before the CUDA campaign, and then Vulkan. Graph/compiler scaffolding belongs
-in Phase 1; concrete third-party graph compiler integrations belong in Phase 6.
-Native command capture, native operator libraries and native optimization
-remain part of their respective backend phases. Independent bounded correctness
-or compatibility fixes may proceed when needed to keep accepted paths usable;
-do not start a competing performance campaign or revive an old implementation
-hold merely because a specification is linked here.
+**28 Nov user scheduling decision:** finish UX-11D acceptance, then complete
+[PS-F1/F2/F3](programmable-service/IMPLEMENTATION_PHASES.md). After that bounded
+shared foundation exit, ROCm parity, CUDA parity, SDK-hosted MCP/native
+attachment and capability lanes may proceed independently. A backend campaign
+does not wait for another backend's parity result or for MCP implementation.
+Full composition, optimization, checkpoint expansion and arbitrary-code
+isolation are separate consumers, not prerequisites for reopening parity.
+
+This replaces the earlier ROCm-before-CUDA scheduling requirement. Existing
+phase numbers identify scopes; phases 3 and 4 are now parallel. Vulkan and
+concrete third-party compiler integrations retain later priority. Native
+command capture, mature operator libraries and native optimization remain in
+their backend lanes. Accepted foundations/UX work and historical measurements
+remain accepted within their actual scopes.
+
+Common interface/resource/state changes have one integration owner. Each
+lane retains its correctness-before-performance requirements, explicit holds,
+authorized sources and physical admission/retirement rules. Shared hardware
+or build contention is coordinated scheduling, not a new architectural
+dependency between the lanes.
 
 ### Model and source priorities
 
@@ -896,10 +907,53 @@ control/serving, SDK and public benchmark paths passed. The actual
 benchmark recheck and complete isolated gate establish the supported
 interface/lifecycle exit. Future model/media, hosted tenancy and general
 pipeline/backend expansion remain in their owning plans, not implicit
-acceptance. Proceed to Phase 3; no optimized GPU/vLLM result inferred
+acceptance. Current resumption follows §2.4; no optimized GPU/vLLM result inferred
 from functional CPU benchmark evidence.
 
-## 3. ROCm — match vLLM first
+## 2.4 Programmable stack foundations and parallel lanes
+
+**Queued immediately after UX-11D acceptance — 28 Nov user decision.**
+Implementation has not started for this scope. See the
+[service/SDK design](programmable-service/README.md),
+[composition design](programmable-service/COMPOSITION_AND_ADAPTIVE_EXECUTION.md),
+[phase/dependency plan](programmable-service/IMPLEMENTATION_PHASES.md) and
+[live checklist](programmable-service/TODO.md).
+
+The shared foundation block has three substantial outcomes:
+
+1. **PS-F1:** extract reusable Service/Client plus source/preparation,
+   independent operation supervision and owned observations; make ordinary
+   SDK run/stream/serve and existing frontends use the same native behavior.
+2. **PS-F2:** implement typed task/model/mapping revisions, checked authoring
+   and provider binding over existing consumers; owned adapter contracts,
+   capability/grant checks, minimal durable operations/recipes and observation.
+3. **PS-F3:** implement actual bounded live registration/activation, complete
+   admitted composition retention, coexistence admission and safe recovery
+   boundaries; qualify the assembled foundation through real supported paths.
+
+The SDK is usable directly and supplies the native contracts for an optional
+SDK-hosted MCP server. Full MCP transports/protocol implementation happen in
+their own lane after this gate and require no CLI-private host.
+
+At foundation exit, reopen **ROCm and CUDA independently** alongside
+**MCP/native attachment**. Task DAGs and model authoring can progress
+independently; mapping/experiments can start with existing models and qualified
+implementations. Continuation and isolated extension use the same ownership
+contracts but have separate useful acceptance scopes.
+
+Keep work in its owning plan. The programmable-service checklist tracks
+shared integration and service capabilities; the existing backend, numerical,
+source and serving TODOs retain their detailed work and evidence. One common
+contract writer coordinates changes; disjoint backend/adapter paths have
+explicit owners. A common-authority failure gates affected consumers; a
+backend- or protocol-local failure does not stop unrelated ready work.
+
+No performance result, new model capability, general checkpoint scope or GPU
+isolation claim follows from these plans. The user separately authorized the
+README/architecture update and publication of these plans. UX-11D source and
+qualification remain in the other agent's ownership.
+
+## 3. ROCm — AMD parity
 
 Use X2 (gfx1151) as the first measured performance target, then other qualified
 AMD hardware. Source authoring on L5; execution/testing on X2/A1 per the
@@ -997,7 +1051,7 @@ Owners: [execution](model-execution/TODO.md), [backend parity](cpu-gpu-optimizat
 [serving](serving-and-speculation/TODO.md), [memory](memory-and-streaming/TODO.md),
 [numerics](numerics-and-context/TODO.md).
 
-## 4. CUDA — match vLLM next
+## 4. CUDA — NVIDIA parity
 
 - [ ] Revalidate actual current NVIDIA source paths before performance claims.
   Close deterministic C4/B8 identical-lane divergence, independent populated
@@ -1175,12 +1229,13 @@ order above, but their valid constraints and decisions are preserved.
 | --- | --- |
 | [Master plan](ZEROGRAVITY_MASTER_PLAN_2026-10-10.md), [P00–P23 roadmap](IMPLEMENTATION_ROADMAP.md), [integrated delivery gates](INTEGRATED_PHASE_0_AND_DELIVERY_GATES.md) | Overall design; Phase 1 foundations, remaining work in applicable phases |
 | [Fabric vNext](fabric-vnext/README.md), [transition](fabric-vnext-transition/TODO.md) | Phase 1; accepted migration retained; deferred scopes follow this plan and explicit holds |
-| [Pipeline composition](pipeline-composition/TODO.md), [shared execution](pipeline-composition/SHARED_EXECUTION_ARCHITECTURE.md) | Phase 1, then native regions and later breadth |
+| [Programmable service](programmable-service/README.md), [foundation/lane plan](programmable-service/IMPLEMENTATION_PHASES.md) | After UX-11D: PS-F1/F2/F3, then independent SDK/MCP/composition/experiments/continuation/extension lanes |
+| [Pipeline composition](pipeline-composition/TODO.md), [shared execution](pipeline-composition/SHARED_EXECUTION_ARCHITECTURE.md) | Phase 1 contracts; PS foundations and independent composition/mapping capability lanes |
 | [Model acquisition](model-acquisition/TODO.md), [immutable shard spec](IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_SPEC.md), [acquisition spec](MODEL_ACQUISITION_IMPLEMENTATION_SPEC.md) | Phase 1 and 2 lifecycle; additional sources/models qualified later |
 | [Memory/streaming](memory-and-streaming/TODO.md) | Phase 1 common ownership, Phases 3–5 optimization, later topology |
 | [CLI/device routing](cli-device-routing/TODO.md), [CLI UX](cli-ux/NEXT_ITERATION_CLI_UX_AND_MODEL_LIFECYCLE.md) | Phase 1 SDK/routing prerequisites, Phase 2 complete UI |
 | [Serving/speculation](serving-and-speculation/TODO.md), [OpenAI serving](serving-and-speculation/NEXT_ITERATION_OPENAI_COMPATIBLE_SERVING.md) | Phase 1 contracts, Phase 2 APIs, Phases 3–5 native performance |
-| [Model execution](model-execution/TODO.md), [CPU/GPU optimization](cpu-gpu-optimization/TODO.md), [backend parity](cpu-gpu-optimization/BACKEND_PARITY.md) | Phase 1 contracts, Phases 3/4/5 in order, Phase 6 compiled providers |
+| [Model execution](model-execution/TODO.md), [CPU/GPU optimization](cpu-gpu-optimization/TODO.md), [backend parity](cpu-gpu-optimization/BACKEND_PARITY.md) | Phase 1/PS common contracts; Phases 3 and 4 in parallel, then Phase 5 and optional Phase 6 |
 | [Numerics/context](numerics-and-context/TODO.md), [correctness policy](numerics-and-context/CORRECTNESS_POLICY.md), [Qwen API/CLI frontier](qwen-parity/) | All phases; source/quality correctness precedes respective performance and capability claims |
 | [Multimodal](multimodal/TODO.md), [distributed execution](distributed-execution/TODO.md) | Phase 1 boundaries; deferred qualified implementation/expansion |
 | [Platform/release](platform-and-release/TODO.md), [traceability](REQUIREMENTS_AND_TEST_TRACEABILITY.md), [experiment program](EXPERIMENT_PROGRAM.md) | Cross-cutting acceptance and later platform breadth |
