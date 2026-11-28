@@ -322,7 +322,14 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   passed. Existing width/alignment, resource and receipt owners retained.
 - [x] Fresh paired 0.8B C1/C8 optimized baseline through existing owned
   comparator; c0440c15 honors configured foreground shutdown grace.
-- [ ] Fresh paired 2B/27B and full assembled gate completion;
+- [x] Fresh paired 2B C1/C8 optimized baseline before row-region change:
+  all 64 measured requests exact, 8 owned provider retirements.
+- [x] Native V2 row-region A/B via ordinary public serving on both small
+  models, C1/C8 and output3/16, actual counters and exact output IDs.
+- [x] Fresh paired 27B C8 at 54b2c910: 5.8652/13.51425 native/vLLM
+  tok/s, 32 exact timed requests, 4 accepted provider retirements.
+- [ ] Fresh paired 27B C1 and full assembled gate completion
+  (P3C timeout at serving-only rebuild, 1785/0/97, 237 suites);
   temporal/state/paged/prefix work belongs to measured Phase3.
 
 ### Ordinary serving benchmark / bounded Phase 2 exit — 27 Nov

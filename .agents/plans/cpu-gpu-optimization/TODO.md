@@ -57,14 +57,29 @@ Architecture: [Astra high shared/family/model boundary review](../pipeline-compo
 - [x] Fresh paired optimized 0.8B C1/C8 baseline after pinned restore:
   24.1796/65.21545 and 42.62495/226.56605 native/vLLM tok/s;
   exact response IDs/text/usage/finish, accepted owned retirement.
-- [ ] Fresh paired 2B/27B and complete assembled gate (retry stopped
-  during test-dependency compilation). No historical ratio as acceptance.
+- [x] Fresh paired 2B C1/C8 at pre-region f79dce28: native/vLLM
+  10.53485/40.1755 and 30.67695/144.6099, exact response IDs/text/
+  usage/finish and accepted owned retirement.
+- [x] Fresh paired 27B C8 at 54b2c910, same 75GiB configured
+  envelope, 5.8652/13.51425 native/vLLM tok/s, 32 exact timed
+  requests and four joined provider retirements.
+- [ ] Fresh paired 27B C1. No historical ratio as acceptance.
+- [ ] Complete assembled gate remainder. P3C gate 1785/0/97 across
+  237 completed suites, 1200s timeout during serving-only rebuild;
+  strict production lint and physical region qualification passed.
+  Resume remaining checks; no repeated physical A/B required.
 - [x] HIP native V2 compact device greedy feedback (f79dce28):
   shared BF16 reduction and committed packet, resident embedding gather;
   cold prepared arena, original root/flight, reference profile preserved.
   Actual original 0.8B differential and 0.8B/2B/27B C1/C8 public
   canaries passed, with real sampler stages and retirement.
-- [ ] Measure and close largest real native costs, including row-wise
+- [x] Native V2 direct/residual RMS source-exact row region and flattened
+  GDN post-normalization gate (54b2c910). Shared guarded arithmetic,
+  retained staged reference, existing scratch/physical flight. Exact
+  physical operator differential and 0.8B/2B C1/C8 47+3/16 native A/B
+  pass, 216 measured requests, 4 retired processes. Short C8 +20%/+15%,
+  long C8 +9.75%/+6.12%. Do not infer vLLM parity.
+- [ ] Measure and close remaining native costs, including temporal/GDN
   and attention regions, ragged/stateful
   cohort work, paged/prefix reuse and sustained refill. Reuse existing
   shared primitives and original state owners; do not promote by

@@ -59,7 +59,80 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — P3B native HIP compact token feedback (28 Nov)
+### Current checkpoint — P3C native row regions (28 Nov)
+
+Signed source 54b2c910 on L5, exact incremental bundle to X2.
+Keep unrelated unstaged Cargo.toml on L5. Native V2 now lowers complete
+direct/residual RMS rows into one original cascade/inverse kernel plus
+the retained normalization/gamma/store tail. Guarded normal FP32
+add/product with the existing exact fallback; same source reduction
+order, BF16 casts, gamma and finite-status semantics. No changed
+numerical profile or new runtime; reuse original resident scratch,
+cold catalogue, flight and validation. The prior exact staged
+reference path and dormant scalar/tail primitives remain available.
+GDN's post-normalization gate uses one actual flattened token-row
+launch, sharing the original per-element activation helper.
+
+Physical HIP operator differential (region_matches_staged_rms_on_hip)
+passes in 7.19s: exact output and residual bits for source widths
+128/256/1024/2048/5120, up to 129 independent groups, signed zeros,
+tiny/subnormal values, gamma modes and invalid-input status.
+X2 offline release build passed (37s); focused GPU test compiled and
+ran. L5 HIP CLI/SDK compile and strict default production Clippy pass.
+The first standalone GPU test check timed out compiling dependencies;
+the actual release test build and differential resolved that attempt.
+
+Public native A/B: retained pre-region executable f79dce28 vs current
+54b2c910, same 24GiB configured envelope, active8/cohort auto,
+context1024, max-output16, raw47-token prompt. Warm-up then three
+timed waves per C1/C8 and 3/16 output tokens. All 216 measured
+requests / 2052 generated tokens exact old/new sequences and usage,
+actual cohort/publication counters, all four owned servers retired.
+See CURRENT_BASELINE for median rates and dispatches. No large
+decode-wide parity claim. Short C8 improves 0.8B 43.21->51.84 (+20%),
+2B 30.78->35.40 (+15%), dispatches 55,923->27,369. Longer C8 0.8B
+87.06->95.55, 2B 53.67->56.96. Keep the measured native region.
+X2 target/p3c-physical-region.log, p3c-ab.log and p3c-{base,new}-{08,2b}/.
+
+Fresh 2B owned paired baseline before region optimization completed:
+f79dce28 native, pinned vLLM, authenticated original source/tokenizer,
+eight fresh processes ABBA per C1/C8, 64 requests exact response IDs,
+text, usage/finish and accepted shutdown. C1 10.53485/40.1755,
+C8 30.67695/144.6099 native/vLLM tok/s. Idle VRAM274452480.
+X2 target/p3c-paired-2b.log and p3b-paired-2b/comparison.json.
+Fresh 27B C8 owned ABBA at current 54b2c910 (not a native A/B):
+same authenticated original snapshot/tokenizer, pinned vLLM,
+configured 75GiB, active8/cohort auto, context1024, raw47+3.
+Four fresh providers, 32 measured requests, exact response-bound
+IDs/text/usage/finish, all accepted shutdowns and joined retirement.
+Native samples 5.8759/5.8545, vLLM 13.5432/13.4853 output tok/s;
+medians 5.8652/13.51425 (43.4%). Median wave p95 TTFT
+3015.83/1223.20ms. Caller-supplied source attestation matched;
+no independent numerical/state equivalence or SLO-goodput claim.
+X2 target/p3c-paired-27b-c8/comparison.json, 563.6s owned campaign,
+idle VRAM274452480, GPU busy0 and no KFD process. Fresh 27B C1
+paired cell remains open; prioritize C8 to qualify the new region
+on the large geometry within this checkpoint.
+Assembled gate (target/p3c-assembled.log) ran to its 1200s
+command timeout. Formatting, architecture, HIP/Vulkan/CUDA feature
+boundaries, strict production/CPU Clippy, CPU workspace tests,
+minimal feature variants, local cache transactions, source-only
+reference/report tests and HTTP-free cache/shared CPU preparation
+completed. 237 completed Rust suites, 1785 passed/0 failed/97
+ignored. Cargo rebuilds and a build-directory lock wait consumed
+the window; stopped during the serving-only rebuild, not a reported
+test failure. Full assembled gate remains outstanding; do not repeat
+physical or completed benchmark work to clear it.
+
+Next measured focus: native temporal/recurrent GDN and attention
+regions; first re-localize remaining actual prefill/decode costs
+on X2 after the row-region change. Keep private state ownership,
+source quality and numerical contracts. Do not retry the rejected
+scalar-only fusion selectors or conclude parity from dispatch counts.
+Consider reusable exact BF16-domain nonlinear evaluation and
+device-native multi-row products where measured costs justify them.
+
+### Prior checkpoint — P3B native HIP compact token feedback (28 Nov)
 
 Signed native source f79dce28, exact bundle transfer to X2 (clean main).
 L5 source only; preserve unrelated unstaged Cargo.toml debug profile.

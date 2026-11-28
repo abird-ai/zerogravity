@@ -929,8 +929,19 @@ C1/C8 public canaries. Existing source/reference profiles preserved.
 Fresh owned 0.8B C1/C8 paired native/vLLM medians 24.18/65.22 and
 42.62/226.57 tok/s, all exact response IDs/text/usage/finish, joined
 retirement. Configured envelope matched; no independent state or SLO
-parity claim. 2B/27B paired and complete assembled gate remain open.
-Prefix/paged/ragged/region improvements remain ordered measured work.
+parity claim. Fresh pre-region 2B pair: native/vLLM 10.53/40.18 C1,
+30.68/144.61 C8, exact response identity and retirement.
+P3C native row regions 54b2c910: exact RMS differential and native
+A/B for 0.8B/2B C1/C8, 47+3/16, all exact output IDs/usage and
+retirement; short C8 +20%/+15%, long C8 +9.75%/+6.12%.
+Fresh paired 27B C8 at 54b2c910: 5.8652/13.51425 tok/s, 32
+exact timed requests and all four provider retirements. Fresh
+27B paired C1 and complete assembled gate remain open.
+P3C broad gate 1785/0/97 (237 suites), strict production/CPU
+Clippy passed; 1200s timeout in serving-only rebuild after
+cache and CPU preparation checks, no reported test failures.
+Prefix/paged/ragged/remaining temporal/attention regions remain ordered
+measured work.
 
 - [x] Restore the approved pinned optimized vLLM provider and qualify
   actual original-source 0.8B/2B/27B C1/C8 serving on X2.

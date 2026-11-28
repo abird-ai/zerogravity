@@ -25,8 +25,14 @@ offline Cargo restore complete. Full gate 2,603/0/112 (326 suites,
 519s) and real 0.8B/2B C1/C8, 27B C1 native public cells pass;
 explicit sequential control passed. Pinned vLLM restored and rooted;
 all three original models C1/C8 optimized HTTP, 81/81 exact requests
-and physical retirement pass. Next fresh paired baseline and measured
-native optimization.
+and physical retirement pass. P3B compact feedback and P3C exact RMS
+row regions/flattened GDN gate physically validated. Fresh paired
+0.8B/2B C1/C8 before region optimization; native A/B 47+3/16 gains
+up to 20%. Fresh 27B C8 pair at 54b2c910, 5.8652/13.51425 tok/s,
+32 exact timed requests and joined retirement. 27B C1 pair and
+assembled gate pending (P3C 1785/0/97 in 237 suites, 1200s
+timeout during serving-only rebuild); next measured
+temporal/recurrent and attention regions.
 OA-9A bounded native text Realtime accepted at 4735621b. OA-10 corrected
 cold endpoint markers/help, documented actual supported routes and
 capability limits, and focused-qualified safe error/refusal behavior.

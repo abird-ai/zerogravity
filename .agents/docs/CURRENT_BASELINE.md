@@ -5,6 +5,69 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 28 Nov — source-exact native row regions (54b2c910)
+
+X2 original 0.8B/2B, configured 24GiB, active8/cohort auto,
+context1024/max-output16, raw47+3/16 greedy HTTP Completions.
+Separate retained pre-region f79dce28 and current 54b2c910 processes,
+one warmup and three timed waves per cell, exact source token
+sequences and usage. The row region's physical operator differential
+matches every output/residual bit and rejects invalid input.
+
+| Model | Output tokens | Concurrency | Prior tok/s | Region tok/s | Change |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 0.8B | 3 | 1 | 23.3372 | 26.2245 | +12.37% |
+| 0.8B | 3 | 8 | 43.2131 | 51.8365 | +19.96% |
+| 0.8B | 16 | 1 | 33.7680 | 36.1097 | +6.93% |
+| 0.8B | 16 | 8 | 87.0618 | 95.5494 | +9.75% |
+| 2B | 3 | 1 | 10.5284 | 11.0995 | +5.42% |
+| 2B | 3 | 8 | 30.7837 | 35.3980 | +14.99% |
+| 2B | 16 | 1 | 12.9543 | 13.1619 | +1.60% |
+| 2B | 16 | 8 | 53.6712 | 56.9583 | +6.12% |
+
+Actual dispatches for each model: 47+3 C1 9883->5542, C8
+55923->27369; 47+16 C1 31086->19790, C8 116802->71465.
+216 measured requests / 2052 generated tokens across four owned
+processes, plus warmups. Exact old/new IDs, all usage, joined shutdown
+and VRAM274452480 after each. This is a native A/B, not a new
+paired vLLM comparison. Retain prior paired baseline separately.
+Logs X2 target/p3c-ab.log and p3c-{base,new}-{08,2b}/summary.json.
+Output16 median wave p95 TTFT / client-delivery ITL (ms):
+0.8B C1 72.61->60.76 / 27.45->26.33, C8 410.51->323.00 /
+71.41->69.01; 2B C1 134.38->122.00 / 74.30->73.85, C8
+528.17->432.73 / 124.64->121.56. Larger prefill benefit than
+cached decode; next re-localize actual recurrent/projection costs.
+
+### Fresh pre-region paired 2B optimized baseline
+
+Same pinned vLLM and f79dce28 native, authenticated original source,
+configured 24GiB, raw47+3, context1024, eight fresh ABBA provider
+processes (four per concurrency), 64 timed requests, exact response
+IDs/text/usage/finish and accepted shutdown/idle GPU.
+
+| Concurrency | Native median tok/s | vLLM median tok/s | Native/vLLM |
+| --- | ---: | ---: | ---: |
+| 1 | 10.53485 | 40.1755 | 26.222% |
+| 8 | 30.67695 | 144.6099 | 21.214% |
+
+X2 target/p3b-paired-2b/comparison.json. Throughput, not independent
+numerical/state equivalence or SLO goodput.
+
+### Fresh post-region paired 27B C8 optimized baseline
+
+Current native 54b2c910 vs pinned vLLM, original verified BF16
+snapshot/tokenizer, configured 75GiB, context1024, active8, raw47+3.
+Fresh ABBA, four owned providers, 32 timed requests, identical
+response-bound IDs, output text, usage and finish, all accepted
+shutdowns. Actual native 5.8759/5.8545 and vLLM 13.5432/13.4853
+output tok/s; median 5.8652/13.51425 (43.4%). Median wave p95
+TTFT 3015.83/1223.20ms. Native/pinned source attestation matched,
+not independent numerical/state equivalence or SLO goodput.
+X2 target/p3c-paired-27b-c8/comparison.json; idle VRAM274452480,
+GPU busy0, no KFD owner. This qualifies the new region on 27B,
+not a controlled 27B before/after optimization measurement.
+Fresh paired 27B C1 remains open.
+
 ## 28 Nov — native V2 compact feedback candidate f79dce28
 
 X2 actual original BF16, exact configured 24/24/75GiB envelopes,
