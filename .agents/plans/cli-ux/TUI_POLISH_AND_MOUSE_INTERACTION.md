@@ -50,8 +50,54 @@ Log actual timestamp, action/source correlation, elapsed stage,
 coalesced real progress, terminal reason. Trusted local details retain
 actionable cause; public HTTP/browser default remains safe bounded
 projection, explicit detailed error policy remains authoritative.
-Review bounded local log persistence/recovery rather than claiming
-process-local ring can recover past sessions. Reproduce L5 actual
+**Durable logging is required (28 Nov user clarification).** One
+shared structured operational event contract and host-owned sink
+selection; the 128-entry live ring is only a presentation projection.
+Capture at the owning action/runtime/serving boundary, independent
+of whether a TUI/Web client is present, with monotonic sequence,
+UTC wall-clock timestamp, elapsed duration, process/session and
+action/registration/request correlation, stage and typed failure
+chain. Coalesce progress, not terminal outcomes. No per-token or
+per-layer logs by default; never log prompts, generated text, secrets,
+credentials or arbitrary request bodies. Preserve typed resource
+details and useful sanitized causal diagnostics.
+
+Default destination follows actual process mode:
+- One-off CLI: diagnostics on stderr, primary output on stdout; no
+  implicit file creation or persistent history. Keep JSON/JSONL
+  command output machine-readable.
+- Interactive TUI / embedded Web control host: private live session
+  log under `$XDG_STATE_HOME/abird/zerogravity/logs/` (fallback
+  `$HOME/.local/state/abird/zerogravity/logs/`). A unique file per
+  session/process avoids concurrent writers. Expose current log path
+  in native diagnostics and support bounded recent-session inspection.
+  Do not print ordinary diagnostic lines into the alternate screen.
+- Foreground serving or managed service: continuous timestamped,
+  non-ANSI, line-oriented stderr, even without a client or TTY.
+  The NixOS service already specifies StandardOutput/StandardError
+  journal; journalctl owns service collection and retention. No
+  mandatory duplicate file or unreliable systemd environment
+  detection. Explicit file/format/level override for users who want
+  a separate live file, including foreground serving.
+
+Use existing output policy and shared error/event types; avoid
+parallel logging APIs or runtime-owned filesystem policy. A private
+file sink with bounded retention/rotation, predictable permissions,
+complete records, final flush/join and visible sink-failure state;
+preserve other sessions and never delete arbitrary files. Retention
+limits and exact flags belong to the implementation contract. Logging
+must not silently drop errors or block inference hot paths; optional
+verbose diagnostics remain bounded and appropriately redacted. Public
+browser/API remains a safe projection, not a raw-file endpoint.
+Review the stale NixOS service bootstrap description and real serving
+wiring as part of service logging qualification, without silently
+enabling a service or changing deployment/restart policy. Verify
+one-off stdout purity/no state side effects, actual interactive live
+file and session recovery, concurrent sessions, service stderr without
+TTY, and sink failure/shutdown. Old sessions without a durable sink
+cannot be recovered retroactively.
+
+Reproduce L5 actual
 Auto/CUDA/ROCm failures using the appropriate full-feature build,
 exact selected sources/device, original owners; do not change runtime
 qualification to make an action look successful.

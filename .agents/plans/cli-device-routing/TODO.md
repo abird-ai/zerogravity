@@ -552,7 +552,12 @@ Design: [TUI polish follow-up](../cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md).
   Safe Web action wire carries stage/counters, not native error text.
 - [ ] C next: proper typed causal error chains and local/public
   diagnostic boundaries, timestamped correlated stage/progress/error
-  logs, actual L5 reproduction. Review bounded local retention.
+  logs, actual L5 reproduction. Required durable mode-aware logging:
+  one-off stderr/stdout separation, private XDG live session files
+  for interactive hosts with bounded retention, foreground/service
+  stderr suitable for journald; explicit destination override.
+  One shared event contract, no dependence on the currently open UI,
+  no credentials/output contents, no implicit service enablement.
 - [ ] D: source-aware runnable/refusal guidance and action consistency
   using original planner; no verification prerequisite or fallback
   inferred from inventory. Return to measured P3D after UX checkpoint.

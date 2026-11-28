@@ -93,8 +93,17 @@ ux11ab-pty-editor-retry.log and ux11ab-pty-controls-final.log.
 No physical GPU loading qualification or full assembled gate rerun.
 Next **UX-11C** typed causal chain through original error owners and
 timestamped stage/progress/error logs, with native/private vs public
-projection; reproduce exact L5 failures, then D action/refusal
-guidance. See owning UX follow-up design and CLI-device TODO.
+projection. User explicitly requires live durable logging: original
+host ring is in-memory only (128 entries); one-off reporter already
+uses stderr, NixOS unit already routes both streams to journal, no
+shared durable host event sink exists. Interactive host defaults to
+private XDG session log; one-off diagnostics stay stderr; foreground/
+service emits continuous journal-friendly stderr, explicit file override,
+bounded retention, no duplicate mandatory service file. One shared
+event contract with actual stage, typed errors and safe public
+projection; independent of clients. Detailed contract in UX follow-up
+design, not implemented yet. Reproduce exact L5 failures, then D
+action/refusal guidance. See owning UX follow-up design and CLI-device TODO.
 P3C performance resume remains below.
 
 ### Prior checkpoint — P3C native row regions (28 Nov)
